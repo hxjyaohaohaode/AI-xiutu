@@ -5,8 +5,17 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, ArrowClockwise } from '@phosphor-icons/react';
 import { api, jsonRequest, errorMessage, formatDate } from '../lib/api';
 import { InlineError, Busy } from './Ui';
+import { Disclosure } from './Controls';
 import { FeatureSkeleton } from './DeferredFeature';
 import { OpsMutationOwner } from './ops-mutation';
+import { ResponsesModelOptions } from './ResponsesModelOptions';
+import { VoiceModelOptions } from './VoiceModelOptions';
+import type {
+  LiveOptions,
+  RealtimeOptions,
+  ResponsesOptions,
+  responsesModel,
+} from '@ai-xiutu/assistant/models';
 import '../ai/live-assistant.css';
 type Settings = {
   enabled: boolean;
@@ -23,6 +32,9 @@ type Settings = {
   webSearch: boolean;
   webImageSearch?: boolean;
   reasoningEffort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+  responses?: ResponsesOptions;
+  live?: LiveOptions;
+  realtime?: RealtimeOptions;
   voiceReasoningEffort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
 };
 type Model = { id: string; config: Settings; hash: string };
@@ -34,11 +46,11 @@ type Profile = {
   fullDuplex: boolean;
   reasoning?: string[];
 };
-type ResponseProfile = {
-  id: string;
-  contextWindowTokens: number;
-  maxOutputTokens: number;
-  reasoning: string[];
+type ResponseProfile = NonNullable<ReturnType<typeof responsesModel>>;
+type Inventory = {
+  state: 'visible' | 'unavailable' | 'unconfigured';
+  checkedAt?: string;
+  models: { id: string; adapter: string | null }[];
 };
 type Unknown = {
   id: string;
@@ -65,8 +77,12 @@ const initial = (): Settings => ({
 });
 export function AssistantOpsPanel() {
   const [models, setModels] = useState<Model[]>([]),
+    [inventory, setInventory] = useState<Inventory | null>(null),
+    [inventoryLoading, setInventoryLoading] = useState(false),
+    [modelFilter, setModelFilter] = useState(''),
     [profiles, setProfiles] = useState<Profile[]>([]),
     [responsesProfiles, setResponsesProfiles] = useState<ResponseProfile[]>([]),
+    [transcriptionModels, setTranscriptionModels] = useState<string[]>([]),
     [ready, setReady] = useState(false),
     [voiceReady, setVoiceReady] = useState(false),
     [catalogLoaded, setCatalogLoaded] = useState(false),
@@ -94,6 +110,10 @@ export function AssistantOpsPanel() {
   const responseProfile = responsesProfiles.find((entry) => entry.id === modelId);
   const outputBudgetVisible = !voice || !!voiceProfile?.protocol.toLowerCase().includes('realtime');
   const outputBudgetMax = voice ? 4096 : Math.min(8192, responseProfile?.maxOutputTokens ?? 8192);
+  const contextBudgetMax = Math.min(
+    responseProfile?.contextWindowTokens ?? 2_000_000,
+    (responseProfile?.maxInputTokens ?? 2_000_000) + settings.maxOutputTokens,
+  );
   const imageBudgetVisible = !voice && settings.imageInput;
   const [recordKind, setRecordKind] = useState<'turn' | 'voice'>('turn'),
     [recordFilter, setRecordFilter] = useState(''),
@@ -106,6 +126,7 @@ export function AssistantOpsPanel() {
     [readError, setReadError] = useState<string | null>(null);
   const loadId = useRef(0);
   const loadController = useRef<AbortController | null>(null);
+  const inventoryController = useRef<AbortController | null>(null);
   const [mutation] = useState(() => new OpsMutationOwner());
   const currentDraft = useRef({ selected, modelId, settings, hash });
   currentDraft.current = { selected, modelId, settings, hash };
@@ -113,8 +134,28 @@ export function AssistantOpsPanel() {
   currentScope.current = { recordKind, recordFilter, cursor };
   useEffect(() => {
     mutation.mount();
-    return () => mutation.unmount();
+    return () => {
+      inventoryController.current?.abort();
+      mutation.unmount();
+    };
   }, [mutation]);
+  async function inspectOpenAI() {
+    if (inventoryController.current) return;
+    const controller = new AbortController();
+    inventoryController.current = controller;
+    setInventoryLoading(true);
+    try {
+      const result = await api<Inventory>('/ops/openai-model-inventory', {
+        signal: controller.signal,
+      });
+      if (!controller.signal.aborted) setInventory(result);
+    } catch {
+      if (!controller.signal.aborted) setInventory({ state: 'unavailable', models: [] });
+    } finally {
+      inventoryController.current = null;
+      if (!controller.signal.aborted) setInventoryLoading(false);
+    }
+  }
   function setSettings(next: Settings) {
     if (!mutation.busy) setSettingsState(next);
   }
@@ -144,6 +185,7 @@ export function AssistantOpsPanel() {
           models: Model[];
           profiles: Profile[];
           responsesProfiles?: ResponseProfile[];
+          transcriptionModels?: string[];
           ready: boolean;
           voiceReady: boolean;
         }>('/ops/assistant-models', { signal: controller.signal }),
@@ -156,6 +198,7 @@ export function AssistantOpsPanel() {
       setModels(catalog.models);
       setProfiles(catalog.profiles);
       setResponsesProfiles(catalog.responsesProfiles ?? []);
+      setTranscriptionModels(catalog.transcriptionModels ?? []);
       setReady(catalog.ready);
       setVoiceReady(catalog.voiceReady);
       setCatalogLoaded(true);
@@ -302,6 +345,53 @@ export function AssistantOpsPanel() {
               {t('实时语音')} · {voiceReady ? t('已配置') : t('未就绪')}
             </span>
           </div>
+          <Disclosure
+            title={t('OpenAI 项目模型清单')}
+            role="ops-content"
+            className="assistant-inventory"
+            summary={inventory?.state === 'visible' ? String(inventory.models.length) : undefined}
+          >
+            <button
+              className="text-button"
+              type="button"
+              disabled={inventoryLoading}
+              onClick={() => void inspectOpenAI()}
+            >
+              {inventoryLoading ? t('正在读取模型') : t('读取 OpenAI 项目模型')}
+            </button>
+            {inventory?.state === 'unavailable' && (
+              <p role="status">{t('暂时无法读取 OpenAI 项目模型。')}</p>
+            )}
+            {inventory?.state === 'unconfigured' && (
+              <p role="status">{t('服务器尚未配置 OpenAI 凭据。')}</p>
+            )}
+            {inventory?.state === 'visible' && (
+              <>
+                <p className="control-note">
+                  {t('共 {count} 个项目可见模型。调用以模型配置、项目授权和供应商回执为准。', {
+                    count: inventory.models.length,
+                  })}
+                </p>
+                <label>
+                  {t('筛选模型 ID')}
+                  <input
+                    value={modelFilter}
+                    maxLength={120}
+                    onChange={(event) => setModelFilter(event.target.value)}
+                  />
+                </label>
+                <ul>
+                  {inventory.models
+                    .filter((item) => item.id.includes(modelFilter.trim().toLowerCase()))
+                    .map((item) => (
+                      <li key={item.id}>
+                        {item.id} · {item.adapter ?? t('待接入')}
+                      </li>
+                    ))}
+                </ul>
+              </>
+            )}
+          </Disclosure>
           <div className="assistant-ops-layout">
             <div className="assistant-model-list">
               <button className="text-button" disabled={busy} onClick={() => select('')}>
@@ -365,6 +455,8 @@ export function AssistantOpsPanel() {
                       setModelId(value);
                       const next = { ...settings };
                       delete next.voiceReasoningEffort;
+                      delete next.realtime;
+                      delete next.live;
                       setSettings(next);
                     }}
                     placeholder={t('选择已适配的协议')}
@@ -383,9 +475,15 @@ export function AssistantOpsPanel() {
                     list="assistant-responses-models"
                     value={modelId}
                     disabled={!!selected || busy}
-                    pattern="[A-Za-z0-9][A-Za-z0-9._:-]{0,127}"
+                    pattern="[A-Za-z0-9][A-Za-z0-9._:\-]{0,127}"
                     placeholder={t('填入此账号可用的官方模型 ID')}
-                    onChange={(e) => setModelId(e.target.value)}
+                    onChange={(e) => {
+                      setModelId(e.target.value);
+                      const next = { ...settings };
+                      delete next.reasoningEffort;
+                      delete next.responses;
+                      setSettings(next);
+                    }}
                   />
                 )}
               </label>
@@ -480,29 +578,52 @@ export function AssistantOpsPanel() {
                       setSettings({ ...settings, webImageSearch })
                     }
                   />
-                  <label>
-                    {t('推理参数')}
-                    <ChoiceSelect
-                      ariaLabel={t('推理参数')}
-                      disabled={busy}
-                      value={settings.reasoningEffort ?? ''}
-                      onValueChange={(value) => {
-                        const next = { ...settings };
-                        if (value) next.reasoningEffort = value as Settings['reasoningEffort'];
-                        else delete next.reasoningEffort;
-                        setSettings(next);
-                      }}
-                      options={[
-                        { value: '', label: t('不传此参数') },
-                        ...(profile?.reasoning ?? ['none', 'low', 'medium', 'high']).map(
-                          (value) => ({
+                  {!!responseProfile?.reasoning.length && (
+                    <label>
+                      {t('推理参数')}
+                      <ChoiceSelect
+                        ariaLabel={t('推理参数')}
+                        disabled={busy}
+                        value={settings.reasoningEffort ?? ''}
+                        onValueChange={(value) => {
+                          const next = { ...settings };
+                          if (value) next.reasoningEffort = value as Settings['reasoningEffort'];
+                          else delete next.reasoningEffort;
+                          if (
+                            (value || responseProfile.defaultEffort) !== 'none' &&
+                            next.responses
+                          ) {
+                            next.responses = { ...next.responses };
+                            delete next.responses.temperature;
+                            delete next.responses.topP;
+                          }
+                          setSettings(next);
+                        }}
+                        options={[
+                          {
+                            value: '',
+                            label: responseProfile.defaultEffort
+                              ? `${t('使用官方默认')} · ${responseProfile.defaultEffort}`
+                              : t('使用官方默认'),
+                          },
+                          ...responseProfile.reasoning.map((value) => ({
                             value,
                             label: value,
-                          }),
-                        ),
-                      ]}
+                          })),
+                        ]}
+                      />
+                    </label>
+                  )}
+                  {responseProfile && (
+                    <ResponsesModelOptions
+                      key={responseProfile.id}
+                      profile={responseProfile}
+                      effort={settings.reasoningEffort}
+                      value={settings.responses}
+                      disabled={busy}
+                      onChange={(responses) => setSettings({ ...settings, responses })}
                     />
-                  </label>
+                  )}
                 </>
               )}
               {voice && !!profile?.reasoning?.length && (
@@ -525,6 +646,17 @@ export function AssistantOpsPanel() {
                     ]}
                   />
                 </label>
+              )}
+              {voiceProfile && voice && (
+                <VoiceModelOptions
+                  protocol={voiceProfile.protocol}
+                  live={settings.live ?? {}}
+                  realtime={settings.realtime ?? {}}
+                  models={transcriptionModels}
+                  disabled={busy}
+                  onLive={(live) => setSettings({ ...settings, live })}
+                  onRealtime={(realtime) => setSettings({ ...settings, realtime })}
+                />
               )}
               {outputBudgetVisible && (
                 <label>
@@ -549,7 +681,7 @@ export function AssistantOpsPanel() {
                     disabled={busy}
                     type="number"
                     min={8192}
-                    max={responseProfile?.contextWindowTokens ?? 2000000}
+                    max={contextBudgetMax}
                     step={1}
                     value={settings.contextWindowTokens ?? 32768}
                     onChange={(event) =>

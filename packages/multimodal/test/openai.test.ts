@@ -5,11 +5,68 @@ import {
   OPENAI_IMAGE_GENERATIONS_ENDPOINT,
   OPENAI_IMAGE_EDITS_ENDPOINT,
   MultimodalProviderError,
+  createOpenAIFileTranscriber,
   createOpenAIImageProvider,
   getOpenAIImageModels,
   describeOpenAIImageModel,
   type ImageGenerationInput,
 } from '../src/index.js';
+
+test('OpenAI file transcription validates the chosen model before forwarding hints and timestamps', async () => {
+  const wav = Buffer.alloc(46);
+  wav.write('RIFF', 0);
+  wav.writeUInt32LE(38, 4);
+  wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24);
+  wav.writeUInt32LE(32000, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36);
+  wav.writeUInt32LE(2, 40);
+  let sent = 0;
+  const transcriber = createOpenAIFileTranscriber(
+    {
+      OPENAI_API_KEY: 'test-key',
+      OPENAI_TRANSCRIPTION_MODELS: 'whisper-1,gpt-4o-transcribe-diarize',
+    },
+    async (url, request) => {
+      sent++;
+      assert.equal(url, 'https://api.openai.com/v1/audio/transcriptions');
+      const form = request?.body;
+      assert.ok(form instanceof FormData);
+      assert.equal(form.get('language'), 'en');
+      assert.equal(form.get('temperature'), '0');
+      assert.equal(form.get('prompt'), 'A sample.');
+      assert.equal(form.get('response_format'), 'verbose_json');
+      assert.deepEqual(form.getAll('timestamp_granularities[]'), ['word', 'segment']);
+      return Response.json({
+        text: 'Hello',
+        words: [{ start: 0, end: 0.2, word: 'Hello' }],
+        segments: [{ start: 0, end: 0.3, text: 'Hello' }],
+      });
+    },
+  );
+  await assert.rejects(
+    transcriber.transcribe({
+      model: 'gpt-4o-transcribe-diarize',
+      wav,
+      options: { prompt: 'A sample.' },
+    }),
+    { code: 'OPENAI_TRANSCRIPTION_OPTIONS_UNSUPPORTED' },
+  );
+  assert.equal(sent, 0);
+  const answer = await transcriber.transcribe({
+    model: 'whisper-1',
+    wav,
+    options: { language: 'en', temperature: 0, prompt: 'A sample.', timestamps: 'both' },
+  });
+  assert.equal(sent, 1);
+  assert.equal(answer.timestamps?.word?.[0]?.text, 'Hello');
+  assert.equal(answer.timestamps?.segment?.[0]?.end, 0.3);
+});
 
 const model = 'gpt-image-2.5-sunburst';
 const env: NodeJS.ProcessEnv = {
@@ -102,8 +159,12 @@ test('OpenAI adapter is disabled without explicit enable/key/model allowlist and
       ),
     outcome('rejected', 'OPENAI_ENDPOINT_NOT_ALLOWED'),
   );
+  assert.equal(
+    getOpenAIImageModels({ OPENAI_IMAGE_MODELS: 'chatgpt-image-latest' })[0]?.id,
+    'chatgpt-image-latest',
+  );
   assert.throws(
-    () => getOpenAIImageModels({ OPENAI_IMAGE_MODELS: 'chatgpt-image-latest' }),
+    () => getOpenAIImageModels({ OPENAI_IMAGE_MODELS: 'gpt-image-1' }),
     outcome('rejected', 'OPENAI_MODEL_NOT_SUPPORTED'),
   );
   assert.throws(
@@ -228,6 +289,7 @@ test('OpenAI profiles enforce real quality, format dependencies, current size ev
     imageOptions: { n: 2, quality: 'xhigh' },
   });
   provider.validate({ ...input, model: 'gpt-image-2.6-flare', width: 1536, height: 864 });
+  provider.validate({ ...input, model: 'gpt-image-2.6-flare', width: 3840, height: 2160 });
   for (const invalid of [
     { ...input, width: 1001 },
     { ...input, width: 3840, height: 3840 },
@@ -237,17 +299,53 @@ test('OpenAI profiles enforce real quality, format dependencies, current size ev
     { ...input, imageOptions: { outputFormat: 'jpeg', background: 'transparent' } },
     { ...input, imageOptions: { complexity: 'high' } },
     { ...input, model: 'gpt-image-2', imageOptions: { quality: 'max' } },
-    { ...input, model: 'gpt-image-2.6-flare', width: 2048, height: 2048 },
+    { ...input, model: 'gpt-image-2.6-flare', width: 3840, height: 2176 },
     { ...input, imageOptions: { outputFormat: 'svg' } },
     { ...input, imageOptions: { partialImages: 1 } },
   ])
     assert.throws(() => provider.validate(invalid as ImageGenerationInput), outcome('rejected'));
   const profile = describeOpenAIImageModel('gpt-image-2.6-flare')!;
   assert.equal(profile.parameterCapabilities?.size.allowedSizes, undefined);
-  assert.match(profile.parameterCapabilities?.size.reason ?? '', /保守限制/);
+  assert.match(profile.parameterCapabilities?.size.reason ?? '', /实验性/);
   assert.equal(profile.parameterCapabilities?.svg.supported, false);
   assert.equal(profile.parameterCapabilities?.gif.supported, false);
-  assert.equal(profile.parameterCapabilities?.stream.supported, false);
+  assert.equal(profile.parameterCapabilities?.stream.supported, true);
+  assert.equal(profile.parameterCapabilities?.partialImages.supported, false);
+  assert.equal(describeOpenAIImageModel('gpt-image-1.5')?.parameterCapabilities?.stream.supported, false);
+});
+
+test('OpenAI Images uses the actual auto dimensions and validates fidelity only for supported edits', async () => {
+  const provider = createOpenAIImageProvider(
+    { ...env, OPENAI_IMAGE_MODELS: 'gpt-image-1.5,gpt-image-1-mini' },
+    (async (url, init) => {
+      assert.equal(url, OPENAI_IMAGE_EDITS_ENDPOINT);
+      assert.match(String(init?.body), /"size":"auto"/);
+      assert.match(String(init?.body), /"input_fidelity":"high"/);
+      assert.match(String(init?.body), /"moderation":"low"/);
+      return response([png], { size: '1024x1024' });
+    }) as typeof fetch,
+  );
+  const edit = {
+    ...input,
+    model: 'gpt-image-1.5',
+    width: 1536,
+    height: 1024,
+    references: [{ bytes: reference, mime: 'image/png' as const }],
+    imageOptions: {
+      size: 'auto' as const,
+      inputFidelity: 'high' as const,
+      moderation: 'low' as const,
+    },
+  };
+  assert.equal((await provider.generate(edit)).images?.length, 1);
+  assert.throws(
+    () => provider.validate({ ...edit, model: 'gpt-image-1-mini' }),
+    outcome('rejected', 'OPENAI_INPUT_FIDELITY_NOT_SUPPORTED'),
+  );
+  assert.throws(
+    () => provider.validate({ ...edit, references: [] }),
+    outcome('rejected', 'OPENAI_INPUT_FIDELITY_NOT_SUPPORTED'),
+  );
 });
 
 test('OpenAI JPEG and WebP compression is transmitted and decoded as the requested real format', async () => {
@@ -267,6 +365,36 @@ test('OpenAI JPEG and WebP compression is transmitted and decoded as the request
     });
     assert.equal(result.mime, `image/${format}`);
   }
+});
+test('OpenAI image streams require an authenticated terminal image before any result is returned', async () => {
+  const model = 'gpt-image-2.6-flare';
+  const partial = { type: 'image_generation.partial_image', b64_json: png.toString('base64') };
+  const completed = {
+    type: 'image_generation.completed',
+    b64_json: png.toString('base64'),
+    size: '1024x1024',
+    output_format: 'png',
+  };
+  let events = [partial, completed];
+  const provider = createOpenAIImageProvider(
+    { ...env, OPENAI_IMAGE_PARTIALS_ENABLED: 'true' },
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.stream, true);
+      assert.equal(body.partial_images, 1);
+      return new Response(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''), {
+        headers: { 'content-type': 'text/event-stream', 'x-request-id': 'image-stream-fixture' },
+      });
+    },
+  );
+  const options = { ...input, model, imageOptions: { stream: true, partialImages: 1, n: 1 } };
+  assert.throws(
+    () => provider.validate({ ...options, imageOptions: { ...options.imageOptions, n: 2 } }),
+    { code: 'OPENAI_STREAM_REQUIRES_ONE_IMAGE' },
+  );
+  assert.equal((await provider.generate(options)).requestId, 'image-stream-fixture');
+  events = [partial];
+  await assert.rejects(provider.generate(options), { code: 'OPENAI_IMAGE_STREAM_INCOMPLETE' });
 });
 test('explicit transparency checks actual decoded alpha, not a filename or response declaration', async () => {
   const provider = createOpenAIImageProvider(env, (async () =>

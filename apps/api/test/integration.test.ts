@@ -690,12 +690,28 @@ test(
               units: 2000,
               priceCents: 1990,
               active: false,
+              expectedVersion: plan.json().plan.version,
               reason: 'New version test',
             },
             operator.cookie,
           );
           assert.equal(version.statusCode, 200, version.body);
           assert.equal(version.json().plan.version, 2);
+          const stale = await call(
+            'PATCH',
+            `/v1/ops/plans/${plan.json().plan.id}`,
+            {
+              name: 'Stale catalog',
+              units: 1,
+              priceCents: 100,
+              active: true,
+              expectedVersion: 1,
+              reason: 'Stale version test',
+            },
+            operator.cookie,
+          );
+          assert.equal(stale.statusCode, 409);
+          assert.equal(stale.json().error.code, 'PLAN_VERSION_CHANGED');
           const pendingPhone = makePhone();
           const pending = await call(
             'POST',
@@ -898,7 +914,10 @@ test(
         const loggedIn = await call('POST', '/v1/auth/login-otp', credentials);
         assert.equal(loggedIn.statusCode, 200, loggedIn.body);
         const cookie = String(loggedIn.headers['set-cookie']).split(';')[0]!;
-        assert.equal((await call('GET', '/v1/session', undefined, cookie)).json().user.id, owner.userId);
+        assert.equal(
+          (await call('GET', '/v1/session', undefined, cookie)).json().user.id,
+          owner.userId,
+        );
         assert.equal((await call('POST', '/v1/auth/login-otp', credentials)).statusCode, 400);
         await ageChallenges();
         const otp = await call('POST', '/v1/auth/otp', { phone: owner.phone, purpose: 'reset' });

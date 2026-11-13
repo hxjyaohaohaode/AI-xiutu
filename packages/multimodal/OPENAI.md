@@ -1,28 +1,29 @@
 # OpenAI Images：实际接入与能力边界
 
-核验日期：2026-11-09。实现调用官方 Images API，不使用网页会话、浏览器密钥或兼容转发站。本轮仅完成本地真实图片编解码、注入 HTTP 协议测试及 PostgreSQL WASM 生命周期测试；没有使用生产 OpenAI 密钥，没有付费生成，也没有证明任何账户、地区或模型权限已获准。
+核验日期 2026-11-13。适配器通过服务器直接请求官方 Images API。测试项目的 11 个模型 ID 均取得真实图像回执，生产环境的模型权限需在部署时核对。响应、通话和录音模型参见 [OpenAI 模型参数核对](../../docs/OPENAI-MODELS.md)。
 
 ## 模型与参数矩阵
 
-精确模型白名单与供应商说明来自实际打开的 [生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate)、[编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)、[生成指南](https://developers.openai.com/api/docs/guides/image-generation) 和 [2.6 提示指南](https://developers.openai.com/api/docs/guides/image-prompting)。未知 ID、浮动 `chatgpt-image-latest` 和已退出服务的模型不自动映射到其他档案。
+模型档案由精确 ID 选择。`chatgpt-image-latest` 按本次实测的能力单独登记。 [生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate) · [编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit) · [生成指南](https://developers.openai.com/api/docs/guides/image-generation) · [2.6 提示指南](https://developers.openai.com/api/docs/guides/image-prompting)
 
 | 档案          | 本版精确 ID                                                                | 质量                 | 尺寸策略                                                                                                  | 复杂度                                      | 引导图                     |
 | ------------- | -------------------------------------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------------------------- | ------------------------------------------- | -------------------------- |
 | GPT Image 2   | `gpt-image-2`、`gpt-image-2-2026-04-21`                                    | auto/low/medium/high | 16倍数；1:3…3:1；每边≤3840；655360…8294400像素                                                            | 不发送                                      | 蒙版；不开放markup         |
 | GPT Image 2.5 | `gpt-image-2.5-sunburst`、`gpt-image-2.5-flare`，及各自 `-2026-09-08` 快照 | 再含xhigh/max        | 同上；超过2560×1440属于官方实验范围                                                                       | 不发送                                      | 蒙版或markup，不能同时使用 |
-| GPT Image 2.6 | `gpt-image-2.6-sunburst`、`gpt-image-2.6-flare`                            | 六档                 | 官方明确16倍数、1:3…3:1自定义尺寸；**本版保守限制每边1536、655360…1572864像素**，这不是对官方最大值的声明 | low/medium/high；不传时由供应商使用其默认值 | 蒙版或markup，不能同时使用 |
+| GPT Image 2.6 | `gpt-image-2.6-sunburst`、`gpt-image-2.6-flare` | 六档 | 16 倍数、1:3…3:1、每边至多 3840、655360…8294400 像素 | `low/medium/high`，可留空 | 蒙版或 markup，二者互斥 |
+| GPT Image 1 系列与 ChatGPT Image | `gpt-image-1.5`、`gpt-image-1-mini`、`chatgpt-image-latest` | `auto/low/medium/high` | `1024x1024`、`1536x1024`、`1024x1536` | 供应商默认 | 蒙版 |
 
 2.5用途与质量来源：[Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst)、[Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare)。2.6模型来源：[Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.6-sunburst)、[Flare](https://developers.openai.com/api/docs/models/gpt-image-2.6-flare)。不把模型公开列出等同于运营账户已经开通。
 
 ### 已实现的请求映射
 
-应用 `imageOptions.quality/background/outputFormat/outputCompression/n/complexity` 分别映射供应商 `quality/background/output_format/output_compression/n/complexity`。宽高映射明确的 `WIDTHxHEIGHT`，不提供自动尺寸，因为必须先确定像素预算。生成调用固定 `https://api.openai.com/v1/images/generations`；有参考图时调用固定 `/v1/images/edits`，JSON `images` 数组使用经过授权、摘要核对的私有规范化PNG字节组成Data URL，不让用户传URL或文件ID。
+应用 `imageOptions.quality/background/outputFormat/outputCompression/n/complexity` 分别映射供应商 `quality/background/output_format/output_compression/n/complexity`。`size` 可为明确的 `WIDTHxHEIGHT` 或 `auto`。选择 `auto` 时，以三个标准画幅中的最大面积预留像素预算，并逐张核对实际尺寸。生成请求固定走 `/v1/images/generations`，编辑请求走 `/v1/images/edits`，`images` 数组使用经过授权和摘要核对的私有规范 PNG 数据。
 
 - 供应商支持1…10张；应用默认最多4张，运营 `maxOutputs` 和服务器预算可以进一步收紧。提高服务器上限也不能绕过整批像素/字节限制。
 - 输出请求接纳PNG/JPEG/WebP；压缩仅限JPEG/WebP且范围0…100；透明背景不能配JPEG。显式透明要求检查实际解码alpha，不能把供应商描述或棋盘格当成透明。
 - 首张参考图是蒙版/标注作用对象；所有参考图与引导图必须在本项目内、仍可访问，经过完整规范化与图片审核。引导层须与首图同尺寸、PNG且存在透明像素。蒙版是模型引导，不能保证区域外像素完全不变。
-- 不发送 `input_fidelity`、`user` 或客户端可降级的moderation；`moderation`固定auto，`safety_identifier`使用用户内部ID的稳定SHA-256，不发送手机号。
-- SVG/GIF、流式/partial_images、SVG作者模型、GIF帧数与帧延时暂未实现，能力矩阵返回 `supported:false` 和原因；提交这些字段失败，绝不悄悄忽略。原因分别是矢量安全与费用链、逐帧审核与动画存储、未审核部分图像及额外费用。
+- `input_fidelity` 仅编辑可选，`gpt-image-1.5` 支持 `low/high`，`gpt-image-1-mini` 支持 `low`。`moderation` 接受 `auto/low`，两者均经过应用审核。`safety_identifier` 使用内部用户 ID 的稳定 SHA-256。
+- Images 2 系列接受单张 `stream`。Worker 解析官方 SSE，审核并发布最终图。`OPENAI_IMAGE_PARTIALS_ENABLED=true` 时可请求 `partial_images`（0–3），每个请求的部分图按当前单张点数计入本轮报价。SVG/GIF 输出、SVG 作者模型、GIF 帧数与延时暂未开放。
 
 输出的供应商编码格式与最终文件格式分开。JPEG/WebP参数确实发送给供应商并核查返回容器；业务层随后规范化为私有PNG，保留alpha、去除额外元数据，再审核**实际存储字节**。不保留供应商原始容器；PNG转码不会恢复JPEG压缩已经丢失的细节。
 

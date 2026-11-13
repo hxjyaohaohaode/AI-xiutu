@@ -34,6 +34,7 @@ import { aboutCopy } from './about/copy';
 import { isAccountSiteRoute, type SiteRoute } from './about/site-route';
 import { AccountPageFrame } from './account/AccountPageFrame';
 import { accountPageCopy } from './account/page-copy';
+import { SupportPage } from './account/SupportPage';
 import type {
   Artwork,
   Asset,
@@ -284,7 +285,16 @@ type Dialog =
   | null;
 export type StudioEntry = {
   key: number;
-  mode: 'studio' | 'password' | 'register' | 'reset' | 'account' | 'welcome' | 'usage' | 'sample';
+  mode:
+    | 'studio'
+    | 'password'
+    | 'register'
+    | 'reset'
+    | 'account'
+    | 'support'
+    | 'welcome'
+    | 'usage'
+    | 'sample';
   sample?: SampleSettings;
 };
 type AppProps = {
@@ -2160,6 +2170,7 @@ export function App({
     }
     if (
       entryRequest.mode === 'account' ||
+      entryRequest.mode === 'support' ||
       entryRequest.mode === 'welcome' ||
       entryRequest.mode === 'usage'
     ) {
@@ -2191,10 +2202,11 @@ export function App({
       return;
     // An expired session cannot leave an empty account page behind. Retain the
     // local editor and send this page through the same real authentication owner.
-    postLoginRoute.current = dialog === 'account' ? 'account' : 'studio';
+    postLoginRoute.current =
+      dialog === 'account' ? (siteRoute === 'support' ? 'support' : 'account') : 'studio';
     openAuth('password', true);
     onPageNavigate?.('login', true);
-  }, [active, booting, session.user?.id, dialog]);
+  }, [active, booting, session.user?.id, dialog, siteRoute]);
   useEffect(() => {
     onRegisterLeaveGuard?.((next) => {
       if (
@@ -3593,7 +3605,9 @@ export function App({
                 ? t('重置密码')
                 : siteRoute === 'account'
                   ? t('账号与使用')
-                  : t('登录工作空间')
+                  : siteRoute === 'support'
+                    ? t('订阅与支持')
+                    : t('登录工作空间')
           }
           config={config}
           onBack={() => onEntryCancel?.()}
@@ -3789,7 +3803,15 @@ export function App({
             }}
           />
         )}
-        {renderedDialog === 'account' && session.user && (
+        {renderedDialog === 'account' && session.user && siteRoute === 'support' && (
+          <SupportPage
+            key={session.user.id}
+            config={config}
+            onBack={() => onPageNavigate?.('account')}
+            onSessionExpired={() => void reconcileSession()}
+          />
+        )}
+        {renderedDialog === 'account' && session.user && siteRoute !== 'support' && (
           <Suspense
             fallback={
               <AccountPageFrame
@@ -3818,6 +3840,7 @@ export function App({
               logoutError={logoutError}
               onClose={closeDialog}
               onHome={onAbout}
+              onSupport={() => onPageNavigate?.('support')}
               onResetPassword={() => void openPasswordReset()}
               onUsage={() => {
                 void changeView('usage').then((changed) => {

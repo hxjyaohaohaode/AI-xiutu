@@ -1,0 +1,59 @@
+.account-support-page .account-page-main {
+  width: min(880px, 100%);
+}
+
+.account-support {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr);
+  gap: clamp(20px, 5vw, 56px);
+  align-items: start;
+}
+
+.account-support h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.account-support p {
+  margin: 12px 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.account-support strong {
+  color: var(--ink);
+}
+
+.account-support-scan img {
+  display: block;
+  width: min(100%, 360px);
+  height: auto;
+  border-radius: 10px;
+}
+
+.account-support table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: clamp(11px, 2.5vw, 14px);
+  font-variant-numeric: tabular-nums;
+}
+
+.account-support :is(td, th) {
+  padding: 9px 3px;
+  border-bottom: 1px solid var(--line);
+  text-align: end;
+}
+
+.account-support tr > :first-child {
+  text-align: start;
+}
+.account-support thead {
+  color: var(--muted);
+}
+
+@media (max-width: 680px) {
+  .account-support {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

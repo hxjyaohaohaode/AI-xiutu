@@ -1,5 +1,10 @@
 import type { EditorRecipe } from '@ai-xiutu/editor';
-export type AIOperation = 'edit-plan' | 'generate-image' | 'generate-text' | 'transcribe';
+export type AIOperation =
+  | 'edit-plan'
+  | 'generate-image'
+  | 'generate-text'
+  | 'transcribe'
+  | import('@ai-xiutu/contracts').OpenAISpecialistOperation;
 export type ParameterCapability = {
   supported: boolean;
   values?: readonly string[];
@@ -16,6 +21,7 @@ export type ImageCapabilities = {
   outputCompression: ParameterCapability;
   n: ParameterCapability;
   complexity: ParameterCapability;
+  moderation?: ParameterCapability;
   references: {
     supported: boolean;
     maxCount: number;
@@ -32,7 +38,8 @@ export type ImageCapabilities = {
     maxDimension: number;
     minAspectRatio: number;
     maxAspectRatio: number;
-    auto: false;
+    auto: boolean;
+    autoSizes?: readonly string[];
     allowedSizes?: readonly string[];
     reason?: string;
   };
@@ -50,6 +57,11 @@ export type ImageOptions = {
   outputCompression?: number;
   n?: number;
   complexity?: string;
+  size?: 'auto';
+  inputFidelity?: string;
+  moderation?: string;
+  stream?: boolean;
+  partialImages?: number;
 };
 export type AIModel = {
   id: string;
@@ -114,7 +126,22 @@ export type JobOutput =
       canonicalFormat?: 'png';
     } & GeneratedImage)
   | { kind: 'text'; title: string; body: string; summary: string }
-  | { kind: 'transcript'; text: string; noSpeech?: boolean };
+  | {
+      kind: 'specialist';
+      text?: string;
+      citations?: { url: string; title: string }[];
+      audio?: { url: string; format: string; bytes: number };
+      embedding?: number[] | string;
+    }
+  | {
+      kind: 'transcript';
+      text: string;
+      noSpeech?: boolean;
+      segments?: { speaker: string; start: number; end: number; text: string }[];
+      timestamps?: Partial<
+        Record<'word' | 'segment', { start: number; end: number; text: string }[]>
+      >;
+    };
 export type JobRequest = {
   operation?: AIOperation;
   proposalVersion?: 2;
@@ -122,6 +149,7 @@ export type JobRequest = {
   width?: number;
   height?: number;
   imageOptions?: ImageOptions;
+  transcriptionOptions?: import('@ai-xiutu/contracts').FileTranscriptionOptions;
   referenceAssetId?: string;
   referenceAssetIds?: string[];
   maskAssetId?: string;

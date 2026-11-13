@@ -9,6 +9,10 @@ const fourcc = (bytes: Uint8Array, offset: number): string =>
 
 /** Strict RIFF WAV: PCM signed 16-bit, mono, 16kHz; no compressed/extensible/RF64. */
 export function validateWav(bytes: Uint8Array): WavInfo {
+  return { durationSeconds: wavPcm16(bytes).length / 32000, sampleRate: 16000, channels: 1 };
+}
+
+export function wavPcm16(bytes: Uint8Array) {
   if (!(bytes instanceof Uint8Array) || bytes.byteLength < 46 || bytes.byteLength > MAX_WAV_BYTES)
     reject('WAV_SIZE_LIMIT');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -20,7 +24,7 @@ export function validateWav(bytes: Uint8Array): WavInfo {
     reject('WAV_INVALID_RIFF');
   let offset = 12;
   let seenFormat = false;
-  let dataBytes = 0;
+  let data: Uint8Array | undefined;
   while (offset < bytes.length) {
     if (offset + 8 > bytes.length) reject('WAV_TRUNCATED_CHUNK');
     const type = fourcc(bytes, offset);
@@ -30,7 +34,7 @@ export function validateWav(bytes: Uint8Array): WavInfo {
     if (end > bytes.length) reject('WAV_TRUNCATED_CHUNK');
     if ((size & 1) !== 0 && bytes[end - 1] !== 0) reject('WAV_INVALID_PADDING');
     if (type === 'fmt ') {
-      if (seenFormat || dataBytes !== 0 || size !== 16) reject('WAV_UNSUPPORTED_FORMAT');
+      if (seenFormat || data || size !== 16) reject('WAV_UNSUPPORTED_FORMAT');
       if (
         view.getUint16(start, true) !== 1 ||
         view.getUint16(start + 2, true) !== 1 ||
@@ -42,12 +46,12 @@ export function validateWav(bytes: Uint8Array): WavInfo {
         reject('WAV_REQUIRES_MONO_16KHZ_PCM16');
       seenFormat = true;
     } else if (type === 'data') {
-      if (!seenFormat || dataBytes !== 0 || size < 2 || size % 2 !== 0 || size > 960_000)
+      if (!seenFormat || data || size < 2 || size % 2 !== 0 || size > 960_000)
         reject('WAV_INVALID_DATA');
-      dataBytes = size;
+      data = bytes.subarray(start, start + size);
     } else if (type !== 'JUNK' && type !== 'LIST') reject('WAV_UNSUPPORTED_CHUNK');
     offset = end;
   }
-  if (!seenFormat || dataBytes === 0 || offset !== bytes.length) reject('WAV_MISSING_DATA');
-  return { durationSeconds: dataBytes / 32000, sampleRate: 16000, channels: 1 };
+  if (!seenFormat || !data || offset !== bytes.length) reject('WAV_MISSING_DATA');
+  return data;
 }

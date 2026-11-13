@@ -62,7 +62,9 @@ npm run dev
 
 ### 手机验证
 
-配置腾讯云的真实 Secret ID/Key、SMS App ID、已审核签名与注册/登录/重置三种模板。模板参数必须与 `TENCENT_SMS_CODE_ONLY` 配置匹配。供应商接受发送和手机实际收到是两件事，需要用拥有者授权的真实手机号单独验收。
+个人认证的阿里云账号可使用号码认证服务的短信认证能力。设置 `SMS_PROVIDER=alibaba-pnvs`，在部署环境注入仅获准 `dypns:SendSmsVerifyCode` 的 RAM 凭证 `ALIBABA_CLOUD_ACCESS_KEY_ID`、`ALIBABA_CLOUD_ACCESS_KEY_SECRET`。短期 STS 凭证同时设置 `ALIBABA_CLOUD_SECURITY_TOKEN`。在控制台选择已通过的平台赠送签名填入 `ALIBABA_SMS_SIGN_NAME`，注册和登录使用 `100001`，重置密码使用 `100003`，分别填入 `ALIBABA_SMS_TEMPLATE_REGISTER`、`ALIBABA_SMS_TEMPLATE_LOGIN` 和 `ALIBABA_SMS_TEMPLATE_RESET`。签名、模板和额度以上线账号实际控制台为准。[个人开发者接入指南](https://help.aliyun.com/zh/pnvs/use-cases/sms-verify-for-individual-developers)
+
+应用生成六位验证码并保留现有哈希、用途、频控和单次消费逻辑。阿里云适配器只接受中国大陆手机号。供应商受理后应通过已授权手机完成实际注册、验证码登录、密码重置，并查看运营商回执。原有腾讯发送通道可通过 `SMS_PROVIDER=tencent` 继续使用，已审核模板参数须匹配 `TENCENT_SMS_CODE_ONLY`。
 
 注册包含手机号验证码、密码与可选邀请码；验证码不能由运营面板查看。运营预先添加的账号保持待验证状态，既不赋予默认密码，也不直接视为已验证。命令行初始运营账号是部署持有者的受控配置，审计会记录这一来源。
 
@@ -96,6 +98,8 @@ npm run dev
 ### OpenAI Images 的独立开关
 
 使用 OpenAI 时，除 `AI_IMAGE_ENABLED` 外，还需要 `OPENAI_IMAGE_ENABLED=true`、服务端 `OPENAI_API_KEY`、非空的 `OPENAI_IMAGE_MODELS` 精确白名单、已启用运营目录和真实文字/图片审核配置。个人 ChatGPT 订阅不是 API 凭据。请求固定到官方 `api.openai.com`，浏览器不能选择代理地址、上传供应商密钥或把任意 URL 交给 Worker。
+
+录音转写可配置 `AI_SPEECH_ENABLED=true` 和 `OPENAI_TRANSCRIPTION_MODELS`，在运营端为对应模型开启 `transcribe`。使用 OpenAI 审核时，可由 `OPENAI_MODERATION_MODEL` 选择官方别名或 `omni-moderation-2024-09-26` 快照。Responses、Images、Live、Realtime 与转写的参数和验收范围见 [OpenAI 模型与参数](./OPENAI-MODELS.md)。
 
 默认整批最多 4 张、总像素 16,777,216、原始/规范化输出分别不超过 28,000,000 字节；运营的单次上限可进一步收紧。按质量设置单张整数服务点，整批报价乘输出数量并冻结。运营定价要覆盖输入参考图、允许的最大尺寸、文本/图片审核以及 unknown 核验损耗，不能把同一个服务点写成所有模型统一的美元价格。完整配置、8 个精确模型和官方参数来源见 [OpenAI 接入契约](../packages/multimodal/OPENAI.md)。
 
@@ -137,7 +141,7 @@ docker compose run --rm api npm run admin:create
 
 个人代理如果允许相应用途，可以作为受控开发诊断的一种出口；仍要单独核实支持的协议、并发、稳定性、出口地区、隐私处理和供应商地区规则。不能仅凭“代理能连通”就声称账户、付费服务和面向大陆用户的生产可用性已成立。当前真实适配器端点有白名单，不提供向任意节点或中转站上传用户照片的前端配置。
 
-V4 的 Node fetch 出口采用启动环境 `NODE_USE_ENV_PROXY=1` 及 HTTP(S) 代理变量；`ASSISTANT_EGRESS_PROXY` 仅配置连续语音上游 WebSocket，两者不互相替代。SOCKS/SS 订阅需另外配置受控 HTTP CONNECT 桥，项目不自动解析订阅或安排节点。具体启动方式、`NO_PROXY` 和未实测边界见 [V4 网络章节](OPERATIONS-V4.md#8-服务器出口代理与大陆访问)。
+V4 的 Node fetch 出口采用启动环境 `NODE_USE_ENV_PROXY=1` 及 HTTP(S) 代理变量。`ASSISTANT_EGRESS_PROXY` 为 OpenAI Responses、Live、Realtime 通话和语音翻译的 WebSocket 配置 HTTP CONNECT 出口。SOCKS/SS 订阅需另行配置受控 HTTP CONNECT 桥。具体启动方式、`NO_PROXY` 和验收条件见 [V4 网络章节](OPERATIONS-V4.md#8-服务器出口代理与大陆访问)。
 
 正式稳定性验收至少覆盖三家大陆运营商、Wi-Fi/移动网络、手机/平板/电脑、弱网重连、较大素材上传、异步任务轮询、审核延迟、模型超时和额度核验。记录成功率与 p50/p95 时延，同时区分网站响应、排队时间、供应商耗时和下载。没有这些样本，本项目不会承诺“大陆稳定访问已验证”。
 
@@ -153,7 +157,15 @@ V4 的 Node fetch 出口采用启动环境 `NODE_USE_ENV_PROXY=1` 及 HTTP(S) �
 
 免费额度按亚洲/上海自然月、用户唯一发放。团队使用独立钱包，创建多个团队不会复制免费权益。没有余额时明确拒绝，不把用户的个人点数自动借给团队。
 
-本版本支持带理由、幂等键和审计的人工正负额度调整；套餐是目录配置，**在线支付未启用**。人工核对付款后赠额的商业流程需要明确订单/凭证/退款规则，不能把微信收款截图或打赏码识别结果当成系统自动验证的到账事实。后续接微信支付等正式商户接口时，要增加验签、幂等订单、交易/退款/对账后再启用支付入口。
+### 微信赞赏与人工发放
+
+把当前微信赞赏 PNG 放在 `.data/support/wechat-appreciation.png`。本地 API 运行时设置 `SUPPORT_QR_FILE=.data/support/wechat-appreciation.png`。使用 Compose 时设置 `SUPPORT_QR_FILE=/app/.data/support/wechat-appreciation.png`，API 的只读挂载读取原图。文件在 API 启动时读取，替换后重启 API。Git 和容器构建上下文均排除此目录。登录用户可在个人主页打开「订阅与支持」查看六档参考金额和赞赏码。
+
+运营从微信赞赏记录核对金额和注册手机号，在「运营管理 → 额度」按手机号搜索并选择已验证的账号。展开「微信赞赏核对发放」，选择实际收到的金额，填入该笔微信记录的唯一编号。若微信未显示可复制的编号，使用人工对账台账为该笔记录分配的固定编号。编号采用 6 至 96 个英文字母、数字、连字符或下划线，同一笔始终用同一编号。服务端只保留编号摘要。额度记到所选账号的个人空间，复用赠额批次、不可变流水和运营审计。账号状态、团队成员权限和运营权限继续由各自授权接口处理。
+
+六档参考点数为 20、100、200、500、1,000、1,500。Token 按 2026-11-13 汇率中间价 6.7152 CNY/USD、GPT‑5.4 mini 非缓存标准文本价与 75% 输入、25% 输出的示例估算。实际用量按模型和任务计，财务结算以渠道和模型账单为准。[人民币汇率中间价](https://www.safe.gov.cn/AppStructured/hlw/RMBQuery.do?COLLCC=546877760) · [GPT‑5.4 mini 官方价格](https://developers.openai.com/api/docs/models/gpt-5.4-mini)
+
+当前在线支付、扣款续费和支付回调均未启用。商业订阅需接入商户渠道和订单、验签、退款及对账流程后再开放。
 
 仓库没有购买服务器、域名或免费套餐，也没有把未来促销价写成长期价格。实际采购时应以供应商当前控制台价格、地区、带宽、存储和账户条件计算，避免因初期免费而绑定不可迁移的数据路径。
 

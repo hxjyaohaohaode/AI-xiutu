@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, createHmac } from 'node:crypto';
 import sharp from 'sharp';
 import {
   createTencentSms,
+  createSms,
   createTencentTextModerator,
   createTencentImageModerator,
   createTextModerator,
@@ -33,6 +34,70 @@ const response = (value: unknown, status = 200) =>
   });
 const fetchAs = (fn: (url: string, init: RequestInit) => Promise<Response>) => fn as typeof fetch;
 const unknown = (error: unknown) => error instanceof ProviderError && error.outcome === 'unknown';
+
+test('Alibaba SMS Authentication binds each OTP purpose, signature and receipt without a fallback send', async () => {
+  const aliEnv = {
+    SMS_PROVIDER: 'alibaba-pnvs',
+    ALIBABA_CLOUD_ACCESS_KEY_ID: 'testAccessKey',
+    ALIBABA_CLOUD_ACCESS_KEY_SECRET: 'testSecret',
+    ALIBABA_SMS_SIGN_NAME: '测试签名',
+    ALIBABA_SMS_TEMPLATE_REGISTER: '100001',
+    ALIBABA_SMS_TEMPLATE_LOGIN: '100001',
+    ALIBABA_SMS_TEMPLATE_RESET: '100003',
+  };
+  let attempts = 0;
+  const adapter = createSms(
+    aliEnv,
+    fetchAs(async (url, options) => {
+      attempts++;
+      const request = new URL(url);
+      assert.equal(request.origin, 'https://dypnsapi.aliyuncs.com');
+      assert.equal(options.method, 'POST');
+      assert.equal(options.redirect, 'error');
+      const headers = new Headers(options.headers);
+      const signed = headers
+        .get('authorization')!
+        .match(/SignedHeaders=([^,]+),Signature=([a-f0-9]{64})$/)!;
+      const entries = signed[1]!
+        .split(';')
+        .map((name) => `${name}:${headers.get(name)}\n`)
+        .join('');
+      const canonical = `POST\n/\n${request.search.slice(1)}\n${entries}\n${signed[1]}\n${headers.get('x-acs-content-sha256')}`;
+      const signature = createHmac('sha256', aliEnv.ALIBABA_CLOUD_ACCESS_KEY_SECRET)
+        .update(`ACS3-HMAC-SHA256\n${createHash('sha256').update(canonical).digest('hex')}`)
+        .digest('hex');
+      assert.equal(signed[2], signature);
+      assert.equal(headers.get('x-acs-action'), 'SendSmsVerifyCode');
+      const query = request.searchParams;
+      assert.equal(query.get('PhoneNumber'), phone.slice(3));
+      assert.equal(query.get('CountryCode'), '86');
+      assert.equal(query.get('TemplateCode'), attempts === 3 ? '100003' : '100001');
+      assert.deepEqual(JSON.parse(query.get('TemplateParam')!), { code: otp.code, min: '10' });
+      assert.equal(query.get('AutoRetry'), '0');
+      assert.equal(query.get('ReturnVerifyCode'), 'false');
+      return Response.json({
+        Code: 'OK',
+        Success: true,
+        RequestId: 'request-1',
+        Model: { BizId: 'fixture^1', OutId: attempts === 4 ? 'unrelated' : query.get('OutId') },
+      });
+    }),
+  );
+  assert.equal(adapter.configured, true);
+  for (const purpose of ['register', 'login', 'reset'] as const)
+    assert.deepEqual(await adapter.send({ ...otp, purpose }), { requestId: 'request-1' });
+  await assert.rejects(adapter.send(otp), unknown);
+  await assert.rejects(adapter.send({ ...otp, phone: '+12025550123' }), {
+    code: 'SMS_PHONE_UNSUPPORTED',
+  });
+  assert.equal(attempts, 4);
+  const broken = createSms(
+    aliEnv,
+    fetchAs(async () => Response.json({ Code: 'InternalError', RequestId: 'r1' })),
+  );
+  await assert.rejects(broken.send(otp), unknown);
+  assert.equal(createSms({ ...aliEnv, ALIBABA_SMS_TEMPLATE_RESET: '' }).configured, false);
+});
 
 test('Tencent adapters have no unconfigured delivery or moderation bypass', async () => {
   let calls = 0;
@@ -233,7 +298,9 @@ test('image moderation hashes the exact file and refuses small, mismatched or ov
 
 test('OpenAI moderation binds the exact submitted text and image and fails closed on incomplete receipts', async () => {
   const config = { AI_MODERATION_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only' };
-  const png = await sharp({ create: { width: 16, height: 16, channels: 3, background: '#426fa1' } }).png().toBuffer();
+  const png = await sharp({ create: { width: 16, height: 16, channels: 3, background: '#426fa1' } })
+    .png()
+    .toBuffer();
   const seen: { type: string; text?: string; image_url?: { url: string } }[] = [];
   const fetcher = fetchAs(async (url, init) => {
     assert.equal(url, 'https://api.openai.com/v1/moderations');
@@ -241,19 +308,29 @@ test('OpenAI moderation binds the exact submitted text and image and fails close
     const body = JSON.parse(String(init.body));
     assert.equal(body.model, 'omni-moderation-latest');
     seen.push(body.input[0]);
-    return Response.json(seen.length === 3
-      ? { id: 'missing-decision', results: [{}] }
-      : { id: 'review-' + seen.length, results: [{ flagged: seen.length === 2 }] });
+    return Response.json(
+      seen.length === 3
+        ? { id: 'missing-decision', results: [{}] }
+        : { id: 'review-' + seen.length, results: [{ flagged: seen.length === 2 }] },
+    );
   });
   const text = createTextModerator(config, fetcher);
   const image = createImageModerator(config, fetcher);
   const exact = ' Warm shadows · 冷暖 ';
   const hash = (input: Buffer | string) => createHash('sha256').update(input).digest('hex');
-  assert.deepEqual(await text.check(exact), { decision: 'passed', requestId: 'review-1', inputHash: hash(exact) });
+  assert.deepEqual(await text.check(exact), {
+    decision: 'passed',
+    requestId: 'review-1',
+    inputHash: hash(exact),
+  });
   assert.equal(seen[0]?.text, exact);
   await assert.rejects(image.check(png, 'image/jpeg'), { code: 'IMAGE_MODERATION_INVALID_IMAGE' });
   assert.equal(seen.length, 1, 'wrong image format is rejected before dispatch');
-  assert.deepEqual(await image.check(png, 'image/png'), { decision: 'blocked', requestId: 'review-2', inputHash: hash(png) });
+  assert.deepEqual(await image.check(png, 'image/png'), {
+    decision: 'blocked',
+    requestId: 'review-2',
+    inputHash: hash(png),
+  });
   assert.deepEqual(Buffer.from(seen[1]?.image_url?.url.split(',')[1] ?? '', 'base64'), png);
   await assert.rejects(text.check('no complete receipt'), unknown);
   assert.equal(seen.length, 3, 'unknown result is never retried automatically');

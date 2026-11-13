@@ -442,6 +442,12 @@
   grid-template-columns: minmax(150px, 0.7fr) minmax(260px, 1.6fr);
   gap: 26px;
 }
+.assistant-inventory ul {
+  max-height: 16rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+  padding-inline-start: 1.25rem;
+}
 .assistant-model-list {
   display: flex;
   flex-direction: column;
@@ -480,13 +486,9 @@
   gap: 6px;
   font-size: 12px;
 }
-.assistant-model-form .check-label {
-  display: flex;
-  gap: 9px;
-  align-items: center;
-}
 .assistant-model-form input:not([type='checkbox']):not([type='range']),
 .assistant-model-form select,
+.assistant-model-form textarea,
 .assistant-resolution input,
 .assistant-resolution textarea {
   width: 100%;

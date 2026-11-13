@@ -18,7 +18,18 @@ import {
   type Queryable,
 } from '@ai-xiutu/db';
 import { createRecipeV4 } from '@ai-xiutu/editor';
-import { publicPricingSnapshot } from '@ai-xiutu/contracts';
+import {
+  fileTranscriptionOptionsSchema,
+  publicPricingSnapshot,
+  supportsFileTranscriptionOptions,
+  OPENAI_SPECIALIST_MODELS,
+  OPENAI_SPECIALIST_OPERATIONS,
+  openAIAudioChatOptionsSchema,
+  openAIEmbeddingOptionsSchema,
+  openAISearchOptionsSchema,
+  openAISpeechOptionsSchema,
+  openAITranslationOptionsSchema,
+} from '@ai-xiutu/contracts';
 import { freezePreviouslyDispatchedJob } from './lifecycle.js';
 import {
   ProviderError,
@@ -39,6 +50,9 @@ import {
   OPENAI_IMAGE_VERIFIED_AT,
   OPENAI_IMAGE_MODEL_PROFILES,
   createQwenSpeechProvider,
+  createOpenAIFileTranscriber,
+  createOpenAISpecialists,
+  OPENAI_FILE_TRANSCRIPTION_MODELS,
   validateWav,
   type ImageProvider,
   type ImageGenerationInput,
@@ -62,6 +76,7 @@ export interface MultimodalDependencies {
   imageProvider?: ImageProvider;
   openAIImageProvider?: ImageProvider;
   speechProvider?: SpeechProvider;
+  openAISpecialists?: ReturnType<typeof createOpenAISpecialists>;
   imageModerator?: ImageModerator;
   provider?: PlanProvider;
   moderator?: TextModerator;
@@ -78,6 +93,11 @@ const imageOptionsSchema = z
     outputCompression: z.number().int().min(0).max(100).optional(),
     n: z.number().int().min(1).max(10).optional(),
     complexity: z.enum(['low', 'medium', 'high']).optional(),
+    size: z.literal('auto').optional(),
+    inputFidelity: z.enum(['low', 'high']).optional(),
+    moderation: z.enum(['auto', 'low']).optional(),
+    stream: z.boolean().optional(),
+    partialImages: z.number().int().min(0).max(3).optional(),
   })
   .strict();
 const imageInput = z
@@ -110,6 +130,7 @@ const speechInput = z
   .object({
     ...common,
     operation: z.literal('transcribe'),
+    transcriptionOptions: fileTranscriptionOptionsSchema.optional(),
     audioBase64: z
       .string()
       .min(60)
@@ -117,7 +138,15 @@ const speechInput = z
       .regex(/^[A-Za-z0-9+/]+={0,2}$/),
   })
   .strict();
-const inputSchema = z.discriminatedUnion('operation', [imageInput, textInput, speechInput]);
+const audioBase64 = z.string().min(60).max(1_280_128).regex(/^[A-Za-z0-9+/]+={0,2}$/);
+const specialistInput = z.discriminatedUnion('operation', [
+  z.object({ ...common, operation: z.literal('speak'), prompt: z.string().trim().min(1).max(4096), options: openAISpeechOptionsSchema }).strict(),
+  z.object({ ...common, operation: z.literal('audio-chat'), prompt, audioBase64: audioBase64.optional(), options: openAIAudioChatOptionsSchema.default({ voice: 'alloy', format: 'wav', output: 'audio', maxCompletionTokens: 512 }) }).strict(),
+  z.object({ ...common, operation: z.literal('web-search'), prompt, options: openAISearchOptionsSchema.default({ size: 'medium' }) }).strict(),
+  z.object({ ...common, operation: z.literal('embed'), prompt: z.string().trim().min(1).max(4096), options: openAIEmbeddingOptionsSchema.default({ encoding: 'float' }) }).strict(),
+  z.object({ ...common, operation: z.literal('translate-audio'), audioBase64, options: openAITranslationOptionsSchema }).strict(),
+]);
+const inputSchema = z.discriminatedUnion('operation', [imageInput, textInput, speechInput, specialistInput]);
 type Input = z.infer<typeof inputSchema>;
 interface FrozenReference {
   id: string;
@@ -241,6 +270,10 @@ const modelSchema = z.object({
 export interface ImageCatalogConfig {
   provider?: string;
   operations?: string[];
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
   maxOutputs?: number;
   allowedQualities?: string[];
   unitCost?: number;
@@ -257,6 +290,9 @@ export function createMultimodalService(
   const openAIImages = dependencies.openAIImageProvider ?? createOpenAIImageProvider(env);
   const openAIBudgets = getOpenAIImageBudgets(env);
   const speech = dependencies.speechProvider ?? createQwenSpeechProvider(env);
+  const openAISpeech = createOpenAIFileTranscriber(env);
+  const specialists = dependencies.openAISpecialists ?? createOpenAISpecialists(env);
+  const transcriber = (provider: string) => (provider === 'openai' ? openAISpeech : speech);
   const textReview = dependencies.moderator ?? createTextModerator(env);
   const imageReview = dependencies.imageModerator ?? createImageModerator(env);
   const journal =
@@ -288,10 +324,18 @@ export function createMultimodalService(
       reason: null as string | null,
     },
     transcribe: {
-      available: env.AI_SPEECH_ENABLED === 'true' && speech.configured && textReview.configured,
+      available:
+        env.AI_SPEECH_ENABLED === 'true' &&
+        (speech.configured || openAISpeech.configured) &&
+        textReview.configured,
       reason: null as string | null,
     },
+    ...Object.fromEntries(OPENAI_SPECIALIST_OPERATIONS.map((operation) => [operation, {
+      available: specialists.configured && textReview.configured,
+      reason: null as string | null,
+    }])),
   };
+  const specialistAvailable = specialists.configured && textReview.configured;
   for (const value of Object.values(operationStatus))
     if (!value.available) value.reason = '此任务尚未配置对应模型供应商、审核服务或执行开关。';
   const availableOperations = Object.entries(operationStatus)
@@ -308,6 +352,36 @@ export function createMultimodalService(
       'INVALID_IMAGE_BUDGET',
       'AI_IMAGE_MAX_PIXELS 必须为 4096 至 16777216 之间的整数',
     );
+  function allowedImageDimensions(
+    config: z.infer<typeof modelSchema>,
+    width: number,
+    height: number,
+  ) {
+    return (
+      width >= config.minWidth &&
+      width <= config.maxWidth &&
+      height >= config.minHeight &&
+      height <= config.maxHeight &&
+      width * height <= imagePixelLimit
+    );
+  }
+  function allowedImageSize(
+    input: z.infer<typeof imageInput>,
+    config: z.infer<typeof modelSchema>,
+  ) {
+    if (input.imageOptions?.size !== 'auto')
+      return allowedImageDimensions(config, input.width, input.height);
+    const sizes = openAIImages.models.find((model) => model.id === input.modelId)
+      ?.parameterCapabilities?.size.autoSizes;
+    return (
+      config.provider === 'openai' &&
+      !!sizes?.length &&
+      sizes.every((size) => {
+        const [width, height] = size.split('x').map(Number);
+        return allowedImageDimensions(config, width!, height!);
+      })
+    );
+  }
   async function assertText(text: string, jobId: string) {
     if (!text.length || Array.from(text).length > 10_000)
       throw new AiError('MODERATION_INPUT_LIMIT', '完整文本超过审核范围，请缩小任务');
@@ -377,7 +451,11 @@ export function createMultimodalService(
           ? job.input.manifest.provider === 'openai'
             ? 'openai'
             : 'ark'
-          : 'qwen')
+          : job.operation === 'transcribe' && job.input.manifest.provider === 'openai'
+            ? 'openai'
+            : job.input.manifest.adapterVersion === 3
+              ? 'openai'
+              : 'qwen')
     )
       throw new AiError('MODEL_DISABLED', '模型已被停用或其任务能力已改变');
     if (lock) {
@@ -398,16 +476,36 @@ export function createMultimodalService(
   return {
     availableOperations,
     operationStatus,
-    providerModelCatalog: Object.keys(OPENAI_IMAGE_MODEL_PROFILES).map((id) => ({
-      ...describeOpenAIImageModel(id, env)!,
-      label: id,
-      providerReady:
-        operationStatus['generate-image'].available &&
-        openAIImages.configured &&
-        openAIImages.models.some((model) => model.id === id),
-      accountVerified: false,
-      catalogEnabledRequired: true,
-    })),
+    providerModelCatalog: [
+      ...Object.keys(OPENAI_IMAGE_MODEL_PROFILES).map((id) => ({
+        ...describeOpenAIImageModel(id, env)!,
+        label: id,
+        operation: 'generate-image' as const,
+        providerReady:
+          operationStatus['generate-image'].available &&
+          openAIImages.configured &&
+          openAIImages.models.some((model) => model.id === id),
+        accountVerified: false,
+        catalogEnabledRequired: true,
+      })),
+      ...OPENAI_FILE_TRANSCRIPTION_MODELS.map((id) => ({
+        id,
+        label: id,
+        provider: 'openai' as const,
+        operation: 'transcribe' as const,
+        maxDimension: 4096,
+        providerReady:
+          operationStatus.transcribe.available &&
+          openAISpeech.configured &&
+          openAISpeech.models.includes(id),
+        accountVerified: false,
+        catalogEnabledRequired: true,
+      })),
+      ...OPENAI_SPECIALIST_OPERATIONS.flatMap((operation) => OPENAI_SPECIALIST_MODELS[operation].map((id) => ({
+        id, label: id, provider: 'openai' as const, operation, maxDimension: 4096,
+        providerReady: specialistAvailable, accountVerified: false, catalogEnabledRequired: true,
+      }))),
+    ],
     describeModel(id: string, config: ImageCatalogConfig) {
       const operations = config.operations ?? [];
       const descriptor =
@@ -438,12 +536,17 @@ export function createMultimodalService(
       )
         runtimeOperations.push('generate-text');
       if (
-        config.provider === 'qwen' &&
+        (config.provider === 'qwen' || config.provider === 'openai') &&
         operationStatus.transcribe.available &&
-        speech.models.includes(id) &&
+        transcriber(config.provider).configured &&
+        transcriber(config.provider).models.includes(id) &&
         operations.includes('transcribe')
       )
         runtimeOperations.push('transcribe');
+      if (config.provider === 'openai' && specialistAvailable)
+        for (const operation of OPENAI_SPECIALIST_OPERATIONS)
+          if (operations.includes(operation) && (OPENAI_SPECIALIST_MODELS[operation] as readonly string[]).includes(id))
+            runtimeOperations.push(operation);
       return {
         runtimeOperations,
         runtimeAvailable: runtimeOperations.length > 0,
@@ -477,6 +580,19 @@ export function createMultimodalService(
                       size: {
                         ...descriptor.parameterCapabilities.size,
                         maxPixels: Math.min(descriptor.maxPixels, imagePixelLimit),
+                        auto: Boolean(
+                          descriptor.parameterCapabilities.size.auto &&
+                          descriptor.parameterCapabilities.size.autoSizes?.every((size) => {
+                            const [w, h] = size.split('x').map(Number);
+                            return (
+                              w! >= (config.minWidth ?? 64) &&
+                              w! <= (config.maxWidth ?? 8192) &&
+                              h! >= (config.minHeight ?? 64) &&
+                              h! <= (config.maxHeight ?? 8192) &&
+                              w! * h! <= imagePixelLimit
+                            );
+                          }),
+                        ),
                       },
                     },
                     batchLimits: {
@@ -516,16 +632,20 @@ export function createMultimodalService(
       sessionHash?: string;
     }) {
       const input = inputSchema.parse(args.body);
-      if (!operationStatus[input.operation].available)
-        throw new AiError('AI_NOT_CONFIGURED', operationStatus[input.operation].reason!, 503);
+      const status = (operationStatus as Record<string, { available: boolean; reason: string | null }>)[input.operation]!;
+      if (!status.available)
+        throw new AiError('AI_NOT_CONFIGURED', status.reason!, 503);
       let audioBytes: Buffer | undefined;
-      if (input.operation === 'transcribe') {
+      const specialist = specialistInput.safeParse(input);
+      if ('audioBase64' in input && input.audioBase64) {
         audioBytes = Buffer.from(input.audioBase64, 'base64');
         if (audioBytes.toString('base64') !== input.audioBase64)
           throw new AiError('INVALID_AUDIO', '音频编码不规范');
         validateWav(audioBytes);
-        if (!speech.models.includes(input.modelId))
-          throw new AiError('MODEL_NOT_ALLOWED', '此语音模型未在服务器启用');
+      }
+      if (specialist.success) {
+        const value = specialist.data;
+        specialists.validate({ model: value.modelId, operation: value.operation, prompt: 'prompt' in value ? value.prompt : '', wav: audioBytes, options: value.options });
       }
       const requestHash = digest(canonical(input));
       await journal.assertDatabaseMatches(db);
@@ -558,10 +678,20 @@ export function createMultimodalService(
           !checked.data.operations.includes(input.operation) ||
           (input.operation === 'generate-image'
             ? !['ark', 'openai'].includes(checked.data.provider)
-            : checked.data.provider !== 'qwen')
+            : input.operation === 'transcribe'
+              ? !['qwen', 'openai'].includes(checked.data.provider) ||
+                !transcriber(checked.data.provider).configured ||
+                !transcriber(checked.data.provider).models.includes(input.modelId)
+              : checked.data.provider !== (specialist.success ? 'openai' : 'qwen'))
         )
           throw new AiError('MODEL_NOT_ALLOWED', '此模型尚未获准执行所选任务', 503);
         const config = checked.data;
+        if (
+          input.operation === 'transcribe' && input.transcriptionOptions &&
+          (config.provider !== 'openai' ||
+            !supportsFileTranscriptionOptions(input.modelId, input.transcriptionOptions))
+        )
+          throw new AiError('OPENAI_TRANSCRIPTION_OPTIONS_UNSUPPORTED', '录音参数与当前模型不兼容');
         const newJobId = randomUUID();
         let quotedUnits = config.unitCost;
         const manifest: Record<string, unknown> = {
@@ -579,7 +709,7 @@ export function createMultimodalService(
           modelVersion: setting!.version,
         };
         let parentContext = '';
-        if (input.operation !== 'transcribe' && input.parentJobId) {
+        if ('parentJobId' in input && input.parentJobId) {
           const parent = (
             await tx.query(
               'SELECT id,operation,state,input,output FROM ai_jobs WHERE id=$1 AND project_id=$2',
@@ -626,13 +756,7 @@ export function createMultimodalService(
         }
         if (input.operation === 'generate-image') {
           manifest.requestHash = requestHash;
-          if (
-            input.width < config.minWidth ||
-            input.width > config.maxWidth ||
-            input.height < config.minHeight ||
-            input.height > config.maxHeight ||
-            input.width * input.height > imagePixelLimit
-          )
+          if (!allowedImageSize(input, config))
             throw new AiError('MODEL_PARAMETER_RANGE', '尺寸超出运营或当前服务器的像素预算');
           const provider = config.provider === 'openai' ? openAIImages : images;
           const isV2 =
@@ -680,7 +804,8 @@ export function createMultimodalService(
           const perImage = options
             ? (config.imageUnitCosts?.[options.quality] ?? config.unitCost)
             : config.unitCost;
-          quotedUnits = n * perImage;
+          const partialImages = options?.partialImages ?? 0;
+          quotedUnits = (n + partialImages) * perImage;
           if (!Number.isSafeInteger(quotedUnits) || quotedUnits > 100000)
             throw new AiError('QUOTA_QUOTE_LIMIT', '本次整批预留超过额度单次上限');
           // Local validation only: no supplier/moderation call occurs before the wallet reservation.
@@ -689,7 +814,7 @@ export function createMultimodalService(
             prompt: input.prompt,
             width: input.width,
             height: input.height,
-            ...(options ? { imageOptions: options } : {}),
+            ...(options ? { imageOptions: { ...options, inputFidelity: undefined } } : {}),
           });
           frozen.prompt = input.prompt;
           Object.assign(manifest, {
@@ -758,7 +883,8 @@ export function createMultimodalService(
               imageOptions: options ?? null,
               threadId: frozen.threadId,
               threadDepth: manifest.threadDepth ?? 0,
-              quote: { perImage, n, totalUnits: quotedUnits, modelVersion: setting!.version },
+              quote: { perImage, n, totalUnits: quotedUnits, modelVersion: setting!.version,
+                ...(partialImages ? { partialImages } : {}) },
             });
             if (config.provider === 'openai') {
               const readReference = async (meta: FrozenReference): Promise<ImageReference> => {
@@ -845,7 +971,7 @@ export function createMultimodalService(
             documentId: input.contextDocumentId ?? null,
             documentVersion: input.expectedDocumentVersion ?? null,
           });
-        } else {
+        } else if (input.operation === 'transcribe') {
           const { audioBase64, ...safeInput } = input;
           frozen.input = safeInput;
           frozen.audioBase64 = audioBase64;
@@ -856,8 +982,15 @@ export function createMultimodalService(
           Object.assign(manifest, {
             audioHash: hash,
             ...validateWav(audioBytes!),
-            provider: 'qwen-asr-cn-beijing',
+            provider: config.provider === 'openai' ? 'openai' : 'qwen-asr-cn-beijing',
+            ...(input.transcriptionOptions ? { transcriptionOptions: input.transcriptionOptions } : {}),
           });
+        } else if (specialist.success) {
+          const { audioBase64: audio, ...safeInput } = { audioBase64: undefined, ...specialist.data };
+          frozen.input = safeInput;
+          if (audio) frozen.audioBase64 = audio;
+          if ('prompt' in safeInput) frozen.prompt = safeInput.prompt;
+          Object.assign(manifest, { adapterVersion: 3, provider: 'openai', requestHash });
         }
         const hash = digest(canonical(manifest));
         const count = (
@@ -934,6 +1067,7 @@ export function createMultimodalService(
       let uncertain = false;
       let modelCompleted = false;
       let requestId = '';
+      let audioOutput: Awaited<ReturnType<typeof specialists.run>>['audio'];
       let stored:
         | { key: string; mime: string; width: number; height: number; bytes: number; hash: string }
         | undefined;
@@ -975,7 +1109,37 @@ export function createMultimodalService(
         if (!(await journal.start(job.id, job.input_hash)))
           throw new ProviderError('DISPATCH_ALREADY_RECORDED', 'unknown');
         let output: Record<string, unknown>;
-        if (job.operation === 'generate-text') {
+        if (manifest.adapterVersion === 3) {
+          const payload = specialistInput.parse({ ...job.input.input, ...(job.input.audioBase64 ? { audioBase64: job.input.audioBase64 } : {}) });
+          const bodyHash = digest(canonical(payload));
+          if (bodyHash !== job.input.requestHash || bodyHash !== manifest.requestHash)
+            throw new AiError('INPUT_INTEGRITY_FAILED', '专用模型输入与冻结摘要不一致');
+          const prompt = 'prompt' in payload ? payload.prompt : '';
+          const wav = 'audioBase64' in payload && payload.audioBase64 ? Buffer.from(payload.audioBase64, 'base64') : undefined;
+          const prepared = { model: job.model_id, operation: payload.operation, prompt, wav, options: payload.options };
+          specialists.validate(prepared);
+          await assertText(canonical({ prompt, options: payload.options }), job.id);
+          await fenceDispatch(job);
+          uncertain = true;
+          const result = await specialists.run(prepared);
+          modelCompleted = true;
+          requestId = result.requestId;
+          await db.query(
+            'UPDATE ai_jobs SET provider_usage=$2,provider_received_at=clock_timestamp() WHERE id=$1 AND provider_received_at IS NULL',
+            [job.id, result.usage ? JSON.stringify(result.usage) : null],
+          );
+          if (result.text?.trim()) await assertText(result.text, job.id);
+          if (result.citations?.length) await assertText(result.citations.map((item) => item.title).join('\n'), job.id);
+          audioOutput = result.audio;
+          output = {
+            kind: 'specialist',
+            ...(result.text ? { text: result.text } : {}),
+            ...(result.citations?.length ? { citations: result.citations } : {}),
+            ...(result.embedding !== undefined ? { embedding: result.embedding } : {}),
+            ...(result.usage ? { providerUsage: result.usage } : {}),
+            ...(audioOutput ? { audio: { format: audioOutput.format, url: `/v1/ai-jobs/${job.id}/audio`, bytes: audioOutput.bytes.length } } : {}),
+          };
+        } else if (job.operation === 'generate-text') {
           const prepared = job.input.manifest.prepared as PreparedPlan;
           if (
             JSON.parse(prepared.body).model !== job.model_id ||
@@ -1002,21 +1166,47 @@ export function createMultimodalService(
           await assertText(canonical(text), job.id);
           output = { kind: 'text', ...text };
         } else if (job.operation === 'transcribe') {
-          const wav = Buffer.from(job.input.audioBase64!, 'base64');
+          const frozen = speechInput.parse({ ...job.input.input, audioBase64: job.input.audioBase64 });
+          const wav = Buffer.from(frozen.audioBase64, 'base64');
           validateWav(wav);
           const audioHash = (await import('node:crypto'))
             .createHash('sha256')
             .update(wav)
             .digest('hex');
-          if (audioHash !== job.input.manifest.audioHash)
-            throw new AiError('INPUT_INTEGRITY_FAILED', '音频摘要不匹配');
-          await fenceDispatch(job);
+          if (
+            audioHash !== manifest.audioHash ||
+            canonical(frozen.transcriptionOptions ?? null) !== canonical(manifest.transcriptionOptions ?? null) ||
+            (frozen.transcriptionOptions && digest(canonical(frozen)) !== job.input.requestHash)
+          )
+            throw new AiError('INPUT_INTEGRITY_FAILED', '录音或转写参数摘要不匹配');
+          if (frozen.transcriptionOptions) await assertText(canonical(frozen.transcriptionOptions), job.id);
+          const current = await fenceDispatch(job);
           uncertain = true;
-          const result = await speech.transcribe({ model: job.model_id, wav });
+          const result = await transcriber(current.provider).transcribe({
+            model: job.model_id,
+            wav,
+            ...(frozen.transcriptionOptions ? { options: frozen.transcriptionOptions } : {}),
+          });
           modelCompleted = true;
           requestId = result.requestId;
           if (result.text.trim()) await assertText(result.text, job.id);
-          output = { kind: 'transcript', text: result.text, noSpeech: !result.text.trim() };
+          if (result.segments?.length) await assertText(canonical(result.segments), job.id);
+          if (result.timestamps) {
+            const timedText = Object.values(result.timestamps).flat().map((item) => item.text).join(' ');
+            if (timedText.trim()) await assertText(timedText, job.id);
+          }
+          if (result.usage && Object.keys(result.usage).length)
+            await db.query(
+              'UPDATE ai_jobs SET provider_usage=$2,provider_received_at=clock_timestamp() WHERE id=$1 AND provider_received_at IS NULL',
+              [job.id, JSON.stringify(result.usage)],
+            );
+          output = {
+            kind: 'transcript',
+            text: result.text,
+            noSpeech: !result.text.trim(),
+            ...(result.segments ? { segments: result.segments } : {}),
+            ...(result.timestamps ? { timestamps: result.timestamps } : {}),
+          };
         } else if (job.input.manifest.adapterVersion === 2) {
           const input = imageInput.parse(job.input.input);
           const manifest = job.input.manifest;
@@ -1050,6 +1240,7 @@ export function createMultimodalService(
             .object({
               perImage: z.number().int().positive(),
               n: z.number().int().min(1).max(10),
+              partialImages: z.number().int().min(0).max(3).default(0),
               totalUnits: z.number().int().min(1).max(100000),
               modelVersion: z.number().int().positive(),
             })
@@ -1059,7 +1250,8 @@ export function createMultimodalService(
             .rows[0];
           if (
             quote.n !== (options?.n ?? 1) ||
-            quote.totalUnits !== quote.perImage * quote.n ||
+            quote.partialImages !== (options?.partialImages ?? 0) ||
+            quote.totalUnits !== quote.perImage * (quote.n + quote.partialImages) ||
             Number(held?.units) !== quote.totalUnits
           )
             throw new AiError('QUOTE_INTEGRITY_FAILED', '整批额度预留与冻结报价不一致');
@@ -1104,11 +1296,7 @@ export function createMultimodalService(
           };
           const assertLimits = (current: z.infer<typeof modelSchema>) => {
             if (
-              input.width < current.minWidth ||
-              input.width > current.maxWidth ||
-              input.height < current.minHeight ||
-              input.height > current.maxHeight ||
-              input.width * input.height > imagePixelLimit ||
+              !allowedImageSize(input, current) ||
               (options &&
                 (!current.allowedQualities.includes(options.quality) ||
                   options.n > current.maxOutputs))
@@ -1154,7 +1342,11 @@ export function createMultimodalService(
               throw new ProviderError('IMAGE_BATCH_BYTES_EXCEEDED', 'unknown');
             const file = await storage.storeGenerated(item.bytes);
             storedBatch.push(file);
-            if (file.width !== input.width || file.height !== input.height)
+            if (
+              options?.size === 'auto'
+                ? !allowedImageDimensions(setting, file.width, file.height)
+                : file.width !== input.width || file.height !== input.height
+            )
               throw new ProviderError('IMAGE_DIMENSIONS_MISMATCH', 'unknown');
             normalizedBytes += file.bytes;
             if (normalizedBytes > (isOpenAI ? openAIBudgets.maxTotalBytes : 7_000_000))
@@ -1164,8 +1356,8 @@ export function createMultimodalService(
           }
           output = {
             kind: 'image',
-            width: input.width,
-            height: input.height,
+            width: storedBatch[0]!.width,
+            height: storedBatch[0]!.height,
             modelId: job.model_id,
             providerOutputFormat: options?.outputFormat ?? 'png',
             canonicalFormat: 'png',
@@ -1313,6 +1505,9 @@ export function createMultimodalService(
             });
           }
           if (published.length) output = { ...output, ...published[0], images: published };
+          if (audioOutput)
+            await tx.query('INSERT INTO ai_job_audio(job_id,format,mime,bytes) VALUES($1,$2,$3,$4)',
+              [job.id, audioOutput.format, audioOutput.mime, audioOutput.bytes]);
           await settleHold(tx, job.hold_id);
           await tx.query(
             "UPDATE ai_jobs SET state='completed',output=$2,provider_request_id=$3,input=input-'audioBase64',updated_at=clock_timestamp() WHERE id=$1",

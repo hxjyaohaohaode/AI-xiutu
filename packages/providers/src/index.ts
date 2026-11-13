@@ -1,9 +1,10 @@
-import { createHash, createHmac } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import sharp from 'sharp';
 
 export type OtpPurpose = 'register' | 'login' | 'reset';
 export interface SmsAdapter {
   configured: boolean;
+  supportsPhone?(phone: string): boolean;
   send(input: {
     phone: string;
     code: string;
@@ -220,6 +221,130 @@ export function createTencentSms(
     },
   };
 }
+
+const pnvsHost = 'dypnsapi.aliyuncs.com';
+const mainlandMobile = /^\+861[3-9]\d{9}$/;
+const encodeRpcValue = (value: string) =>
+  encodeURIComponent(value).replace(
+    /[!'()*]/g,
+    (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+
+/** Send the application's one-time code using Alibaba Cloud's SMS Authentication templates. */
+export function createAlibabaSms(
+  env: NodeJS.ProcessEnv = process.env,
+  fetcher: typeof fetch = fetch,
+): SmsAdapter {
+  const accessKey = env.ALIBABA_CLOUD_ACCESS_KEY_ID?.trim() ?? '';
+  const secret = env.ALIBABA_CLOUD_ACCESS_KEY_SECRET?.trim() ?? '';
+  const token = env.ALIBABA_CLOUD_SECURITY_TOKEN?.trim();
+  const signName = env.ALIBABA_SMS_SIGN_NAME?.trim() ?? '';
+  const templates: Record<OtpPurpose, string> = {
+    register: env.ALIBABA_SMS_TEMPLATE_REGISTER?.trim() ?? '',
+    login: env.ALIBABA_SMS_TEMPLATE_LOGIN?.trim() ?? '',
+    reset: env.ALIBABA_SMS_TEMPLATE_RESET?.trim() ?? '',
+  };
+  const configured = Boolean(
+    /^[A-Za-z0-9]{8,128}$/.test(accessKey) &&
+    secret &&
+    signName &&
+    Object.values(templates).every((template) => /^\d{1,24}$/.test(template)),
+  );
+  const supportsPhone = (phone: string) => mainlandMobile.test(phone);
+  return {
+    configured,
+    supportsPhone,
+    async send({ phone, code, purpose, expiresMinutes }) {
+      if (!configured) throw new ProviderError('SMS_NOT_CONFIGURED', 'rejected');
+      if (!supportsPhone(phone)) throw new ProviderError('SMS_PHONE_UNSUPPORTED', 'rejected');
+      if (
+        !/^\d{6}$/.test(code) ||
+        !Number.isInteger(expiresMinutes) ||
+        expiresMinutes < 1 ||
+        expiresMinutes > 10 ||
+        !Object.hasOwn(templates, purpose)
+      )
+        throw new ProviderError('SMS_PARAMETERS_INVALID', 'rejected');
+
+      const outId = randomUUID();
+      const query = Object.entries({
+        AutoRetry: '0',
+        CountryCode: '86',
+        Interval: '60',
+        OutId: outId,
+        PhoneNumber: phone.slice(3),
+        ReturnVerifyCode: 'false',
+        SignName: signName,
+        TemplateCode: templates[purpose],
+        TemplateParam: JSON.stringify({ code, min: String(expiresMinutes) }),
+        ValidTime: String(expiresMinutes * 60),
+      })
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([name, value]) => `${name}=${encodeRpcValue(value)}`)
+        .join('&');
+      const payloadHash = sha256('');
+      const headers: Record<string, string> = {
+        host: pnvsHost,
+        'x-acs-action': 'SendSmsVerifyCode',
+        'x-acs-content-sha256': payloadHash,
+        'x-acs-date': new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
+        'x-acs-signature-nonce': randomUUID(),
+        'x-acs-version': '2017-05-25',
+      };
+      if (token) headers['x-acs-security-token'] = token;
+      const names = Object.keys(headers).sort();
+      const signedHeaders = names.join(';');
+      const canonicalHeaders = names.map((name) => `${name}:${headers[name]}\n`).join('');
+      const request = `POST\n/\n${query}\n${canonicalHeaders}\n${signedHeaders}\n${payloadHash}`;
+      const algorithm = 'ACS3-HMAC-SHA256';
+      const signature = hmac(secret, `${algorithm}\n${sha256(request)}`).toString('hex');
+      headers.authorization = `${algorithm} Credential=${accessKey},SignedHeaders=${signedHeaders},Signature=${signature}`;
+
+      const signal = AbortSignal.timeout(12_000);
+      let response: Response;
+      try {
+        response = await fetcher(`https://${pnvsHost}/?${query}`, {
+          method: 'POST',
+          headers,
+          redirect: 'error',
+          signal,
+        });
+      } catch {
+        throw new ProviderError('PROVIDER_NETWORK_UNKNOWN', 'unknown');
+      }
+      const data = await readJson(response, signal);
+      const requestId = requestIdOf(data);
+      if (response.ok && data.Code === 'OK' && data.Success === true) {
+        const receipt = data.Model as Record<string, unknown> | undefined;
+        if (
+          typeof receipt?.BizId === 'string' &&
+          /^[A-Za-z0-9._:^|-]{1,128}$/.test(receipt.BizId) &&
+          (receipt.OutId === undefined || receipt.OutId === outId)
+        )
+          return { requestId };
+      }
+      if (
+        response.status < 500 &&
+        ![408, 429].includes(response.status) &&
+        data.Success !== true &&
+        typeof data.Code === 'string' &&
+        /^[A-Za-z0-9._]{1,120}$/.test(data.Code) &&
+        data.Code !== 'OK' &&
+        !/internal|timeout|unknown|system|serviceunavailable/i.test(data.Code)
+      )
+        throw new ProviderError(data.Code, 'rejected');
+      throw new ProviderError('SMS_STATUS_UNKNOWN', 'unknown');
+    },
+  };
+}
+
+export function createSms(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch) {
+  const provider = env.SMS_PROVIDER?.trim() || 'tencent';
+  if (provider === 'alibaba-pnvs') return createAlibabaSms(env, fetcher);
+  if (provider === 'tencent') return createTencentSms(env, fetcher);
+  throw new ProviderError('SMS_PROVIDER_INVALID', 'rejected');
+}
+
 export interface ModerationResult {
   decision: 'passed' | 'blocked' | 'review';
   requestId: string;
@@ -350,11 +475,11 @@ export function createTencentImageModerator(
 }
 
 type OpenAIModerationInput =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
+  { type: 'text'; text: string } | { type: 'image_url'; image_url: { url: string } };
 
 async function openAIReview(
   key: string,
+  model: string,
   input: OpenAIModerationInput,
   inputHash: string,
   fetcher: typeof fetch,
@@ -366,7 +491,7 @@ async function openAIReview(
     response = await fetcher('https://api.openai.com/v1/moderations', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: 'omni-moderation-latest', input: [input] }),
+      body: JSON.stringify({ model, input: [input] }),
       redirect: 'error',
       signal,
     });
@@ -375,46 +500,84 @@ async function openAIReview(
   }
   if (!response.ok) {
     void response.body?.cancel().catch(() => {});
-    throw new ProviderError('MODERATION_UNAVAILABLE', response.status >= 500 ? 'unknown' : 'rejected');
+    throw new ProviderError(
+      'MODERATION_UNAVAILABLE',
+      response.status >= 500 ? 'unknown' : 'rejected',
+    );
   }
   const data = await readJson(response, signal);
   const result = Array.isArray(data.results) && data.results.length === 1 ? data.results[0] : null;
-  if (!result || typeof result.flagged !== 'boolean' || typeof data.id !== 'string' ||
-      !/^[A-Za-z0-9._:-]{1,128}$/.test(data.id))
+  if (
+    !result ||
+    typeof result.flagged !== 'boolean' ||
+    typeof data.id !== 'string' ||
+    !/^[A-Za-z0-9._:-]{1,128}$/.test(data.id)
+  )
     throw new ProviderError('MODERATION_INCOMPLETE', 'unknown');
   return { decision: result.flagged ? 'blocked' : 'passed', requestId: data.id, inputHash };
 }
 
-export function createTextModerator(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch): TextModerator {
+function openAIModerationModel(env: NodeJS.ProcessEnv) {
+  const model = env.OPENAI_MODERATION_MODEL?.trim() || 'omni-moderation-latest';
+  if (!['omni-moderation-latest', 'omni-moderation-2024-09-26'].includes(model))
+    throw new ProviderError('MODERATION_MODEL_CONFIG_INVALID', 'rejected');
+  return model;
+}
+
+export function createTextModerator(
+  env: NodeJS.ProcessEnv = process.env,
+  fetcher: typeof fetch = fetch,
+): TextModerator {
   if (env.AI_MODERATION_PROVIDER !== 'openai') return createTencentTextModerator(env, fetcher);
   const key = env.OPENAI_API_KEY?.trim() ?? '';
+  const model = openAIModerationModel(env);
   return {
     configured: !!key,
     check(text) {
       if (!text.length || Array.from(text).length > 10_000)
         return Promise.reject(new ProviderError('MODERATION_INPUT_LIMIT', 'rejected'));
-      return openAIReview(key, { type: 'text', text }, sha256(text), fetcher);
+      return openAIReview(key, model, { type: 'text', text }, sha256(text), fetcher);
     },
   };
 }
 
-export function createImageModerator(env: NodeJS.ProcessEnv = process.env, fetcher: typeof fetch = fetch): ImageModerator {
+export function createImageModerator(
+  env: NodeJS.ProcessEnv = process.env,
+  fetcher: typeof fetch = fetch,
+): ImageModerator {
   if (env.AI_MODERATION_PROVIDER !== 'openai') return createTencentImageModerator(env, fetcher);
   const key = env.OPENAI_API_KEY?.trim() ?? '';
+  const model = openAIModerationModel(env);
   return {
     configured: !!key,
     async check(bytes, mime) {
       if (!key) throw new ProviderError('IMAGE_MODERATION_NOT_CONFIGURED', 'rejected');
-      if (bytes.byteLength < 16 || Math.ceil(bytes.byteLength / 3) * 4 >= 10 * 1024 * 1024 ||
-          !['image/png', 'image/jpeg', 'image/webp'].includes(mime))
+      if (
+        bytes.byteLength < 16 ||
+        Math.ceil(bytes.byteLength / 3) * 4 >= 10 * 1024 * 1024 ||
+        !['image/png', 'image/jpeg', 'image/webp'].includes(mime)
+      )
         throw new ProviderError('IMAGE_MODERATION_INPUT_LIMIT', 'rejected');
       const buffer = Buffer.from(bytes);
-      const meta = await sharp(buffer, { limitInputPixels: 40_000_000, animated: true, failOn: 'warning' })
-        .metadata().catch(() => { throw new ProviderError('IMAGE_MODERATION_INVALID_IMAGE', 'rejected'); });
+      const meta = await sharp(buffer, {
+        limitInputPixels: 40_000_000,
+        animated: true,
+        failOn: 'warning',
+      })
+        .metadata()
+        .catch(() => {
+          throw new ProviderError('IMAGE_MODERATION_INVALID_IMAGE', 'rejected');
+        });
       if (mime !== 'image/' + meta.format || (meta.pages ?? 1) > 1 || !meta.width || !meta.height)
         throw new ProviderError('IMAGE_MODERATION_INVALID_IMAGE', 'rejected');
       const url = 'data:' + mime + ';base64,' + buffer.toString('base64');
-      return openAIReview(key, { type: 'image_url', image_url: { url } }, createHash('sha256').update(buffer).digest('hex'), fetcher);
+      return openAIReview(
+        key,
+        model,
+        { type: 'image_url', image_url: { url } },
+        createHash('sha256').update(buffer).digest('hex'),
+        fetcher,
+      );
     },
   };
 }

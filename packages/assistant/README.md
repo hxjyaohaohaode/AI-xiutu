@@ -31,7 +31,7 @@
 
 `describe_editor`、`search_resources`、`read_history` 通过 MCP SDK 的会话内传输完成初始化、发现与调用。工具随授权范围注册，读取前后复核权限。文本、委派语音和云端检索分支复用同一工具服务。公开网络检索继续使用 OpenAI 的单独请求，只接收用户批准的字面查询。写入权限仍由作品 API 事务核验。[MCP 工具协议](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 
-Responses 和 Live / Realtime 目录分别公布可配置档案。官方模型的上下文、输出限制和推理档位与应用预算独立显示。GPT-6 Astra、Sol、Luna 和 GPT-5.4 Mini、Nano 的档位来自官方模型说明。支持推理的 Realtime 2 系列采用独立 `voiceReasoningEffort`；GPT-Live 1 和 Realtime 1.x 不发送该字段。运营配置和实际执行都检查已知档案，供应商请求仍以项目的模型开通及实际回执为准。[OpenAI 模型目录](https://developers.openai.com/api/docs/models) · [Realtime 会话参数](https://developers.openai.com/api/reference/resources/realtime/client-events)
+Responses 和 Live / Realtime 目录公布按型号及快照核对的档案。运营端可查看项目实际返回的模型 ID。Responses 通过各型号档案验证推理、输出格式、采样和服务档位。实时语音可独立配置转写、输入降噪、轮次检测、语速及 Live 开场，委派走应用的授权和配额。具体协议、默认值和证据见 [OpenAI 模型与参数](../../docs/OPENAI-MODELS.md)。
 
 `propose_retouch` 与 `propose_healing` 复用 V4 源坐标选区，可新增操作或设置已有手动操作的绝对强度。`operationId:null` 表示新增。既有 ID 必须属于相应集合并可手动修改。选区从 `regions/regionEdits/healing/retouch` 引用。额外保护区与既有保护区取并集。回调保留算法和手动供体。新质感操作采用 `guided-v4`，新增局部色斑参数 `chromaSpots`；既有旧算法区域不静默升级。修复支持 diffusion、patch-poisson 和 exemplar-v1。缺少合适选区时需先圈选。
 

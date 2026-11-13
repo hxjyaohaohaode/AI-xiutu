@@ -247,8 +247,12 @@
 }
 .ops-layout
   .assistant-model-form
-  > :is(label:first-child, label:nth-child(2), label:nth-child(3), .check-label, button) {
+  > :is(label:first-child, label:nth-child(2), label:nth-child(3), .response-schema-field, .response-schema-strict, button) {
   grid-column: 1 / -1;
+}
+.ops-layout .assistant-model-form > .response-schema-strict {
+  flex-direction: row;
+  justify-self: start;
 }
 .ops-layout .assistant-model-form > label {
   min-width: 0;

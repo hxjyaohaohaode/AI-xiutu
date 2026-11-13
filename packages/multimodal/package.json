@@ -14,8 +14,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ai-xiutu/contracts": "0.1.0",
     "@ai-xiutu/editor": "0.1.0",
     "@ai-xiutu/providers": "0.1.0",
-    "sharp": "0.35.5"
+    "https-proxy-agent": "9.1.0",
+    "saxes": "6.0.0",
+    "sharp": "0.35.5",
+    "ws": "8.22.2"
+  },
+  "devDependencies": {
+    "@types/ws": "8.18.2"
   }
 }

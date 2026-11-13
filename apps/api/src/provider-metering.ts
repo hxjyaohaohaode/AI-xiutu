@@ -19,8 +19,8 @@ export function meterStage(
 ): ProviderStage {
   const usage = record(receipt);
   const totals = {
-    input: count(usage.input_tokens),
-    output: count(usage.output_tokens),
+    input: count(usage.input_tokens ?? usage.prompt_tokens),
+    output: count(usage.output_tokens ?? usage.completion_tokens),
     total: count(usage.total_tokens),
   };
   const input = record(usage.input_tokens_details ?? usage.input_token_details);
@@ -57,14 +57,25 @@ export function meterStage(
     if (mismatch(totals.total, [totals.input, totals.output])) full = false;
     if (format === 'responses') {
       const cached = count(input.cached_tokens);
+      const billsCacheWrites = /^gpt-(?:6|5\.6)(?:[.-]|$)/.test(stage.modelId);
+      const written = count(input.cache_write_tokens) ?? (billsCacheWrites ? null : 0);
+      const lifetimes = record(input.cache_write_tokens_details);
+      // The product sends no custom cache lifetime, so a write without a split uses 30m.
+      const written30m = Object.keys(lifetimes).length ? count(lifetimes.ttl_30m_tokens) : written;
+      const written12h = Object.keys(lifetimes).length ? count(lifetimes.ttl_12h_tokens) : 0;
       const reasoning = count(output.reasoning_tokens) ?? 0;
       if (
-        totals.input === 0 ||
-        (totals.input !== null && cached !== null && cached <= totals.input)
+        totals.input !== null &&
+        cached !== null &&
+        written !== null &&
+        cached + written <= totals.input &&
+        !mismatch(written, [written30m, written12h])
       ) {
-        add('input', (totals.input ?? 0) - (cached ?? 0));
-        add('cached-input', cached ?? 0);
-      } else {
+        add('input', totals.input - cached - written);
+        add('cached-input', cached);
+        add('cache-write-30m', written30m);
+        add('cache-write-12h', written12h);
+      } else if (totals.input !== 0) {
         if (totals.input !== null)
           meters.push({
             meter: 'input',

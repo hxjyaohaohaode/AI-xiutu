@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPENAI_SPECIALIST_OPERATIONS } from '@ai-xiutu/contracts';
 import type { Queryable } from '@ai-xiutu/db';
 import { id, hash, HttpError } from './core.js';
 
@@ -6,7 +7,15 @@ const filters = z
   .object({
     jobId: id.optional(),
     actorId: id.optional(),
-    operation: z.enum(['edit-plan', 'generate-image', 'generate-text', 'transcribe']).optional(),
+    operation: z
+      .enum([
+        'edit-plan',
+        'generate-image',
+        'generate-text',
+        'transcribe',
+        ...OPENAI_SPECIALIST_OPERATIONS,
+      ])
+      .optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     cursor: z.string().max(1024).optional(),
   })

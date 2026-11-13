@@ -1,6 +1,8 @@
 export type Meter =
   | 'input'
   | 'cached-input'
+  | 'cache-write-30m'
+  | 'cache-write-12h'
   | 'output'
   | 'reasoning'
   | 'text-input'
@@ -68,9 +70,12 @@ const token = (value: number): PublishedRate => ({
   quantity: 1,
   unit: 'token',
 });
-const text = (input: number, cached: number, output: number) => ({
+const text = (input: number, cached: number, output: number, cacheWrites = false) => ({
   input: token(input),
   'cached-input': token(cached),
+  ...(cacheWrites
+    ? { 'cache-write-30m': token(input * 1.25), 'cache-write-12h': token(input * 2.5) }
+    : {}),
   output: token(output),
   reasoning: token(output),
 });
@@ -109,9 +114,9 @@ const realtime = (
 const pricing = new Map<string, PricingSnapshot['meters']>([
   ['gpt-5.4-mini', text(750, 75, 4500)],
   ['gpt-5.4-mini-2026-03-17', text(750, 75, 4500)],
-  ['gpt-6.1-sol', text(2000, 100, 10000)],
-  ['gpt-6.1-terra', text(1000, 50, 5000)],
-  ['gpt-6-luna', text(100, 10, 500)],
+  ['gpt-6.1-sol', text(2000, 100, 10000, true)],
+  ['gpt-6.1-terra', text(1000, 50, 5000, true)],
+  ['gpt-6-luna', text(100, 10, 500, true)],
   ['gpt-image-2', image(2500, 625, 4000, 1000, 15000)],
   ['gpt-image-2-2026-04-21', image(2500, 625, 4000, 1000, 15000)],
   ['gpt-image-2.6-flare', image(5000, 1250, 8000, 2000, 30000)],
@@ -125,7 +130,7 @@ export function publicPricingSnapshot(modelId: string, provider: string): Pricin
   const meters = pricing.get(modelId);
   if (!meters) return null;
   return {
-    version: 'openai-standard-2026-11-10',
+    version: 'openai-standard-2026-11-13',
     provider,
     modelId,
     tier: 'standard',

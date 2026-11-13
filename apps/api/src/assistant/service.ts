@@ -177,6 +177,7 @@ export function createAssistantService(
     imageModerator.configured,
   );
   const voiceReady = ready && env.AI_VOICE_ENABLED === 'true';
+  const allowTestModel = env.NODE_ENV === 'test' && Boolean(dependencies.fetcher);
   const pendingTurns = new Set<Promise<void>>();
   const reason = ready
     ? null
@@ -193,7 +194,7 @@ export function createAssistantService(
       !parsed.success ||
       !parsed.data.enabled ||
       !parsed.data.operations.includes(operation) ||
-      modelProfileError(modelId, parsed.data)
+      modelProfileError(modelId, parsed.data, allowTestModel)
     )
       throw new HttpError(503, 'ASSISTANT_MODEL_UNAVAILABLE', '模型尚未配置或已停用');
     return parsed.data;
@@ -355,6 +356,7 @@ export function createAssistantService(
         : {}),
       selectedImages,
       selectedReferenceIds: scope.referenceAssetIds,
+      responsesProxy: env.ASSISTANT_EGRESS_PROXY,
       accessScope,
       checkSnapshot,
       memory:
@@ -604,6 +606,7 @@ export function createAssistantService(
     ready,
     voiceReady,
     reason,
+    allowTestModel,
     key,
     env,
     dependencies,
@@ -698,7 +701,10 @@ export function createAssistantService(
       const visualAttachment = body.visualAttachment
         ? {
             kind: body.visualAttachment.kind,
-            imageDataUrl: await normalizeSharedImage(body.visualAttachment.imageDataUrl, imageModerator),
+            imageDataUrl: await normalizeSharedImage(
+              body.visualAttachment.imageDataUrl,
+              imageModerator,
+            ),
           }
         : undefined;
       const admission = await transaction(db, async (tx) => {
@@ -821,6 +827,22 @@ export function createAssistantService(
           .filter((item) => cardScope.has(item.assetId))
           .slice(0, 8);
         const settings = await model(tx, body.modelId, 'assistant-turn', true);
+        const responseTuning = body.responseTuning;
+        const turnSettings = responseTuning
+          ? {
+              ...settings,
+              ...(responseTuning.effort ? { reasoningEffort: responseTuning.effort } : {}),
+              ...(responseTuning.verbosity
+                ? { responses: { ...settings.responses, verbosity: responseTuning.verbosity } }
+                : {}),
+            }
+          : settings;
+        if (responseTuning && modelProfileError(body.modelId, turnSettings, allowTestModel))
+          throw new HttpError(
+            400,
+            'RESPONSES_PROFILE_MISMATCH',
+            '此参数与所选模型或当前运营配置不兼容',
+          );
         if (visualAttachment && !settings.imageInput)
           throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
         const webBranches = (body.research ?? []).filter((branch) => branch.kind === 'web');
@@ -887,6 +909,7 @@ export function createAssistantService(
               hold.id,
               JSON.stringify({
                 ...settings,
+                ...(responseTuning ? { responseTuning } : {}),
                 historyScope,
                 ...(body.research ? { research: body.research } : {}),
               }),
@@ -894,7 +917,15 @@ export function createAssistantService(
           )
         ).rows[0] as PaidRow;
         await appendRunEvent(tx, row.id, 'run.started', { modelId: body.modelId });
-        return { row, replay: false as const, history, settings, historyScope, priorResourceCards };
+        return {
+          row,
+          replay: false as const,
+          history,
+          settings,
+          turnSettings,
+          historyScope,
+          priorResourceCards,
+        };
       });
       if (admission.replay) return this.getTurn(actorId, admission.row.id);
       const row = admission.row;
@@ -1073,7 +1104,7 @@ export function createAssistantService(
           const result = await runEditorAgent(
             key,
             body.modelId,
-            admission.settings!,
+            admission.turnSettings!,
             agentContext,
             dependencies.fetcher,
           );
@@ -1123,6 +1154,7 @@ export function createAssistantService(
                 row.id,
                 JSON.stringify({
                   text: result.text,
+                  ...(result.reasoningSummary ? { reasoningSummary: result.reasoningSummary } : {}),
                   citations: result.citations,
                   search: result.search,
                   termination: result.termination,
@@ -1258,7 +1290,13 @@ export function createAssistantService(
       const requestHash = hash(JSON.stringify(teamArtworkId ? { ...body, teamArtworkId } : body));
       const context = await currentContext(actorId, projectId, body.context);
       await validateScope(db, actorId, body.scope);
-      await model(db, body.modelId, 'realtime-voice');
+      const reviewedVoice = await model(db, body.modelId, 'realtime-voice');
+      const promptInputs = [
+        reviewedVoice.live?.prompt,
+        reviewedVoice.live?.opening,
+        reviewedVoice.realtime?.prompt,
+      ].filter((value): value is string => !!value);
+      if (promptInputs.length) await moderateText(textModerator, JSON.stringify(promptInputs));
       await model(db, body.backendModelId, 'assistant-turn');
       const ticket = opaqueToken();
       const result = await transaction(db, async (tx) => {
@@ -1289,6 +1327,8 @@ export function createAssistantService(
         for (const modelId of [...new Set([body.modelId, body.backendModelId])].sort())
           await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
         const voiceConfig = await model(tx, body.modelId, 'realtime-voice');
+        if (JSON.stringify(voiceConfig) !== JSON.stringify(reviewedVoice))
+          throw new HttpError(409, 'ASSISTANT_MODEL_CHANGED', '语音配置已变化，请重新确认');
         const backendConfig = await model(tx, body.backendModelId, 'assistant-turn');
         if (
           body.scope.publicSearch &&

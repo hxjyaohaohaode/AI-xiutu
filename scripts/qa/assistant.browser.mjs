@@ -249,6 +249,7 @@ try {
     aiJobHistory: true,
     assistant: {
       env: {
+        NODE_ENV: 'test',
         AI_ASSISTANT_ENABLED: 'true',
         AI_VOICE_ENABLED: 'false',
         OPENAI_API_KEY: 'local-fixture-not-a-key',

@@ -39,6 +39,7 @@ import type {
   AssistantBranchEvent,
   AssistantResearchBranch,
   AssistantVisualAttachment,
+  AssistantResponseTuning,
 } from '@ai-xiutu/contracts';
 import { assistantSearchEvidenceSchema } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
@@ -122,6 +123,8 @@ interface Model {
   webSearch: boolean;
   webImageSearch?: boolean;
   voice?: { voices: string[] } | null;
+  responses?: { reasoning: readonly string[]; defaultEffort?: string; verbosity?: boolean; deprecated?: boolean } | null;
+  responseDefaults?: AssistantResponseTuning & { effortFixedForSampling?: boolean };
 }
 interface Catalog {
   ready: boolean;
@@ -138,6 +141,7 @@ interface Turn {
   prompt?: string;
   output?: {
     text: string;
+    reasoningSummary?: string;
     citations: AssistantCitation[];
     search?: AssistantSearchEvidence[];
     candidates: AssistantCandidate[];
@@ -178,6 +182,7 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   text: string;
+  reasoningSummary?: string;
   appStatus?: StatusMessage;
   citations?: AssistantCitation[];
   search?: AssistantSearchEvidence[];
@@ -485,6 +490,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voices = catalog?.models.filter((item) => item.operations.includes('realtime-voice')) ?? [];
   const selected = models.find((item) => item.id === modelId),
     selectedVoice = voices.find((item) => item.id === voiceId);
+  const [tuningByModel, setTuningByModel] = useState<Record<string, AssistantResponseTuning>>({});
+  const tuning = tuningByModel[modelId];
+  const activeTuning: AssistantResponseTuning = {
+    ...(tuning?.effort && !selected?.responseDefaults?.effortFixedForSampling && selected?.responses?.reasoning.includes(tuning.effort) ? { effort: tuning.effort } : {}),
+    ...(tuning?.verbosity && selected?.responses?.verbosity ? { verbosity: tuning.verbosity } : {}),
+  };
   const submissionBlocked = !submissionReady || !!pendingSubmission;
   const voiceOptions = selectedVoice?.voice?.voices ?? [];
   useEffect(() => {
@@ -778,6 +789,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               id: turn.id,
               role: 'assistant',
               text: turn.state === 'completed' ? (turn.output?.text ?? '') : '',
+              reasoningSummary: turn.output?.reasoningSummary,
               appStatus: turn.state === 'completed' ? undefined : turnStatus(turn),
               citations: turn.output?.citations,
               search: turn.output?.search,
@@ -1535,6 +1547,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           scope: authorizedScope,
           parentTurnId,
           ...(research.length ? { research } : {}),
+          ...(Object.keys(activeTuning).length ? { responseTuning: activeTuning } : {}),
         },
       });
       // A storage failure stops before dispatch, so closing/reopening this panel cannot
@@ -1667,6 +1680,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             id: result.id,
             role: 'assistant' as const,
             text: result.output!.text,
+            reasoningSummary: result.output!.reasoningSummary,
             citations: result.output!.citations,
             search: result.output!.search,
           },
@@ -2191,6 +2205,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 <p>{message.text}</p>
               ))}
             {message.appStatus && <p>{renderStatus(message.appStatus)}</p>}
+            {message.reasoningSummary && (
+              <details>
+                <summary>{t('模型推理摘要')}</summary>
+                <AssistantText text={message.reasoningSummary} />
+              </details>
+            )}
             {!!message.search?.length && (
               <SearchEvidence
                 evidence={message.search}
@@ -2774,9 +2794,27 @@ export function LiveAssistant(props: LiveAssistantProps) {
               options={models.map((item) => ({
                 value: item.id,
                 label: item.label,
-                description: t('{v0} 服务点 / 轮', { v0: item.unitCost }),
+                description: `${t('{v0} 服务点 / 轮', { v0: item.unitCost })}${item.responses?.deprecated ? ` · ${t('已公告停用')}` : ''}`,
               }))}
             />
+            {mode === 'text' && !!selected?.responses?.reasoning.length && !selected.responseDefaults?.effortFixedForSampling && (
+              <ChoiceSelect label={t('本轮推理档位')} value={activeTuning.effort ?? ''}
+                disabled={catalogSelectionLocked || submissionBlocked} onValueChange={(value) =>
+                  setTuningByModel((old) => ({ ...old, [modelId]: { ...old[modelId], effort: (value || undefined) as AssistantResponseTuning['effort'] } }))}
+                options={[
+                  { value: '', label: `${t('默认')} · ${selected.responseDefaults?.effort ?? selected.responses.defaultEffort ?? '—'}` },
+                  ...selected.responses.reasoning.map((value) => ({ value, label: value })),
+                ]} />
+            )}
+            {mode === 'text' && selected?.responses?.verbosity && (
+              <ChoiceSelect label={t('回答详细度')} value={activeTuning.verbosity ?? ''}
+                disabled={catalogSelectionLocked || submissionBlocked} onValueChange={(value) =>
+                  setTuningByModel((old) => ({ ...old, [modelId]: { ...old[modelId], verbosity: (value || undefined) as AssistantResponseTuning['verbosity'] } }))}
+                options={[
+                  { value: '', label: `${t('默认')} · ${selected.responseDefaults?.verbosity ?? 'medium'}` },
+                  ...['low', 'medium', 'high'].map((value) => ({ value, label: value })),
+                ]} />
+            )}
             {mode === 'voice' && (
               <ModelChoice
                 label={t('语音模型')}

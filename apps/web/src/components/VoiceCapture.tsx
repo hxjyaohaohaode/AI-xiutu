@@ -11,9 +11,11 @@ import '../ai/interaction-v2.css';
 export function VoiceCapture({
   onReady,
   active = true,
+  notice = '本机录音，确认发送后识别。最多 30 秒。',
 }: {
   onReady: (base64: string | null) => void;
   active?: boolean;
+  notice?: string;
 }) {
   const [state, setState] = useState<LocalRecordingPhase>('idle');
   const [seconds, setSeconds] = useState(0);
@@ -112,7 +114,7 @@ export function VoiceCapture({
           {recording ? t('正在录音') : state === 'ready' ? t('录音已就绪') : t('录制语音')}
         </strong>
       </div>
-      <p className="voice-capture-consent">{t('本机录音，确认发送后识别。最多 30 秒。')}</p>
+      <p className="voice-capture-consent">{t(notice)}</p>
       {!supported ? (
         <p className="form-hint">
           {t(

@@ -80,7 +80,7 @@ docker compose -f compose.yaml -f compose.media.yaml exec -T api npm run doctor
 | `AI_VOICE_ENABLED`                                | `false`；连续语音                              | 依赖助手整体就绪；还须受支持语音档案及启用的后端模型                                                   |
 | `OPENAI_API_KEY`                                  | 空；真实 API 凭据                              | 图片和助手可以复用该服务器变量；个人 ChatGPT 订阅不等于 API 凭据                                       |
 | `AI_JOURNAL_DIR`                                  | 模板为 `.data/ai-dispatch-journal`             | 新助手日志在其 `assistant/` 子目录；未配置时助手退回 `STORAGE_DIR/assistant`，生产应显式指定独立持久卷 |
-| `ASSISTANT_EGRESS_PROXY`                          | 空；语音上游 WebSocket 的 HTTP CONNECT 出口    | 仅接受受控 `http:`/`https:` 代理；不配置 Responses/Images 的 fetch 出口                                |
+| `ASSISTANT_EGRESS_PROXY`                          | 空；Live、Realtime、Responses 和语音翻译 WebSocket 的 HTTP CONNECT 出口 | 接受受控 `http:`/`https:` 代理，HTTP 请求由 Node fetch 出口配置管理 |
 | `NODE_USE_ENV_PROXY`                              | 模板为 `0`；设为 `1` 才启用 Node HTTP 环境代理 | 必须在 Node HTTP 初始化前进入启动环境；配合 `HTTP_PROXY`/`HTTPS_PROXY`/`NO_PROXY`                      |
 | `HTTP_PROXY` / `HTTPS_PROXY`                      | 空；可信 HTTP(S) 出口代理                      | 对使用 Node fetch 的请求生效范围见第 8 节；不改变供应商端点白名单                                      |
 | `NO_PROXY`                                        | 模板包含 localhost、回环地址、db/api/web       | 私有数据库/健康检查/同源内部服务不应意外绕经外部代理                                                   |
@@ -292,17 +292,19 @@ node --import tsx scripts/qa/media-verify.ts --large
 
 必须分别检查两段网络：**用户浏览器 → 网站**与**网站服务器/Worker → 供应商**。服务端出口代理只影响后者，不能修复前者的 DNS、域名备案/接入要求、TLS、网站机房线路、素材下载或手机运营商路径。静态资源、模型 WASM 和业务 API 同源减少外部浏览器依赖，但不等于大陆可用性已经通过。
 
+Just My Socks 的公开服务条款限定个人非商业用途。OpenAI API 支持地区清单未列中国大陆。公开部署应按实际受众选择供应商与其允许的部署地域，并从目标地区实测站点 HTTPS、素材、登录和通话。使用受信任的服务端 HTTP CONNECT 出口时，将国内供应商域名加入 `NO_PROXY`，让国内短信等调用按部署网络直接出站。[Just My Socks 条款](https://www.justmysocks.net/members/index.php?rp=/knowledgebase/1/Terms-of-Service.html) · [OpenAI API 支持地区](https://developers.openai.com/api/docs/supported-countries)
+
 ### 8.1 HTTP fetch 与语音 WebSocket 分开配置
 
 | 调用                                                 | 出口配置                                                                          | 范围                                                             |
 | ---------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
 | Responses、Images 及其他使用 Node fetch 的服务器请求 | Node 启动时 `NODE_USE_ENV_PROXY=1` 加 `HTTPS_PROXY`/`HTTP_PROXY`、正确 `NO_PROXY` | 不替换官方端点、不接受浏览器任意代理 URL                         |
-| 连续语音到供应商的 WebSocket                         | `ASSISTANT_EGRESS_PROXY`                                                          | 当前用 HTTP CONNECT agent，仅语音上游；不控制 Responses 后端委派 |
+| 连续语音、Responses 和语音翻译 WebSocket              | `ASSISTANT_EGRESS_PROXY`                                                          | 固定 OpenAI 域名，使用 HTTP CONNECT。HTTP Responses 由 Node fetch 出口配置管理 |
 | 浏览器到同源网站/API/语音桥                          | 用户实际网络与部署入口                                                            | 不受上面两项服务器出口变量直接控制                               |
 
 根目录 `npm start`、`npm run worker:ai` 使用 Node 的 `--env-file-if-exists`；`npm run dev` 在生成子进程前加载环境；Compose 在进程创建前传入 `env_file`。这些是当前支持的启动入口。仅在已经运行的 Node 中再用 dotenv 设置代理变量，不保证能重新初始化内置 HTTP 代理；直接使用其他启动方式时应由 shell、systemd 或容器注入启动环境。改代理后重启需要它的 API/Worker。
 
-`ASSISTANT_EGRESS_PROXY` 只接受受控的 `http://` 或 `https://` 代理根地址，不接受 SOCKS、SS 订阅字符串、任意路径或碎片。JMS 若提供的是 SOCKS/SS，需由部署者另行配置允许用途的本机 HTTP CONNECT 桥，再分别接到 HTTP 和 WebSocket 两个出口；本项目不解析订阅、不配置代理客户端，也没有验证用户节点是否支持该用途。代理配置失败不会自动切换另一个模型或偷偷用直接出站重试付费请求。
+`ASSISTANT_EGRESS_PROXY` 接收受控的 `http://` 或 `https://` 代理根地址。部署时需同时核对 HTTP、WebSocket 的出站位置和服务供应商的地域、商用条款。Just My Socks 的个人服务条款限定非商业用途。代理故障按原请求的派发凭证核验。[Just My Socks 条款](https://www.justmysocks.net/members/index.php?rp=/knowledgebase/1/Terms-of-Service.html) · [OpenAI API 支持地区](https://developers.openai.com/api/docs/supported-countries)
 
 代理认证信息只放服务器私密配置，禁止回传前端或写进请求 URL/公开日志。对本地与 Compose 内部服务正确设置 `NO_PROXY`。解码子进程不继承 API 密钥或代理密码；原件解码不应依赖外部网络。
 

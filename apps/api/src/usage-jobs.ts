@@ -102,11 +102,15 @@ export function registerUsageJobs(app: FastifyInstance, db: Database) {
               modelId: row.model_id,
               dispatchedAt: iso(row.dispatched_at),
               receivedAt: iso(row.received_at),
-              status: status(row.usage),
+              status: status(row.usage ?? row.received_at),
               pricing: recordedPricing(row.provider_pricing, row.model_id),
             },
             row.usage,
-            row.operation === 'generate-image' ? 'image' : 'responses',
+            row.operation === 'generate-image'
+              ? 'image'
+              : row.operation === 'transcribe' && typeof row.usage?.seconds === 'number'
+                ? 'duration'
+                : 'responses',
           ),
         );
       if (row.kind === 'voice') {

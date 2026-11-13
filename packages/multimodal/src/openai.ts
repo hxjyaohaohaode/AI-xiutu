@@ -1,6 +1,6 @@
 import sharp from 'sharp';
 import { MAX_HEADER_BYTES, readImageHeader } from '@ai-xiutu/editor';
-import { postJson, record, reject, token, unknown } from './http.js';
+import { postEventStream, postJson, record, reject, token, unknown } from './http.js';
 import type {
   ImageGenerationInput,
   ImageMime,
@@ -20,8 +20,11 @@ export const OPENAI_IMAGE_SOURCES = Object.freeze([
   'https://developers.openai.com/api/docs/guides/image-generation',
   'https://developers.openai.com/api/docs/guides/image-prompting',
 ]);
-export const OPENAI_IMAGE_VERIFIED_AT = '2026-11-09';
+export const OPENAI_IMAGE_VERIFIED_AT = '2026-11-13';
 export const OPENAI_IMAGE_MODEL_PROFILES = Object.freeze({
+  'gpt-image-1-mini': 'gpt-image-1-mini',
+  'gpt-image-1.5': 'gpt-image-1.5',
+  'chatgpt-image-latest': 'chatgpt-image-latest',
   'gpt-image-2': 'gpt-image-2',
   'gpt-image-2-2026-04-21': 'gpt-image-2',
   'gpt-image-2.5-sunburst': 'gpt-image-2.5',
@@ -31,6 +34,7 @@ export const OPENAI_IMAGE_MODEL_PROFILES = Object.freeze({
   'gpt-image-2.6-sunburst': 'gpt-image-2.6',
   'gpt-image-2.6-flare': 'gpt-image-2.6',
 } satisfies Record<string, OpenAIImageProfile>);
+const standardSizes = ['1024x1024', '1536x1024', '1024x1536'] as const;
 export const OPENAI_MAX_IMAGE_BYTES = 7_000_000;
 const MAX_REFERENCE_TOTAL_BYTES = 28_000_000;
 const MAX_REFERENCE_TOTAL_PIXELS = 33_554_432;
@@ -75,15 +79,20 @@ export function describeOpenAIImageModel(
   const profile = OPENAI_IMAGE_MODEL_PROFILES[id as keyof typeof OPENAI_IMAGE_MODEL_PROFILES];
   const limits = getOpenAIImageBudgets(env);
   const is26 = profile === 'gpt-image-2.6';
-  const maxPixels = is26 ? 1_572_864 : 8_294_400;
-  const maxDimension = is26 ? 1536 : 3840;
+  const old =
+    profile === 'gpt-image-1-mini' ||
+    profile === 'gpt-image-1.5' ||
+    profile === 'chatgpt-image-latest';
+  const maxPixels = old ? 1_572_864 : 8_294_400;
+  const minPixels = old ? 1_048_576 : 655_360;
+  const maxDimension = old ? 1536 : 3840;
   const parameterCapabilities: ImageParameterCapabilities = {
     quality: {
       supported: true,
       values:
-        profile === 'gpt-image-2'
-          ? ['auto', 'low', 'medium', 'high']
-          : ['auto', 'low', 'medium', 'high', 'xhigh', 'max'],
+        is26 || profile === 'gpt-image-2.5'
+          ? ['auto', 'low', 'medium', 'high', 'xhigh', 'max']
+          : ['auto', 'low', 'medium', 'high'],
       default: 'auto',
     },
     background: { supported: true, values: ['auto', 'opaque', 'transparent'], default: 'auto' },
@@ -96,8 +105,9 @@ export function describeOpenAIImageModel(
       formats: ['jpeg', 'webp'],
     },
     n: { supported: true, min: 1, max: limits.maxOutputs, default: 1 },
+    moderation: { supported: true, values: ['auto', 'low'], default: 'auto' },
     complexity: is26
-      ? { supported: true, values: ['low', 'medium', 'high'], default: 'high' }
+      ? { supported: true, values: ['low', 'medium', 'high'] }
       : { supported: false, reason: '当前核验资料只对 GPT Image 2.6 明确开放复杂度参数。' },
     references: {
       supported: true,
@@ -105,35 +115,42 @@ export function describeOpenAIImageModel(
       maxBytes: OPENAI_MAX_IMAGE_BYTES,
       maxTotalBytes: MAX_REFERENCE_TOTAL_BYTES,
       allowMask: true,
-      allowMarkup: profile !== 'gpt-image-2',
+      allowMarkup: is26 || profile === 'gpt-image-2.5',
     },
     size: {
       supported: true,
       multipleOf: 16,
-      minPixels: 655_360,
+      minPixels,
       maxPixels,
       maxDimension,
       minAspectRatio: 1 / 3,
       maxAspectRatio: 3,
-      auto: false,
-      ...(is26
+      auto: true,
+      autoSizes: standardSizes,
+      ...(old ? { allowedSizes: standardSizes } : {}),
+      ...(!old ? { reason: '大于 2560×1440 像素属于 OpenAI 实验性分辨率。' } : {}),
+    },
+    inputFidelity:
+      profile === 'gpt-image-1.5' || profile === 'gpt-image-1-mini'
         ? {
-            reason:
-              '2.6支持16倍数及1:3至3:1自定义尺寸；本版保守限制1536边/1572864像素，这不是官方最大尺寸声明。',
+            supported: true,
+            values: profile === 'gpt-image-1.5' ? ['low', 'high'] : ['low'],
+            default: 'low',
           }
-        : {}),
-    },
-    inputFidelity: {
-      supported: false,
-      reason: '不向所选2/2.5/2.6模型发送未明确允许的 input_fidelity；不映射成保真保证。',
-    },
+        : { supported: false, reason: '此型号由 OpenAI 决定输入保真度。' },
     stream: {
-      supported: false,
-      reason: '本版仅在整批结果审核、规范化和事务提交后发布，不发布未审核流式图像。',
+      supported: !old,
+      reason: old ? '该型号暂采用单次 JSON 返回。' : '流式请求仅支持单张图。最终图通过审核后发布。',
     },
     partialImages: {
-      supported: false,
-      reason: '未接入部分图像审核与额外计费，partial_images 不发送。',
+      supported: !old && env.OPENAI_IMAGE_PARTIALS_ENABLED === 'true',
+      min: 0,
+      max: 3,
+      default: 0,
+      reason:
+        env.OPENAI_IMAGE_PARTIALS_ENABLED === 'true'
+          ? '部分图可能增加供应商图像 token。应用只发布通过审核的最终图。'
+          : '应用暂未向用户发布部分图，运营可单独启用供应商预览请求。',
     },
     svg: {
       supported: false,
@@ -156,13 +173,18 @@ export function describeOpenAIImageModel(
         requires: 'referenceAssetIds[0]',
         reason: '引导图与首张参考图尺寸相同、PNG且有透明像素；二者互斥。模型引导不保证像素级锁定。',
       },
+      {
+        field: 'inputFidelity',
+        requires: 'referenceAssetIds[0]',
+        reason: '仅图像编辑请求可指定输入保真度。',
+      },
     ],
   };
   return Object.freeze({
     id,
     profile,
     provider: 'openai',
-    minPixels: 655_360,
+    minPixels,
     maxPixels,
     maxDimension,
     supportsReference: true,
@@ -196,13 +218,42 @@ export function normalizeOpenAIImageOptions(
     !record(input) ||
     Object.keys(input).some(
       (key) =>
-        !['quality', 'background', 'outputFormat', 'outputCompression', 'n', 'complexity'].includes(
-          key,
-        ),
+        ![
+          'quality',
+          'background',
+          'outputFormat',
+          'outputCompression',
+          'n',
+          'complexity',
+          'size',
+          'inputFidelity',
+          'moderation',
+          'stream',
+          'partialImages',
+        ].includes(key),
     )
   )
     reject('OPENAI_UNSUPPORTED_PARAMETER');
   return { quality: 'auto', background: 'auto', outputFormat: 'png', n: 1, ...input };
+}
+
+function imageDimensionsFit(model: ImageModelDescriptor, width: number, height: number) {
+  const caps = model.parameterCapabilities!.size;
+  return (
+    Number.isSafeInteger(width) &&
+    Number.isSafeInteger(height) &&
+    width >= 16 &&
+    height >= 16 &&
+    width % caps.multipleOf === 0 &&
+    height % caps.multipleOf === 0 &&
+    width <= model.maxDimension &&
+    height <= model.maxDimension &&
+    width / height >= caps.minAspectRatio &&
+    width / height <= caps.maxAspectRatio &&
+    width * height >= model.minPixels &&
+    width * height <= model.maxPixels &&
+    (!caps.allowedSizes || caps.allowedSizes.includes(`${width}x${height}`))
+  );
 }
 function referenceHeader(reference: ImageReference) {
   if (
@@ -252,8 +303,21 @@ export function validateOpenAIImageInput(
     (!caps.complexity.supported || !caps.complexity.values?.includes(options.complexity))
   )
     reject('OPENAI_COMPLEXITY_NOT_SUPPORTED');
+  if (options.moderation !== undefined && !caps.moderation?.values?.includes(options.moderation))
+    reject('OPENAI_MODERATION_NOT_SUPPORTED');
   if (!Number.isSafeInteger(options.n) || options.n < 1 || options.n > budgets.maxOutputs)
     reject('OPENAI_OUTPUT_COUNT_LIMIT');
+  if (options.stream && (!caps.stream.supported || options.n !== 1))
+    reject('OPENAI_STREAM_REQUIRES_ONE_IMAGE');
+  if (
+    options.partialImages !== undefined &&
+    (!options.stream ||
+      !caps.partialImages.supported ||
+      !Number.isInteger(options.partialImages) ||
+      options.partialImages < 0 ||
+      options.partialImages > 3)
+  )
+    reject('OPENAI_PARTIAL_IMAGES_INVALID');
   if (
     options.outputCompression !== undefined &&
     (!Number.isSafeInteger(options.outputCompression) ||
@@ -265,26 +329,22 @@ export function validateOpenAIImageInput(
   if (options.background === 'transparent' && options.outputFormat === 'jpeg')
     reject('OPENAI_TRANSPARENCY_DEPENDENCY');
   const { width, height } = input;
-  if (
-    !Number.isSafeInteger(width) ||
-    !Number.isSafeInteger(height) ||
-    width < 16 ||
-    height < 16 ||
-    width % 16 ||
-    height % 16 ||
-    width > model.maxDimension ||
-    height > model.maxDimension ||
-    width / height < 1 / 3 ||
-    width / height > 3 ||
-    width * height < model.minPixels ||
-    width * height > model.maxPixels
-  )
-    reject('OPENAI_SIZE_LIMIT');
-  if (caps.size.allowedSizes && !caps.size.allowedSizes.includes(`${width}x${height}`))
+  if (options.size !== undefined && (options.size !== 'auto' || !caps.size.auto))
     reject('OPENAI_SIZE_NOT_VERIFIED');
-  if (width * height * options.n > budgets.maxTotalPixels) reject('OPENAI_BATCH_PIXEL_LIMIT');
+  if (!options.size && !imageDimensionsFit(model, width, height)) reject('OPENAI_SIZE_LIMIT');
+  if (
+    (options.size === 'auto' ? 1_572_864 : width * height) *
+      (options.n + (options.partialImages ?? 0)) >
+    budgets.maxTotalPixels
+  )
+    reject('OPENAI_BATCH_PIXEL_LIMIT');
   if (input.reference && input.references) reject('OPENAI_REFERENCE_AMBIGUOUS');
   const references = input.references ?? (input.reference ? [input.reference] : []);
+  if (
+    options.inputFidelity !== undefined &&
+    (!references.length || !caps.inputFidelity.values?.includes(options.inputFidelity))
+  )
+    reject('OPENAI_INPUT_FIDELITY_NOT_SUPPORTED');
   if (references.length > budgets.maxReferences) reject('OPENAI_REFERENCE_COUNT_LIMIT');
   if (input.mask && input.markup) reject('OPENAI_MASK_MARKUP_EXCLUSIVE');
   if ((input.mask || input.markup) && references.length === 0)
@@ -334,17 +394,19 @@ export function buildOpenAIImageRequest(input: ImageGenerationInput): {
     body: {
       model: input.model,
       prompt: input.prompt,
-      size: `${input.width}x${input.height}`,
+      size: options.size ?? `${input.width}x${input.height}`,
       quality: options.quality,
       background: options.background,
       output_format: options.outputFormat,
       n: options.n,
-      moderation: 'auto',
-      stream: false,
+      moderation: options.moderation ?? 'auto',
+      stream: options.stream ?? false,
+      ...(options.partialImages !== undefined ? { partial_images: options.partialImages } : {}),
       ...(options.outputCompression !== undefined
         ? { output_compression: options.outputCompression }
         : {}),
       ...(options.complexity !== undefined ? { complexity: options.complexity } : {}),
+      ...(options.inputFidelity !== undefined ? { input_fidelity: options.inputFidelity } : {}),
       ...(input.safetyIdentifier ? { safety_identifier: input.safetyIdentifier } : {}),
       ...(references.length ? { images: references.map(asDataUrl) } : {}),
       ...(input.mask ? { mask: asDataUrl(input.mask) } : {}),
@@ -401,20 +463,43 @@ export function createOpenAIImageProvider(
       validate(input);
       await validateGuidePixels(input);
       const options = normalizeOpenAIImageOptions(input.imageOptions);
+      const descriptor = models.find((model) => model.id === input.model)!;
       const request = buildOpenAIImageRequest(input);
-      const { data, requestId } = await postJson(
-        request.endpoint,
-        key,
-        request.body,
-        Math.ceil(budgets.maxTotalBytes / 3) * 4 + 1_000_000,
-        180_000,
-        fetcher,
-      );
+      const responseBytes = Math.ceil(budgets.maxTotalBytes / 3) * 4 + 1_000_000;
+      const { data, requestId } = options.stream
+        ? await postEventStream(
+            request.endpoint,
+            key,
+            request.body,
+            responseBytes,
+            180_000,
+            fetcher,
+          ).then(({ events, requestId }) => {
+            const type =
+              request.endpoint === OPENAI_IMAGE_EDITS_ENDPOINT ? 'image_edit' : 'image_generation';
+            const complete = events.at(-1);
+            if (
+              !complete ||
+              complete.type !== `${type}.completed` ||
+              events.slice(0, -1).some((event) => event.type !== `${type}.partial_image`)
+            )
+              unknown('OPENAI_IMAGE_STREAM_INCOMPLETE', requestId);
+            const data: Record<string, unknown> = {
+              ...complete,
+              data: [{ b64_json: complete.b64_json }],
+            };
+            return { data, requestId };
+          })
+        : await postJson(request.endpoint, key, request.body, responseBytes, 180_000, fetcher);
       if (data.error || !Array.isArray(data.data) || data.data.length !== options.n)
         unknown('OPENAI_OUTPUT_COUNT_MISMATCH', requestId);
       if (data.output_format !== undefined && data.output_format !== options.outputFormat)
         unknown('OPENAI_OUTPUT_FORMAT_MISMATCH', requestId);
-      if (data.size !== undefined && data.size !== `${input.width}x${input.height}`)
+      if (
+        !options.size &&
+        data.size !== undefined &&
+        data.size !== `${input.width}x${input.height}`
+      )
         unknown('OPENAI_OUTPUT_DIMENSIONS_MISMATCH', requestId);
       let totalBytes = 0;
       const images: Array<{ bytes: Uint8Array; mime: ImageMime }> = [];
@@ -432,8 +517,11 @@ export function createOpenAIImageProvider(
         }
         if (
           header.animated ||
-          header.width !== input.width ||
-          header.height !== input.height ||
+          (options.size === 'auto'
+            ? !descriptor.parameterCapabilities?.size.autoSizes?.includes(
+                `${header.width}x${header.height}`,
+              )
+            : header.width !== input.width || header.height !== input.height) ||
           header.format !== options.outputFormat
         )
           unknown('OPENAI_OUTPUT_DIMENSIONS_OR_FORMAT_MISMATCH', requestId);
@@ -460,16 +548,24 @@ export function createOpenAIImageProvider(
         for (const field of ['input_tokens_details', 'output_tokens_details']) {
           const details = data.usage[field];
           if (!record(details)) continue;
-          const counts: Record<string, unknown> = Object.fromEntries(['text_tokens', 'image_tokens', 'cached_tokens'].flatMap((name) => {
-            const value = details[name];
-            return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? [[name, value]] : [];
-          }));
+          const counts: Record<string, unknown> = Object.fromEntries(
+            ['text_tokens', 'image_tokens', 'cached_tokens'].flatMap((name) => {
+              const value = details[name];
+              return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+                ? [[name, value]]
+                : [];
+            }),
+          );
           if (record(details.cached_tokens_details)) {
             const cached = details.cached_tokens_details;
-            counts.cached_tokens_details = Object.fromEntries(['text_tokens', 'image_tokens'].flatMap((name) => {
-              const value = cached[name];
-              return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? [[name, value]] : [];
-            }));
+            counts.cached_tokens_details = Object.fromEntries(
+              ['text_tokens', 'image_tokens'].flatMap((name) => {
+                const value = cached[name];
+                return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+                  ? [[name, value]]
+                  : [];
+              }),
+            );
           }
           if (Object.keys(counts).length) usage[field] = counts;
         }

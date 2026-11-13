@@ -26,6 +26,9 @@ import { OpsReadCoordinator } from './ops-read';
 import type { Asset, Project, PublicConfig, User } from '../lib/types';
 import { Disclosure, OptionChips, ValueSlider } from './Controls';
 import type { ImageCapabilities } from '../ai/types';
+import { OPENAI_SPECIALIST_OPERATIONS, type OpenAISpecialistOperation } from '@ai-xiutu/contracts';
+import type { AIOperation } from '../ai/types';
+import { specialistTaskLabels } from '../ai/SpecialistOptions';
 import { QuotaManager } from './QuotaManager';
 import { UsageDashboard } from '../usage/UsageDashboard';
 import { AssistantOpsPanel } from './AssistantOpsPanel';
@@ -49,7 +52,7 @@ type ModelConfig = {
   version: number;
   label: string;
   provider: 'qwen' | 'ark' | 'openai';
-  operations: ('edit-plan' | 'generate-image' | 'generate-text' | 'transcribe')[];
+  operations: AIOperation[];
   enabled: boolean;
   minWidth: number;
   maxWidth: number;
@@ -68,6 +71,7 @@ type ProviderCatalogItem = {
   id: string;
   label: string;
   provider: 'openai';
+  operation?: 'generate-image' | 'transcribe' | OpenAISpecialistOperation;
   providerReady: boolean;
   accountVerified: false;
   maxDimension: number;
@@ -786,6 +790,7 @@ export function OpsDashboard({
                                   priceCents: plan.priceCents,
                                   expiresAfterDays: plan.expiresAfterDays,
                                   active: !plan.active,
+                                  expectedVersion: plan.version,
                                   reason,
                                 }),
                               ),
@@ -929,7 +934,7 @@ export function OpsDashboard({
                                     version: 0,
                                     label: item.label,
                                     provider: item.provider,
-                                    operations: ['generate-image'],
+                                    operations: [item.operation ?? 'generate-image'],
                                     enabled: false,
                                     minWidth: 64,
                                     maxWidth: item.maxDimension,
@@ -1041,7 +1046,7 @@ export function OpsDashboard({
                       <input
                         value={modelEdit.id}
                         onChange={(e) => setModelEdit({ ...modelEdit, id: e.target.value })}
-                        pattern="[a-zA-Z0-9][a-zA-Z0-9._:-]{0,119}"
+                        pattern="[a-zA-Z0-9][a-zA-Z0-9._:\-]{0,119}"
                         maxLength={120}
                         required
                       />
@@ -1062,14 +1067,14 @@ export function OpsDashboard({
                         options={[
                           { value: 'qwen', label: t('阿里云 · Qwen') },
                           { value: 'ark', label: t('火山方舟 · Ark') },
-                          { value: 'openai', label: t('OpenAI · 图片模型') },
+                          { value: 'openai', label: 'OpenAI' },
                         ]}
                       />
                     </label>
                     <fieldset className="model-operations">
                       <legend>{t('用于哪些任务')}</legend>
                       {(modelEdit.provider !== 'qwen'
-                        ? [['generate-image', t('图片生成')]]
+                        ? [['generate-image', t('图片生成')], ...(modelEdit.provider === 'openai' ? [['transcribe', t('语音识别')], ...OPENAI_SPECIALIST_OPERATIONS.map((operation) => [operation, t(specialistTaskLabels[operation])])] : [])]
                         : [
                             ['edit-plan', t('调整建议')],
                             ['generate-text', t('文字生成')],

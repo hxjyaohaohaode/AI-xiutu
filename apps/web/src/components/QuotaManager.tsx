@@ -1,11 +1,11 @@
-import { t } from '../i18n';
+import { formatNumber, t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MagnifyingGlass, UserCircle, CheckCircle } from '@phosphor-icons/react';
 import { api, errorMessage, jsonRequest } from '../lib/api';
-import type { User } from '../lib/types';
+import type { SupportCatalog, User } from '../lib/types';
 import { Busy, InlineError } from './Ui';
 import { StatusMark } from './StatusMark';
 
@@ -17,7 +17,7 @@ type Entitlements = {
   usage: { spent: number; expired: number; revoked: number };
 };
 type AccountSpaces = {
-  user: User;
+  user: User & { phoneVerified: boolean };
   spaces: { id: string; kind: string; name?: string; role: string; entitlements: Entitlements }[];
 };
 export function QuotaManager() {
@@ -48,8 +48,16 @@ export function QuotaManager() {
   const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [accountState, setAccountState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [readError, setReadError] = useState<string | null>(null);
+  const [supportTiers, setSupportTiers] = useState<SupportCatalog['tiers']>([]);
+  const [supportError, setSupportError] = useState<string | null>(null);
+  const [supportCents, setSupportCents] = useState('');
+  const [supportReference, setSupportReference] = useState('');
+  const [supportReceipt, setSupportReceipt] = useState('');
   const space = account?.spaces.find((item) => item.id === spaceId);
   const entitlements = space?.entitlements;
+  const supportTier = supportTiers.find((item) => String(item.cents) === supportCents);
+  const canGrantSupport =
+    account?.user.status === 'active' && account.user.phoneVerified && space?.kind === 'personal';
   async function search(event: FormEvent) {
     event.preventDefault();
     if (busy || writing.current || !query.trim()) return;
@@ -62,6 +70,11 @@ export function QuotaManager() {
     setBusy(true);
     setReadError(null);
     setSearchState('loading');
+    setAccount(null);
+    setAccountState('idle');
+    setSpaceId('');
+    setSupportReceipt('');
+    setSupportReference('');
     try {
       const result = await api<{ users: User[] }>(
         `/ops/users?query=${encodeURIComponent(query.trim())}`,
@@ -92,6 +105,8 @@ export function QuotaManager() {
     setReadError(null);
     setAccountState('loading');
     setSuccess('');
+    setSupportReceipt('');
+    setSupportReference('');
     try {
       const result = await api<AccountSpaces>(`/ops/users/${user.id}/entitlements`, {
         signal: controller.signal,
@@ -161,6 +176,71 @@ export function QuotaManager() {
       );
     } catch (e) {
       if (alive.current) setError(errorMessage(e));
+    } finally {
+      writing.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
+  async function readSupportTiers() {
+    try {
+      const result = await api<SupportCatalog>('/support');
+      if (!alive.current) return;
+      if (!result.qrUrl) {
+        setSupportError(t('微信赞赏暂未开放'));
+        return;
+      }
+      setSupportTiers(result.tiers);
+      setSupportError(null);
+    } catch (e) {
+      if (alive.current) setSupportError(errorMessage(e));
+    }
+  }
+  async function grantSupport(event: FormEvent) {
+    event.preventDefault();
+    if (
+      writing.current ||
+      busy ||
+      !canGrantSupport ||
+      !account ||
+      !supportTier ||
+      !/^[A-Za-z0-9_-]{6,96}$/.test(supportReference.trim())
+    )
+      return;
+    const userId = account.user.id;
+    const target = spaceId;
+    writing.current = true;
+    setBusy(true);
+    setSupportError(null);
+    setSupportReceipt('');
+    try {
+      const receipt = await api<{ points: number; replayed: boolean; entitlements: Entitlements }>(
+        '/ops/support-grants',
+        jsonRequest('POST', {
+          userId,
+          cents: supportTier.cents,
+          expectedPoints: supportTier.points,
+          reference: supportReference.trim(),
+        }),
+      );
+      if (!alive.current) return;
+      setAccount((current) =>
+        current?.user.id === userId
+          ? {
+              ...current,
+              spaces: current.spaces.map((item) =>
+                item.id === target ? { ...item, entitlements: receipt.entitlements } : item,
+              ),
+            }
+          : current,
+      );
+      setSupportReference('');
+      setSupportReceipt(
+        t(receipt.replayed ? '该笔赞赏此前已发放。' : '已发放 {points} 服务点。', {
+          points: receipt.points,
+        }),
+      );
+    } catch (e) {
+      if (alive.current) setSupportError(errorMessage(e));
     } finally {
       writing.current = false;
       if (alive.current) setBusy(false);
@@ -275,6 +355,64 @@ export function QuotaManager() {
             </p>
           )}
         </section>
+      )}
+      {canGrantSupport && (
+        <MotionDetails
+          className="surface ops-section"
+          onOpenChange={(open) => {
+            if (open && !supportTiers.length) void readSupportTiers();
+          }}
+        >
+          <summary>{t('微信赞赏核对发放')}</summary>
+          <form className="stack-form" onSubmit={grantSupport}>
+            <p className="form-hint">
+              {t('请先在微信核对到账金额与注册手机号。同一笔记录请始终使用同一个核对编号。')}
+            </p>
+            <label>
+              {t('已核对金额')}
+              <ChoiceSelect
+                ariaLabel={t('已核对金额')}
+                value={supportCents}
+                disabled={busy || !supportTiers.length}
+                onValueChange={setSupportCents}
+                options={supportTiers.map((tier) => ({
+                  value: String(tier.cents),
+                  label: `¥${(tier.cents / 100).toFixed(2)} · ${t('{points} 点', { points: formatNumber(tier.points) })}`,
+                }))}
+              />
+            </label>
+            <label>
+              {t('核对编号')}
+              <input
+                value={supportReference}
+                disabled={busy}
+                minLength={6}
+                maxLength={96}
+                pattern="[A-Za-z0-9_\-]{6,96}"
+                autoComplete="off"
+                required
+                onChange={(event) => setSupportReference(event.target.value)}
+              />
+            </label>
+            <InlineError message={supportError && t(supportError)} />
+            {supportError && !supportTiers.length && (
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => void readSupportTiers()}
+              >
+                {t('重试')}
+              </button>
+            )}
+            {supportReceipt && <p role="status">{supportReceipt}</p>}
+            <button
+              className="button button-primary"
+              disabled={busy || !supportTier || !supportReference.trim()}
+            >
+              {t('确认发放至个人空间')}
+            </button>
+          </form>
+        </MotionDetails>
       )}
       <form className="surface ops-section stack-form" onSubmit={adjust}>
         <h2>{t('额度调整')}</h2>

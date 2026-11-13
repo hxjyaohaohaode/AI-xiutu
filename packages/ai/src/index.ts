@@ -123,6 +123,8 @@ function jobDto(job: JobRow, canCancel = false) {
     'width',
     'height',
     'imageOptions',
+    'transcriptionOptions',
+    'options',
     'referenceAssetId',
     'referenceAssetIds',
     'maskAssetId',

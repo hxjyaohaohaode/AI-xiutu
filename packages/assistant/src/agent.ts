@@ -38,10 +38,10 @@ import {
   ContextBudgetError,
   type HistoryMessage,
 } from './context-budget.js';
-import { streamResponse } from './stream.js';
+import { responsesSocketFetch, streamResponse } from './stream.js';
 import { editorMcpNames, mcpSearchInput, openEditorMcp } from './editor-mcp.js';
 import { assistantUsage, readAssistantItems } from './response-items.js';
-import type { AssistantModelConfig } from './models.js';
+import { responsesModel, responsesParameters, type AssistantModelConfig } from './models.js';
 import {
   retouchProposalSchema,
   healingProposalSchema,
@@ -506,6 +506,7 @@ export interface AgentCandidateDraft {
 }
 export interface AgentContext {
   prompt: string;
+  responsesProxy?: string;
   executionMode?: 'suggest' | 'confirm' | 'auto';
   creativeBrief?: CreativeBrief;
   recipe?: EditorRecipe;
@@ -561,6 +562,7 @@ export interface AgentResult {
   memorySuggestions: MemorySuggestion[];
   workspace?: AssistantWorkspace;
   text: string;
+  reasoningSummary?: string;
   citations: AssistantCitation[];
   search: AssistantSearchEvidence[];
   candidates: AgentCandidateDraft[];
@@ -626,6 +628,15 @@ async function runEditorAgentWithTools(
   fetcher: typeof fetch,
 ): Promise<AgentResult> {
   await context.assertAccess();
+  const profile = responsesModel(modelId);
+  const socket = model.responses?.transport === 'websocket';
+  const upstream = socket ? responsesSocketFetch(key, context.responsesProxy) : fetcher;
+  const timeout =
+    profile?.longRunning ||
+    model.responses?.reasoningMode === 'pro' ||
+    model.responses?.serviceTier === 'flex'
+      ? 140_000
+      : 60_000;
   await context.moderate(context.prompt);
   const content: Record<string, unknown>[] = [{ type: 'input_text', text: context.prompt }];
   const editorData = JSON.stringify({
@@ -700,7 +711,7 @@ When asked to analyze, research, or advise, answer with observations and possibl
 When asked to prepare an edit, choose an achievable reversible candidate. For exact numeric requests use the named current controls, absolute values, allowed ranges and explicit target. Keep unrelated parameters unchanged. For exposure and shadow/highlight balance when the current canvas is shared, use propose_scene_balance to ground the edit in measured pixels. Preserve the low-key exposure when requested. Combine dependent steps with propose_sequence from the same base. To change an earlier alternative, propose a complete replacement. Draft generation preserves user model, parameters and price confirmation.
 Inspect only a real candidate returned by a proposal tool. When the current preview is shared, inspect actual candidate pixels in one call and review the returned image in a later round before selecting. Explain any residual artifact or quality uncertainty. Select a single candidate only after the requested checks. A selected candidate is still subject to application permissions. Report actions as proposals until the app reports the saved version. Stop making tools when you can answer or the user needs to decide.
 Use returned source cards to ground search replies. Refer to specific findings and distinguish cloud images, public images and source pages. Search does not authorize importing, sending or republishing a found image. Do not invent sources or say that a URL was fetched by this application.
-${creativeDirection}`;
+${creativeDirection}${model.responses?.format?.type === 'json_object' ? '\nReturn the final answer as a JSON object.' : ''}`;
   let images = model.imageInput
     ? Number(!!context.imageDataUrl) +
       Number(!!context.visualAttachment) +
@@ -745,20 +756,28 @@ ${creativeDirection}`;
       { purpose, branchId },
     );
     let deliveryError: unknown;
-    const { data, requestId } = streaming
-      ? await streamResponse(RESPONSES_URL, key, body, fetcher, async (delta, prefix) => {
-          if (deliveryError) return;
-          try {
-            await context.assertAccess();
-            await context.moderate(`${result.text}\n${prefix}`);
-            await context.assertAccess();
-            await context.onText?.(delta);
-          } catch (error) {
-            // Finish reading the paid receipt even when delivery has stopped.
-            deliveryError = error;
-          }
-        })
-      : await postBoundedJson(RESPONSES_URL, key, body, 2_000_000, 45_000, fetcher);
+    const { data, requestId } =
+      streaming || socket
+        ? await streamResponse(
+            RESPONSES_URL,
+            key,
+            body,
+            upstream,
+            async (delta, prefix) => {
+              if (!streaming || deliveryError) return;
+              try {
+                await context.assertAccess();
+                await context.moderate(`${result.text}\n${prefix}`);
+                await context.assertAccess();
+                await context.onText?.(delta);
+              } catch (error) {
+                // Finish reading the paid receipt even when delivery has stopped.
+                deliveryError = error;
+              }
+            },
+            timeout,
+          )
+        : await postBoundedJson(RESPONSES_URL, key, body, 2_000_000, timeout, fetcher);
     const usage = assistantUsage.safeParse(data.usage);
     if (!usage.success)
       throw new MultimodalProviderError('ASSISTANT_RECEIPT_MISSING', 'unknown', requestId);
@@ -785,12 +804,11 @@ ${creativeDirection}`;
 
   const common = {
     model: modelId,
-    service_tier: 'default',
     store: false,
     truncation: 'disabled',
     parallel_tool_calls: false,
     max_output_tokens: model.maxOutputTokens,
-    ...(model.reasoningEffort ? { reasoning: { effort: model.reasoningEffort } } : {}),
+    ...responsesParameters(model, false),
   };
   async function searchPublic(
     search: z.infer<typeof assistantPublicSearchSchema>,
@@ -977,13 +995,17 @@ ${creativeDirection}`;
     for (const data of await runBranches(approved))
       content.push({ type: 'input_text', text: data });
   for (let round = 0; requestIndex < MAX_MODEL_REQUESTS; round++) {
+    const format = model.responses?.format?.type;
+    const structured = format === 'json_object' || format === 'json_schema';
+    const streaming = !structured && Boolean(context.onText) && profile?.streaming !== false;
     const body: Record<string, unknown> = {
       ...common,
+      ...responsesParameters(model),
       instructions: systemInstructions,
       input,
       tools,
-      include: ['reasoning.encrypted_content'],
-      ...(context.onText ? { stream: true } : {}),
+      ...(profile?.reasoning.length !== 0 ? { include: ['reasoning.encrypted_content'] } : {}),
+      ...(streaming ? { stream: true } : {}),
     };
     if (
       textTokens(JSON.stringify(textOnly(body))) +
@@ -994,15 +1016,13 @@ ${creativeDirection}`;
     )
       throw new ContextBudgetError('CONTEXT_TOOL_BUDGET');
     const output = readAssistantItems(
-      await dispatch(
-        body,
-        Boolean(context.onText),
-        researchPending ? 'research-merge' : 'conversation',
-        'root',
-      ),
+      await dispatch(body, streaming, researchPending ? 'research-merge' : 'conversation', 'root'),
     );
     researchPending = false;
-    if (output.text) result.text += `${result.text ? '\n' : ''}${output.text}`;
+    if (model.responses?.reasoningSummary && output.reasoningSummary)
+      result.reasoningSummary = output.reasoningSummary;
+    if (output.text && (!structured || !output.calls.length))
+      result.text += `${result.text ? '\n' : ''}${output.text}`;
     if (output.incomplete || output.refused) {
       result.termination = output.refused ? 'refused' : 'incomplete';
       break;
@@ -1342,6 +1362,7 @@ ${creativeDirection}`;
     ? '已准备候选，请查看后确认；尚未修改图片。'
     : '本轮没有生成可用建议。';
   await context.moderate(result.text);
+  if (result.reasoningSummary) await context.moderate(result.reasoningSummary);
   await context.assertAccess();
   await context.onBranch?.({
     ...root,

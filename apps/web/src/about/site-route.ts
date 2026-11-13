@@ -1,12 +1,22 @@
 export type SiteRoute =
-  'about' | 'studio' | 'login' | 'register' | 'reset' | 'account' | 'welcome' | 'usage' | 'sample';
+  | 'about'
+  | 'studio'
+  | 'login'
+  | 'register'
+  | 'reset'
+  | 'account'
+  | 'support'
+  | 'welcome'
+  | 'usage'
+  | 'sample';
 
 export function isAccountSiteRoute(route: SiteRoute): boolean {
-  return ['login', 'register', 'reset', 'account', 'welcome'].includes(route);
+  return ['login', 'register', 'reset', 'account', 'support', 'welcome'].includes(route);
 }
 /** Explicit public routes; ordinary section anchors stay on About. */
 export function readSiteRoute(hash: string): SiteRoute {
   const path = hash.replace(/^#\/?/, '').split('?')[0];
+  if (path === 'account/support') return 'support';
   return path === 'studio' ||
     path === 'login' ||
     path === 'register' ||
@@ -19,5 +29,6 @@ export function readSiteRoute(hash: string): SiteRoute {
     : 'about';
 }
 export function siteRouteHash(route: SiteRoute): string {
+  if (route === 'support') return '#/account/support';
   return route === 'about' ? '#/' : '#/' + route;
 }

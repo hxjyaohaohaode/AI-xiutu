@@ -1,5 +1,10 @@
 import { z } from 'zod';
 import { join } from 'node:path';
+import {
+  listOpenAIProjectModels,
+  OPENAI_FILE_TRANSCRIPTION_MODELS,
+  OPENAI_IMAGE_MODEL_PROFILES,
+} from '@ai-xiutu/multimodal';
 import type { FastifyInstance } from 'fastify';
 import {
   transaction,
@@ -13,9 +18,13 @@ import {
   assistantModelConfigSchema,
   VOICE_MODELS,
   RESPONSES_MODELS,
+  RESPONSES_SOURCES,
+  RESPONSES_VERIFIED_AT,
   modelProfileError,
+  responsesModel,
   VOICE_DOCS,
   VOICE_VERIFIED_AT,
+  CALL_TRANSCRIPTION_MODELS,
   recipeHash,
 } from '@ai-xiutu/assistant';
 import type { AppConfig } from '../config.js';
@@ -29,7 +38,12 @@ import {
 } from './context.js';
 import { createAssistantService, type AssistantDependencies } from './service.js';
 import { attachVoiceBridge } from './voice.js';
-import { assistantCandidateCommitSchema, assistantGrantSchema } from '@ai-xiutu/contracts';
+import {
+  assistantCandidateCommitSchema,
+  assistantGrantSchema,
+  OPENAI_SPECIALIST_OPERATIONS,
+  OPENAI_SPECIALIST_MODELS,
+} from '@ai-xiutu/contracts';
 import { registerAssistantEvents } from './events.js';
 import { registerAssistantMemory } from './memory.js';
 import {
@@ -143,7 +157,11 @@ export function registerAssistant(
       reason: service.reason,
       models: rows.flatMap((row) => {
         const parsed = assistantModelConfigSchema.safeParse(row.config);
-        if (!parsed.success || !parsed.data.enabled || modelProfileError(row.id, parsed.data))
+        if (
+          !parsed.success ||
+          !parsed.data.enabled ||
+          modelProfileError(row.id, parsed.data, service.allowTestModel)
+        )
           return [];
         const model = parsed.data;
         const operations = model.operations.filter((op) =>
@@ -162,14 +180,22 @@ export function registerAssistant(
             webSearch: model.webSearch,
             webImageSearch: model.webSearch && model.webImageSearch === true,
             voice: VOICE_MODELS.find((voice) => voice.id === row.id) ?? null,
-            responses: RESPONSES_MODELS.find((item) => item.id === row.id) ?? null,
+            responses: responsesModel(row.id) ?? null,
+            responseDefaults: {
+              effort: model.reasoningEffort,
+              verbosity: model.responses?.verbosity,
+              effortFixedForSampling:
+                model.responses?.temperature !== undefined || model.responses?.topP !== undefined,
+            },
           },
         ];
       }),
       voiceProfiles: VOICE_MODELS,
       responsesProfiles: RESPONSES_MODELS,
       verifiedAt: VOICE_VERIFIED_AT,
-      sources: VOICE_DOCS,
+      responsesVerifiedAt: RESPONSES_VERIFIED_AT,
+      sources: [...VOICE_DOCS, ...RESPONSES_SOURCES],
+      transcriptionModels: CALL_TRANSCRIPTION_MODELS,
     };
   });
   app.get('/v1/projects/:projectId/assistant-conversations', async (req) => {
@@ -541,7 +567,50 @@ export function registerAssistant(
       responsesProfiles: RESPONSES_MODELS,
       ready: service.ready,
       voiceReady: service.voiceReady,
-      sources: VOICE_DOCS,
+      responsesVerifiedAt: RESPONSES_VERIFIED_AT,
+      sources: [...VOICE_DOCS, ...RESPONSES_SOURCES],
+      transcriptionModels: CALL_TRANSCRIPTION_MODELS,
+    };
+  });
+  let inventory: { ids: string[]; checkedAt: number } | undefined;
+  let discovery: Promise<{ ids: string[]; checkedAt: number }> | undefined;
+  app.get('/v1/ops/openai-model-inventory', async (req, reply) => {
+    requireOperator(req);
+    reply.header('cache-control', 'no-store');
+    if (!service.key) return { state: 'unconfigured', models: [] };
+    if (!inventory || Date.now() - inventory.checkedAt > 5 * 60_000) {
+      discovery ??= listOpenAIProjectModels(service.key, service.dependencies.fetcher)
+        .then((ids) => ({ ids, checkedAt: Date.now() }))
+        .finally(() => {
+          discovery = undefined;
+        });
+      try {
+        inventory = await discovery;
+      } catch {
+        return { state: 'unavailable', models: [] };
+      }
+    }
+    return {
+      state: 'visible',
+      checkedAt: new Date(inventory.checkedAt).toISOString(),
+      models: inventory.ids.map((id) => {
+        const specialist = OPENAI_SPECIALIST_OPERATIONS.find((operation) =>
+          (OPENAI_SPECIALIST_MODELS[operation] as readonly string[]).includes(id),
+        );
+        const adapter = responsesModel(id)
+          ? 'responses'
+          : (VOICE_MODELS.find((model) => model.id === id)?.protocol ??
+            (Object.hasOwn(OPENAI_IMAGE_MODEL_PROFILES, id)
+              ? 'images'
+              : (OPENAI_FILE_TRANSCRIPTION_MODELS as readonly string[]).includes(id)
+                ? 'file-transcription'
+                : (CALL_TRANSCRIPTION_MODELS as readonly string[]).includes(id)
+                  ? 'call-transcription'
+                  : ['omni-moderation-latest', 'omni-moderation-2024-09-26'].includes(id)
+                    ? 'moderation'
+                    : (specialist ?? null)));
+        return { id, adapter };
+      }),
     };
   });
   app.put('/v1/ops/assistant-models/:modelId', async (req) => {
@@ -569,13 +638,17 @@ export function registerAssistant(
     )
       throw new HttpError(400, 'MODEL_OPERATION_INVALID', '此配置入口只接收智能体/实时语音能力');
     if (
+      settings.enabled &&
       settings.operations.includes('realtime-voice') &&
       !VOICE_MODELS.some((voice) => voice.id === modelId)
     )
       throw new HttpError(400, 'VOICE_PROFILE_UNKNOWN', '语音模型尚无经过核验的协议适配器');
-    const incompatible = modelProfileError(modelId, settings);
-    if (incompatible)
+    const incompatible = modelProfileError(modelId, settings, service.allowTestModel);
+    if (incompatible && settings.enabled) {
+      if (incompatible === 'RESPONSES_PROFILE_UNKNOWN')
+        throw new HttpError(400, incompatible, '请选择已核验的 OpenAI 文本模型');
       throw new HttpError(400, incompatible, '模型用途、推理档位或 Token 上限与协议档案不符');
+    }
     await transaction(db, async (tx) => {
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
         `assistant-model:${modelId}`,

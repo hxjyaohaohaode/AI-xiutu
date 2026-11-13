@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { VoiceServerEvent } from '@ai-xiutu/contracts';
-import { voiceModel, type AssistantModelConfig } from './models.js';
+import { voiceModel, type AssistantModelConfig, type LiveOptions } from './models.js';
 import type { HistoryMessage } from './context-budget.js';
 
 function boundedLiveText(value: string): string {
@@ -36,12 +36,20 @@ export function voiceEndpoint(modelId: string): string {
 }
 const voiceInstructions =
   '你是图片创作助手，跟随用户的语言，自然地短句交流。只有收到应用结果才能确认任务已保存、已生成或需要确认。画面共享有时效，涉及当前图像时使用最新获准快照。保留用户的模型与参数选择，禁止推断身份或医疗信息。';
+
+export function liveOpeningText(options?: LiveOptions) {
+  return options?.opening
+    ? `请先问候用户，然后停下来倾听。问候内容：${options.opening}`
+    : undefined;
+}
+
 export function voiceStartEvent(
   modelId: string,
   voice: string,
   maxOutputTokens: number,
   team = false,
   effort?: AssistantModelConfig['voiceReasoningEffort'],
+  options?: Pick<AssistantModelConfig, 'live' | 'realtime'>,
 ) {
   const profile = voiceModel(modelId);
   if (!(profile.voices as readonly string[]).includes(voice)) throw new Error('VOICE_NOT_ALLOWED');
@@ -51,17 +59,29 @@ export function voiceStartEvent(
     ? voiceInstructions +
       ' 你在多人语音会议中。成员可同时说话，你收到的是已授权的合流音频，不保证识别发言者。成员彼此讨论时以聆听为主。被问到、需要澄清或有已完成的协作结果时简短加入。有人打断时跟随最新需求。'
     : voiceInstructions + ' 支持双向实时交流。有人打断时跟随最新需求。';
-  if (voiceModel(modelId).protocol === 'live')
+  if (profile.protocol === 'live') {
+    const opening = liveOpeningText(options?.live);
     return {
       type: 'session.start',
       session: {
         model: modelId,
         store: false,
-        instructions: `${instructions}\nBackchannel policy: 适度回应，等用户讲完具体要求。\nInterruption policy: 被打断时停止播报，听取最新纠正。\nDelegation policy:\nBackend tools: 查看授权画面与参数、搜素材、规划修图或生图。\nGenerate <|SpawnThinking|> when: 用户要求看图、搜索、制作、编辑，或纠正正在处理的目标。\nDo not generate <|SpawnThinking|> when: 可直接回答寒暄、闲聊，或需先澄清对象。收到后端结果再说明执行状态。`,
+        instructions: `${instructions}\nBackchannel policy: 适度回应，等用户讲完具体要求。\nInterruption policy: 被打断时停止播报，听取最新纠正。\nDelegation policy:\nBackend tools: 查看授权画面与参数、搜素材、规划修图或生图。\nGenerate <|SpawnThinking|> when: 用户要求看图、搜索、制作、编辑，或纠正正在处理的目标。\nDo not generate <|SpawnThinking|> when: 可直接回答寒暄、闲聊，或需先澄清对象。收到后端结果再说明执行状态。${options?.live?.prompt ? `\nVoice style: ${options.live.prompt}` : ''}`,
+        ...(opening
+          ? { input: [{ role: 'developer', content: [{ type: 'input_text', text: opening }] }] }
+          : {}),
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice } },
-        delegation: { type: 'client' },
+        delegation: {
+          type: 'client',
+          ...(options?.live?.acknowledgementDelayMs !== undefined
+            ? { acknowledgement_delay_ms: options.live.acknowledgementDelayMs }
+            : {}),
+        },
       },
     };
+  }
+  const realtime = options?.realtime;
+  const vad = realtime?.turnDetection;
   return {
     type: 'session.update',
     session: {
@@ -74,17 +94,39 @@ export function voiceStartEvent(
       audio: {
         input: {
           format: { type: 'audio/pcm', rate: 24000 },
-          transcription: { model: 'gpt-4o-mini-transcribe' },
-          turn_detection: {
-            type: 'server_vad',
-            threshold: 0.5,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 600,
-            create_response: false,
-            interrupt_response: true,
+          transcription: {
+            model: realtime?.transcriptionModel ?? 'gpt-4o-mini-transcribe',
+            ...(realtime?.language ? { language: realtime.language } : {}),
+            ...(realtime?.prompt ? { prompt: realtime.prompt } : {}),
+            ...(realtime?.delay ? { delay: realtime.delay } : {}),
           },
+          ...(realtime?.noiseReduction !== undefined
+            ? {
+                noise_reduction: realtime.noiseReduction ? { type: realtime.noiseReduction } : null,
+              }
+            : {}),
+          turn_detection:
+            vad?.type === 'semantic_vad'
+              ? {
+                  type: 'semantic_vad',
+                  eagerness: vad.eagerness ?? 'auto',
+                  create_response: false,
+                  interrupt_response: true,
+                }
+              : {
+                  type: 'server_vad',
+                  threshold: vad?.threshold ?? 0.5,
+                  prefix_padding_ms: vad?.prefixPaddingMs ?? 300,
+                  silence_duration_ms: vad?.silenceDurationMs ?? 600,
+                  create_response: false,
+                  interrupt_response: true,
+                },
         },
-        output: { format: { type: 'audio/pcm', rate: 24000 }, voice },
+        output: {
+          format: { type: 'audio/pcm', rate: 24000 },
+          voice,
+          ...(realtime?.outputSpeed !== undefined ? { speed: realtime.outputSpeed } : {}),
+        },
       },
       tools: [
         {

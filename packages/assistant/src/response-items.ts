@@ -10,7 +10,18 @@ export const assistantUsage = z
     input_tokens: z.number().int().nonnegative().max(10_000_000).optional(),
     output_tokens: z.number().int().nonnegative().max(10_000_000).optional(),
     total_tokens: z.number().int().nonnegative().max(20_000_000).optional(),
-    input_tokens_details: z.object({ cached_tokens: z.number().int().nonnegative() }).optional(),
+    input_tokens_details: z
+      .object({
+        cached_tokens: z.number().int().nonnegative().optional(),
+        cache_write_tokens: z.number().int().nonnegative().optional(),
+        cache_write_tokens_details: z
+          .object({
+            ttl_30m_tokens: z.number().int().nonnegative(),
+            ttl_12h_tokens: z.number().int().nonnegative(),
+          })
+          .optional(),
+      })
+      .optional(),
     output_tokens_details: z
       .object({ reasoning_tokens: z.number().int().nonnegative() })
       .optional(),
@@ -62,6 +73,7 @@ export function readAssistantItems(data: Record<string, unknown>, publicSearch =
   const calls: z.infer<typeof call>[] = [];
   const input: Record<string, unknown>[] = [];
   const text: string[] = [];
+  const summaries: string[] = [];
   const citations: AssistantCitation[] = [];
   const images: AssistantPublicImage[] = [];
   let refused = false;
@@ -107,7 +119,9 @@ export function readAssistantItems(data: Record<string, unknown>, publicSearch =
         input.push(item);
       }
     } else if (raw.type === 'reasoning') {
-      input.push(reasoning.parse(raw));
+      const item = reasoning.parse(raw);
+      input.push(item);
+      summaries.push(...item.summary.map((summary) => summary.text));
     } else if (raw.type === 'web_search_call' && publicSearch) {
       if (raw.status !== 'completed') continue;
       searched = true;
@@ -125,5 +139,15 @@ export function readAssistantItems(data: Record<string, unknown>, publicSearch =
       }
     } else throw new Error('ASSISTANT_INVALID_ITEM');
   }
-  return { calls, input, text: text.join('\n'), citations, images, refused, incomplete, searched };
+  return {
+    calls,
+    input,
+    text: text.join('\n'),
+    citations,
+    images,
+    refused,
+    incomplete,
+    searched,
+    reasoningSummary: summaries.join('\n').slice(0, 6000),
+  };
 }
