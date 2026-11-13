@@ -3,8 +3,11 @@ import { checkV3, sampleBilinearV3, sampleBoundedCubicV3, clamp01 } from './v3-p
 import type { WarpStrokeV3, WarpV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions, Point, Dimensions } from './types.js';
 import { flowWarpPoint, flowWarpPointV2 } from './v3-flow.js';
+import { compileFaceWarp, faceWarpBounds } from './face-warp.js';
 
 function support(stroke: WarpStrokeV3, dimensions: Dimensions) {
+  if (stroke.algorithm === 'face-field-v1' && stroke.anchors)
+    return faceWarpBounds(stroke.anchors, dimensions);
   const radius = stroke.radius * Math.min(dimensions.width, dimensions.height),
     x = stroke.from.x * dimensions.width,
     y = stroke.from.y * dimensions.height,
@@ -53,6 +56,10 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
             dy,
             dragLimit: Math.min(1, (r * 0.8) / Math.max(1e-12, Math.hypot(dx, dy))),
             guard: s.guardId ? guards.get(s.guardId) : undefined,
+            faceField:
+              s.anchors && s.algorithm === 'face-field-v1'
+                ? compileFaceWarp(s.anchors, dimensions)
+                : undefined,
           };
         })
     : [];
@@ -95,6 +102,23 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
     while (position >= 0) {
       const i = candidates[position--]!;
       const stroke = strokes[i]!;
+      if (stroke.faceField) {
+        const protectedWeight = stroke.guard?.(point.x, point.y) ?? 0;
+        const strength = stroke.strength * (1 - Math.max(globalProtection, protectedWeight));
+        if (!strength) continue;
+        const mapped = stroke.faceField(x, y);
+        if (mapped.x === x && mapped.y === y) continue;
+        x += (mapped.x - x) * strength;
+        y += (mapped.y - y) * strength;
+        if (reconstruction && stroke.resampling) reconstruction.detail = true;
+        const next = candidatesAt(x, y);
+        if (next !== candidates) {
+          candidates = next;
+          position = next.length - 1;
+          while (position >= 0 && next[position]! >= i) position--;
+        }
+        continue;
+      }
       let dx = x - stroke.cx,
         dy = y - stroke.cy;
       if (stroke.mode === 'restore') {

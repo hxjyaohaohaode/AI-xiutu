@@ -499,12 +499,26 @@ export function MaskControls({
           </small>
         </>
       )}
-      {mask.type === 'raster' && (
-        <p className="control-note">
-          {t('识别蒙版')}
-          {mask.width}×{mask.height}
-          {t('。可通过添加手动画笔子区修正边缘，自动识别不等同于逐像素准确。')}
-        </p>
+      {mask.type === 'raster' && drawsMask && (
+        <div className="tonal-tabs" aria-label={t('修正识别范围')}>
+          {(['union', 'subtract'] as const).map((operation) => (
+            <button
+              type="button"
+              key={operation}
+              onClick={() => {
+                const brush = newMask('brush');
+                if (
+                  update({ type: 'compound', operation, masks: [mask, brush], invert: false }, true)
+                ) {
+                  editor.setBrushSettings((settings) => ({ ...settings, mode: 'add' }));
+                  onPath([...path, 1]);
+                }
+              }}
+            >
+              {t(operation === 'union' ? '补画范围' : '擦除范围')}
+            </button>
+          ))}
+        </div>
       )}
       {mask.type === 'color-range' && (
         <div className="continuous-hue-reference" aria-label={t('完整色相环')} />

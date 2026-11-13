@@ -13,6 +13,7 @@ import {
 } from '@ai-xiutu/editor';
 import {
   applyPortraitValues,
+  REFINED_PORTRAIT_ANALYSIS,
   facialMasks,
   facialMasksV4,
   portraitToolAvailability,
@@ -190,6 +191,25 @@ test('V4 positive and negative skin exposure produce a wider smooth pixel transi
     renderEditorRecipe(image, applyPortraitValues(createRecipeV4(), a, t.id, { skinLight: 0 })),
     image,
   );
+});
+
+test('refined skin light is signed and rolls off before bright skin loses chroma', () => {
+  const a = { ...analysis(), algorithmVersion: REFINED_PORTRAIT_ANALYSIS };
+  const t = a.targets[0]!;
+  const image = uniform();
+  const middle = (230 * image.width + 182) * 4;
+  const bright = middle + 4;
+  image.data.set([155, 119, 103, 255], middle);
+  image.data.set([248, 228, 215, 255], bright);
+  const edit = (skinLight: number) => applyPortraitValues(createRecipeV4(), a, t.id, { skinLight });
+  const lift = renderEditorRecipe(image, edit(100));
+  const darken = renderEditorRecipe(image, edit(-100));
+  assert.ok(lift.data[middle + 1]! >= image.data[middle + 1]! + 3);
+  assert.ok(darken.data[middle + 1]! <= image.data[middle + 1]! - 3);
+  assert.ok(lift.data[bright]! < 255, 'bright skin should retain channel headroom');
+  assert.ok(Math.abs(lift.data[bright + 1]! - image.data[bright + 1]!) < 6);
+  assert.equal(lift.data[bright]! - lift.data[bright + 2]!, 33);
+  assert.deepEqual(renderEditorRecipeTiled(image, edit(100), { tileSize: 97 }), lift);
 });
 
 test('V4 rejects unimplemented anatomically constrained neck length while stored V3/V4 effects replay unchanged', () => {

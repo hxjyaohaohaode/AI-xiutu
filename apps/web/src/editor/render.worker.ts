@@ -15,12 +15,18 @@ import {
   type RGBAImage,
   type EditorRecipe,
 } from '@ai-xiutu/editor';
-import { prepareBudgetedPreview, MAX_PREVIEW_PIXELS } from './previewBudget';
+import {
+  interactiveRaster,
+  prepareBudgetedPreview,
+  MAX_INTERACTIVE_PIXELS,
+  MAX_PREVIEW_PIXELS,
+} from './previewBudget';
 import { editorGeometryKey } from './coordinates';
 import { fitsNativePreview } from './native-preview';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
+let draftSource: RGBAImage | null = null;
 let sourceDimensions: Dimensions | null = null;
 let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>();
@@ -29,7 +35,7 @@ const warpPreviewCache = new WarpPreviewCache();
 let pointPreview: ReturnType<typeof preparePointPreview> | undefined;
 let recycledBuffer: ArrayBuffer | undefined;
 function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: number) {
-  const key = `${maxPixels}:${editorGeometryKey(recipe, false)}`;
+  const key = `${source.width}x${source.height}:${maxPixels}:${editorGeometryKey(recipe, false)}`;
   const cached = previewSources.get(key);
   if (cached) return cached;
   const image = prepareBudgetedPreview(source, recipe, maxPixels);
@@ -62,6 +68,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   if (message.type === 'source' || message.type === 'interactive-source') {
     preview = message.image ?? null;
     original = message.type === 'source' ? (message.original ?? null) : null;
+    draftSource = null;
     sourceDimensions = message.sourceDimensions ?? original ?? preview;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
@@ -77,6 +84,8 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       fitsNativePreview(preview.width, preview.height)
         ? preparePointPreview(preview)
         : undefined;
+    if (message.type === 'interactive-source' && preview)
+      draftSource = interactiveRaster(preview);
     return;
   }
   if (message.type === 'recycle-point-preview') {
@@ -110,10 +119,11 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   }
   try {
     const exporting = message.type === 'export';
-    const warpDetail = message.type === 'interactive-preview' && message.previewQuality === 'warp';
+    const interactive = message.type === 'interactive-preview';
+    const warpDetail = interactive && message.previewQuality === 'warp';
     const fullSource = original ?? preview;
-    // A gesture never changes the selected source. The only lower-resolution
-    // input is the fixed proxy for imports outside the native editor budget.
+    // Settle on the native source whenever it fits. A spatial gesture can
+    // temporarily sample a bounded raster of the same oriented photo.
     const native =
       !exporting &&
       message.maxPixels === undefined &&
@@ -142,17 +152,25 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       getEditorOutputDimensions(sourceDimensions, message.recipe);
     }
     const recipe = message.recipe;
+    const mode = exporting ? null : pointPreviewMode(recipe);
+    const useDraft = interactive && !warpDetail && message.previewQuality !== 'full' && !mode;
+    const cache = !mode ? warpPreviewCache : undefined;
     let recyclable = false;
     const renderPreview = () => {
-      const input = native
-        ? source
-        : preparedSource(source, recipe, message.maxPixels ?? MAX_PREVIEW_PIXELS);
+      const input = useDraft
+        ? preparedSource(
+            (draftSource ??= interactiveRaster(source)),
+            recipe,
+            MAX_INTERACTIVE_PIXELS,
+          )
+        : native
+          ? source
+          : preparedSource(source, recipe, message.maxPixels ?? MAX_PREVIEW_PIXELS);
       const options = {
         maxPixels: native ? MAX_EXPLICIT_PIXELS : MAX_PREVIEW_PIXELS,
         images: native && original ? originalImages : images,
-        warpPreviewCache: warpDetail ? warpPreviewCache : undefined,
+        warpPreviewCache: cache,
       };
-      const mode = pointPreviewMode(recipe);
       if (native && !warpDetail && mode && mode !== 'simple') {
         if (pointPreview === undefined) pointPreview = preparePointPreview(input);
         const mapped = pointPreview?.(recipe, recycledBuffer);
@@ -209,7 +227,11 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       self.postMessage({ id: message.id, type: message.type, blob });
     } else {
       const safeResult =
-        message.originalOnly || (warpDetail && warpPreviewCache.keeps(result))
+        message.originalOnly ||
+        warpPreviewCache.keeps(result) ||
+        result.data.buffer === source.data.buffer ||
+        result.data.buffer === draftSource?.data.buffer ||
+        [...previewSources.values()].some((image) => image.data.buffer === result.data.buffer)
           ? { ...result, data: new Uint8ClampedArray(result.data) }
           : result;
       self.postMessage(

@@ -87,7 +87,7 @@ test('a new portrait guided-v4 region has one visibly and accessibly selected al
   const before = structuredClone(recipe);
   const controls = harness(recipe);
   const view = controls.render();
-  assert.equal(view.algorithms.length, 5);
+  assert.equal(view.algorithms.length, 6);
   assert.deepEqual(
     view.algorithms.filter((node) => node.props['aria-pressed']).map((node) => node.props.children),
     ['纹理与斑点分离'],
@@ -113,6 +113,7 @@ test('explicit algorithm changes can return to guided-v3 and preserve other reci
     ['保边美肤', 'guided-v1'],
     ['原版质感', undefined],
     ['细纹与反光分离', 'guided-v3'],
+    ['自适应保边磨皮', 'guided-v5'],
     ['纹理与斑点分离', 'guided-v4'],
   ] as const) {
     controls.render().click(label);
@@ -135,7 +136,7 @@ test('explicit algorithm changes can return to guided-v3 and preserve other reci
   assert.deepEqual(controls.recipe(), before);
   assert.deepEqual(
     controls.commits,
-    Array.from({ length: 5 }, () => ({ label: '切换质感算法', commit: true })),
+    Array.from({ length: 6 }, () => ({ label: '切换质感算法', commit: true })),
   );
 });
 

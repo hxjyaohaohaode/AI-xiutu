@@ -10,9 +10,11 @@ import {
   linearToSrgb,
   srgbToLinear,
   type RGBAImage,
+  type FaceWarpAnchorV3,
   type WarpStrokeV3,
 } from '../src/index.js';
 import { applyWarpV3, compileWarpFieldV3 } from '../src/v3-warp.js';
+import { compileFaceWarp } from '../src/face-warp.js';
 import { sampleBilinearV3, sampleBoundedCubicV3 } from '../src/v3-pixels.js';
 import { flowWarpPoint, flowWarpPointV2 } from '../src/v3-flow.js';
 
@@ -370,4 +372,109 @@ test('updating the latest brush window replays overlapping histories exactly, in
   recipe.geometry.crop = { x: 0.05, y: 0.2, width: 0.82, height: 0.67 };
   recipe.geometry.rotation = 90;
   compare();
+});
+
+test('overlapping face controls share a bounded field and protect unrelated features', () => {
+  const anchors: FaceWarpAnchorV3[] = [
+    {
+      from: { x: 0.31, y: 0.56 },
+      to: { x: 0.43, y: 0.55 },
+      radius: 0.3,
+      strength: 1,
+      mode: 'push',
+    },
+    { from: { x: 0.35, y: 0.65 }, to: { x: 0.49, y: 0.6 }, radius: 0.3, strength: 1, mode: 'push' },
+    {
+      from: { x: 0.38, y: 0.4 },
+      to: { x: 0.38, y: 0.4 },
+      radius: 0.19,
+      strength: 1,
+      mode: 'bulge',
+    },
+    {
+      from: { x: 0.44, y: 0.51 },
+      to: { x: 0.44, y: 0.51 },
+      radius: 0.15,
+      strength: 1,
+      mode: 'pin',
+    },
+  ];
+  const mapping = compileFaceWarp(anchors, dimensions);
+  const unpinned = compileFaceWarp(anchors.slice(0, -1), dimensions);
+  const reversed = compileFaceWarp(anchors.slice().reverse(), dimensions);
+  const sameShapeAtHalfScale = compileFaceWarp(anchors, { width: 150, height: 110 });
+  const change = (x: number, y: number) => {
+    const point = mapping(x, y);
+    return { x: point.x - x, y: point.y - y };
+  };
+  for (let y = 20; y < 200; y += 3)
+    for (let x = 25; x < 190; x += 3) {
+      const a = change(x, y),
+        b = change(x + 1, y),
+        c = change(x, y + 1);
+      assert.ok(Math.hypot(a.x - b.x, a.y - b.y, a.x - c.x, a.y - c.y) <= 0.451);
+      const forward = mapping(x, y),
+        reorder = reversed(x, y);
+      assert.ok(Math.hypot(forward.x - reorder.x, forward.y - reorder.y) < 1e-9);
+      const smaller = sameShapeAtHalfScale(x / 2, y / 2);
+      assert.ok(Math.hypot(forward.x - 2 * smaller.x, forward.y - 2 * smaller.y) < 1e-9);
+    }
+  const x = 0.44 * dimensions.width,
+    y = 0.51 * dimensions.height;
+  const locked = mapping(x, y),
+    free = unpinned(x, y);
+  assert.ok(Math.hypot(locked.x - x, locked.y - y) < Math.hypot(free.x - x, free.y - y));
+  assert.deepEqual(mapping(260, 30), { x: 260, y: 30 });
+  assert.deepEqual(
+    compileFaceWarp(
+      anchors.map((a) => ({ ...a, strength: 0 })),
+      dimensions,
+    )(100, 100),
+    { x: 100, y: 100 },
+  );
+});
+
+test('an eye transform preserves the jaw displacement and shares a bounded inverse map', () => {
+  const jaw: FaceWarpAnchorV3[] = [
+    {
+      mode: 'push',
+      from: { x: 0.34, y: 0.67 },
+      to: { x: 0.39, y: 0.67 },
+      radius: 0.19,
+      strength: 1,
+    },
+    {
+      mode: 'push',
+      from: { x: 0.66, y: 0.67 },
+      to: { x: 0.61, y: 0.67 },
+      radius: 0.19,
+      strength: 1,
+    },
+  ];
+  const eye: FaceWarpAnchorV3 = {
+    mode: 'affine',
+    from: { x: 0.39, y: 0.42 },
+    to: { x: 0.39, y: 0.42 },
+    radius: 0.09,
+    strength: 1,
+    affine: { radiusY: 0.037, axis: -12, scaleX: 1.23, scaleY: 1.26, rotation: 6 },
+  };
+  const contour = compileFaceWarp(jaw, dimensions);
+  const feature = compileFaceWarp([eye], dimensions);
+  const combined = compileFaceWarp([...jaw, eye], dimensions);
+  const [jawX, jawY] = [jaw[0]!.from.x * dimensions.width, jaw[0]!.from.y * dimensions.height];
+  const [eyeX, eyeY] = [eye.from.x * dimensions.width + 7, eye.from.y * dimensions.height - 2];
+  assert.ok(contour(jawX, jawY).x < jawX - 5);
+  assert.ok(Math.abs(combined(jawX, jawY).x - contour(jawX, jawY).x) < 0.25);
+  assert.ok(feature(eyeX, eyeY).x < eyeX - 0.5);
+  assert.ok(Math.abs(combined(eyeX, eyeY).x - feature(eyeX, eyeY).x) < 0.25);
+  for (let y = 66; y < 175; y += 2) {
+    for (let x = 58; x < 240; x += 2) {
+      const a = combined(x, y);
+      const b = combined(x + 1, y);
+      const c = combined(x, y + 1);
+      const area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      assert.ok(area > 0.05, 'the combined field must preserve local orientation');
+    }
+  }
 });

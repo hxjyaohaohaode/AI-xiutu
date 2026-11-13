@@ -1,13 +1,14 @@
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { RubberSegment } from '../components/control-motion';
 import { PortraitModeSwitch } from './MakeupBrushRail';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
+  REFINED_PORTRAIT_ANALYSIS,
   portraitValues,
   applyPortraitValues,
   portraitMakeupColors,
@@ -160,11 +161,23 @@ export function PortraitControls({
       item.origin?.moduleId === 'portrait.basic.v2',
   );
   const hasManual = targetOperations.some((item) => item.origin?.moduleId === 'portrait.manual.v1');
+  const hasRefinedFace = targetOperations.some(
+    (item) => item.origin?.parameters?.portraitGeometry === 1,
+  );
+  const canUpdateFace =
+    recipe.schemaVersion === 4 &&
+    target?.kind === 'face' &&
+    hasAutomatic &&
+    state.analysis?.algorithmVersion === REFINED_PORTRAIT_ANALYSIS &&
+    !hasRefinedFace;
   const values = target ? portraitValues(recipe, target.id) : {};
-  const availability =
-    state.analysis && target
-      ? portraitToolAvailability(state.analysis, target.id, recipe.schemaVersion)
-      : [];
+  const availability = useMemo(
+    () =>
+      state.analysis && target
+        ? portraitToolAvailability(state.analysis, target.id, recipe.schemaVersion, recipe)
+        : [],
+    [state.analysis, target, recipe.schemaVersion, hasAutomatic, hasRefinedFace],
+  );
   const hasLegacyNeck =
     recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;
   async function createCutout() {
@@ -265,7 +278,8 @@ export function PortraitControls({
     }
   }
   function change(id: string, value: number, commit = false) {
-    if (!state.analysis || !target) return;
+    if (!state.analysis || !target || !analysisCurrent || editor.isLoading() || state.progress)
+      return;
     try {
       const latest = currentV3(editor);
       const nextValues = { ...portraitValues(latest, target.id), [id]: value };
@@ -277,6 +291,24 @@ export function PortraitControls({
       );
     } catch (error) {
       report(error instanceof Error ? error.message : '这个人物控制当前无法使用，请检查识别范围。');
+    }
+  }
+  function updateFace() {
+    if (!target || !state.analysis || !analysisCurrent || editor.isLoading() || state.progress)
+      return;
+    try {
+      const latest = currentV3(editor);
+      const next = applyPortraitValues(
+        latest,
+        state.analysis,
+        target.id,
+        portraitValues(latest, target.id),
+        undefined,
+        { upgradeFace: true },
+      );
+      apply(next, t('重新计算当前人物的美颜'), true);
+    } catch (failure) {
+      report(errorMessage(failure));
     }
   }
   function manualSkin() {
@@ -338,9 +370,11 @@ export function PortraitControls({
       onChange={(id) => {
         editor.commitCurrent(t('完成人像调节'));
         setCategory(id);
-        const next = state.analysis?.targets.find(
-          (person) => person.kind === (id === 'body' ? 'body' : 'face'),
-        );
+        const nextKind = id === 'body' ? 'body' : 'face';
+        const next =
+          state.analysis?.targets.find(
+            (person) => person.kind === nextKind && person.id === state.activeTargetId,
+          ) ?? state.analysis?.targets.find((person) => person.kind === nextKind);
         if (next) state.setTarget(next.id);
       }}
     />
@@ -640,7 +674,8 @@ export function PortraitControls({
                       condition?.available === false
                         ? (condition.reason ?? t('当前人物条件不足。'))
                         : tool.description,
-                    disabled: condition?.available === false,
+                    disabled:
+                      !analysisCurrent || !!state.progress || condition?.available === false,
                     onChange: (value: number) => change(tool.id, value),
                     onReset: () => change(tool.id, 0, true),
                   };
@@ -652,6 +687,15 @@ export function PortraitControls({
                 <div className="portrait-ownership-note">
                   {hasAutomatic && (
                     <>
+                      {canUpdateFace && (
+                        <button
+                          className="text-button"
+                          disabled={!analysisCurrent || !!state.progress}
+                          onClick={updateFace}
+                        >
+                          {t('重新计算当前人物的美颜')}
+                        </button>
+                      )}
                       <button
                         className="text-button"
                         onClick={detach}
@@ -667,6 +711,25 @@ export function PortraitControls({
               )}
               <MotionDetails className="advanced-disclosure">
                 <summary>{t('识别与手动修正说明')}</summary>
+                {target.kind === 'face' && (
+                  <div className="advanced-row portrait-review-actions">
+                    <button
+                      type="button"
+                      className="text-button"
+                      aria-pressed={state.showLandmarks}
+                      onClick={() => state.setShowLandmarks((show) => !show)}
+                    >
+                      {t(state.showLandmarks ? '隐藏人脸关键点' : '显示人脸关键点')}
+                    </button>
+                    <button
+                      type="button"
+                      className="text-button"
+                      onClick={() => state.focusFace(target.id)}
+                    >
+                      {t('放大检查当前人脸')}
+                    </button>
+                  </div>
+                )}
                 <p className="control-note">
                   {t(
                     '自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。',

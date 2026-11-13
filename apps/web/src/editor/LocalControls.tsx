@@ -21,6 +21,11 @@ import { ColorControls } from './ColorControls';
 import { MaskControls, maskLabels } from './MaskControls';
 import { currentV3, newMask, type EditScope, type InspectorController } from './advanced-model';
 import { editorFlowText } from './flow-copy';
+import {
+  portraitSelectionLabels,
+  preparePortraitSelection,
+  type PortraitSelectionKind,
+} from './portrait-selection';
 
 export function LocalControls({
   controller,
@@ -43,8 +48,10 @@ export function LocalControls({
 }) {
   const { editor, apply } = controller,
     recipe = currentV3(editor);
+  const portrait = editor.portrait;
   const [checked, setChecked] = useState<string[]>([]);
   const root = useRef<HTMLElement>(null);
+  const semanticPending = useRef(false);
   const selectedIds = checked.filter((id) => recipe.regionEdits.some((item) => item.id === id));
   const [family, setFamily] = useState<'light' | 'color' | 'curves' | 'detail'>('light');
   const region = recipe.regionEdits.find((item) => item.id === editor.activeRegionId);
@@ -70,6 +77,29 @@ export function LocalControls({
       )
     )
       select(next.id);
+  }
+  async function addSemantic(kind: PortraitSelectionKind) {
+    const source = editor.getSourceIdentity();
+    const frame = editor.getSourceFrame();
+    if (!frame || !portrait || portrait.progress || semanticPending.current) return;
+    semanticPending.current = true;
+    try {
+      const analysis = portrait.analysis ?? (await portrait.analyze());
+      if (
+        source !== editor.getSourceIdentity() ||
+        editor.isLoading() ||
+        !root.current ||
+        root.current.closest('[hidden], [inert]')
+      )
+        return;
+      if (!analysis) return;
+      const next = preparePortraitSelection(currentV3(editor), analysis, frame, kind, secureUuid());
+      if (apply(next.recipe, t(portraitSelectionLabels[kind]), true)) select(next.regionId);
+    } catch (failure) {
+      controller.report(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      semanticPending.current = false;
+    }
   }
   function patch(patch: Partial<AdjustmentRegionV3>, label: string, commit = true) {
     if (!region) return false;
@@ -179,11 +209,47 @@ export function LocalControls({
             disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
             onClick={() => add(type)}
           >
-            {type === 'radial' ? <Circle size={18} /> : type === 'linear' ? <Gradient size={18} /> : type === 'brush' ? <PaintBrush size={18} /> : type === 'polygon' ? <Polygon size={18} /> : <Eyedropper size={18} />}
+            {type === 'radial' ? (
+              <Circle size={18} />
+            ) : type === 'linear' ? (
+              <Gradient size={18} />
+            ) : type === 'brush' ? (
+              <PaintBrush size={18} />
+            ) : type === 'polygon' ? (
+              <Polygon size={18} />
+            ) : (
+              <Eyedropper size={18} />
+            )}
             <span>{t(maskLabels[type])}</span>
           </button>
         ))}
       </div>
+      {portrait && editor.sourceHash && (
+        <MotionDetails className="advanced-disclosure local-semantic-selection">
+          <summary>{t('按内容选区')}</summary>
+          <div className="tonal-tabs">
+            {(['subject', 'skin', 'hair', 'background'] as const).map((kind) => (
+              <button
+                type="button"
+                key={kind}
+                disabled={!!portrait.progress || recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
+                onClick={() => void addSemantic(kind)}
+              >
+                {t(portraitSelectionLabels[kind])}
+              </button>
+            ))}
+          </div>
+          {portrait.progress && (
+            <div className="advanced-row">
+              <span role="status">{t(portrait.progress)}</span>
+              <button type="button" className="text-button" onClick={portrait.cancel}>
+                {t('取消识别')}
+              </button>
+            </div>
+          )}
+          {portrait.error && <p role="status">{t(portrait.error)}</p>}
+        </MotionDetails>
+      )}
       {colorScope && (
         <div className="local-primary-controls">
           {headerTarget ? (

@@ -283,3 +283,28 @@ test('image layers use bounded resource identities and reject URL payloads and i
     /duplicate/,
   );
 });
+
+test('a viewport raster round-trips and interpolates only inside its source bounds', async () => {
+  const { createRasterMask, compileSelectionMaskV3, getSelectionBoundsV3 } =
+    await import('../src/index.js');
+  const dimensions = { width: 40, height: 20 };
+  const bounds = { x: 0.25, y: 0.25, width: 0.5, height: 0.5 };
+  const legacy = createRasterMask(2, 1, Uint8Array.of(255, 0));
+  const soft = createRasterMask(2, 1, Uint8Array.of(255, 0), false, {
+    sampling: 'bilinear-v1',
+    bounds,
+  });
+  const sample = compileSelectionMaskV3(soft, dimensions);
+  assert.equal(sample(0.1, 0.5), 0);
+  assert.equal(sample(0.375, 0.5), 1);
+  assert.equal(sample(0.5, 0.5), 0.5);
+  assert.equal(sample(0.625, 0.5), 0);
+  assert.equal(compileSelectionMaskV3(legacy, dimensions)(0.5, 0.5), 0);
+  assert.deepEqual(getSelectionBoundsV3(soft, dimensions), { ...bounds, width: 0.375 });
+  assert.throws(() =>
+    createRasterMask(2, 1, Uint8Array.of(255, 0), false, {
+      sampling: 'bilinear-v1',
+      bounds: { ...bounds, x: 0.75 },
+    }),
+  );
+});

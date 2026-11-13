@@ -213,10 +213,15 @@ async function verifyLocalMaskAndLiquify(input) {
     const localFrames = await page.evaluate(() => window.warpPaints);
     assert.ok(localFrames.length > 0);
     assert.ok(
-      localFrames.every(({ width, height }) => width === source.width && height === source.height),
+      localFrames.some(({ width, height }) => width * height <= 307_200),
+      'the changing local frame is bounded while the pointer is held',
     );
     await page.mouse.up();
     await settled();
+    assert.deepEqual(await canvas.evaluate((node) => [node.width, node.height]), [
+      source.width,
+      source.height,
+    ]);
     await outline.waitFor({ state: 'visible' });
     await selectedPanel.getByRole('button', { name: /^曝光数值/ }).click();
     await selectedPanel.getByRole('spinbutton', { name: '曝光精确数值' }).fill('0.64');
@@ -380,7 +385,8 @@ async function verifyLocalMaskAndLiquify(input) {
       width: source.width,
       height: source.height,
       exactSettledPixels: source.width * source.height,
-      localDragFramesAtNativeSize: localFrames.length,
+      localDragFrames: localFrames.length,
+      localDragPixels: [...new Set(localFrames.map(({ width, height }) => width * height))],
       repairAfterWarp: {
         keptWarpWhenSwitching: true,
         directBrush: true,

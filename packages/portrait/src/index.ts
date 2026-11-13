@@ -1,4 +1,5 @@
 export type * from './types.js';
+export { REFINED_PORTRAIT_ANALYSIS } from './types.js';
 export { PORTRAIT_TOOLS } from './catalog.js';
 export {
   center,

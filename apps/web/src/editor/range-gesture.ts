@@ -72,6 +72,7 @@ export function resolveRangeNumber({
 export class RangeGesture {
   private gesture:
     | { kind: 'pointer'; id: number; initial: number; latest: number }
+    | { kind: 'wheel'; initial: number; latest: number }
     | { kind: 'keyboard'; keys: Set<string>; initial: number; latest: number }
     | null = null;
 
@@ -87,11 +88,18 @@ export class RangeGesture {
     return true;
   }
   beginKey(key: string, value: number): boolean {
-    if (!RANGE_KEYS.has(key) || this.gesture?.kind === 'pointer') return false;
+    if (!RANGE_KEYS.has(key) || (this.gesture && this.gesture.kind !== 'keyboard')) return false;
     if (!this.gesture)
       this.gesture = { kind: 'keyboard', keys: new Set(), initial: value, latest: value };
     this.gesture.keys.add(key);
     return true;
+  }
+  beginWheel(value: number) {
+    if (!this.gesture) this.gesture = { kind: 'wheel', initial: value, latest: value };
+    return this.gesture.kind === 'wheel';
+  }
+  endWheel(): RangeCompletion | null {
+    return this.gesture?.kind === 'wheel' ? this.finish('commit') : null;
   }
   change(value: number) {
     if (this.gesture && Number.isFinite(value)) this.gesture.latest = value;

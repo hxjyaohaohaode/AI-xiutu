@@ -313,3 +313,29 @@ test('guided-v2 treats protected and exterior pixels as zero-weight samples at e
       assert.deepEqual(renderEditorRecipeTiled(a, recipe, { tileSize: 17 }), ra);
     }
 });
+
+test('guided-v5 fades uneven skin tone without removing pore contrast or drawing color across protection', () => {
+  const width = 132;
+  const height = 76;
+  const image: RGBAImage = { width, height, data: new Uint8ClampedArray(width * height * 4) };
+  const value = (x: number) => Math.round(123 + 11 * Math.cos(((x - 20) * Math.PI) / 14));
+  const at = (x: number, y: number) => (y * width + x) * 4;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const base = (x < 98 ? value(x) : 66) + ((x + y) % 2 ? -3 : 3);
+      image.data.set([base + 21, base, base - 17, 255], at(x, y));
+    }
+  }
+  const mask = createRasterMask(1, 1, Uint8Array.of(255));
+  const protection = createRasterMask(4, 1, Uint8Array.of(0, 0, 0, 255));
+  const recipe = region({ algorithm: 'guided-v5', mask, protection, radius: 0.1, smoothing: 100 });
+  const edited = renderEditorRecipe(image, recipe);
+  const green = (sample: RGBAImage, x: number, y: number) => sample.data[at(x, y) + 1]!;
+  const average = (sample: RGBAImage, x: number) =>
+    (green(sample, x, 35) + green(sample, x, 36)) / 2;
+  const contrast = (sample: RGBAImage) => average(sample, 48) - average(sample, 62);
+  assert.ok(contrast(edited) < contrast(image) - 2);
+  assert.ok(Math.abs(green(edited, 48, 35) - green(edited, 48, 36)) >= 5);
+  assert.deepEqual(edited.data.slice(at(102, 35), at(108, 35)), image.data.slice(at(102, 35), at(108, 35)));
+  assert.deepEqual(renderEditorRecipeTiled(image, recipe, { tileSize: 17 }), edited);
+});

@@ -131,8 +131,9 @@ function readTarget(input: unknown): PortraitTarget {
   let featureMasks: PortraitTarget['featureMasks'];
   if (r.featureMasks !== undefined) {
     if (r.kind !== 'face') throw new Error('身形目标不能携带面部蒙版。');
-    const raw = object(r.featureMasks, [], ['teeth', 'accessories', 'relight']);
+    const raw = object(r.featureMasks, [], ['skin', 'teeth', 'accessories', 'relight']);
     featureMasks = {};
+    if (raw.skin !== undefined) featureMasks.skin = parseSelectionMaskV3(raw.skin);
     if (raw.teeth !== undefined) featureMasks.teeth = parseSelectionMaskV3(raw.teeth);
     if (raw.accessories !== undefined)
       featureMasks.accessories = parseSelectionMaskV3(raw.accessories);
@@ -218,4 +219,21 @@ export function validatePortraitAnalysis(
     segmentation,
     warnings: array(r.warnings, 0, 20).map((w) => string(w, 500)),
   };
+}
+
+const admittedAnalyses = new WeakSet<PortraitAnalysis>();
+
+export function freezePortraitAnalysis(analysis: PortraitAnalysis) {
+  function freeze(value: unknown) {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
+    for (const child of Object.values(value)) freeze(child);
+    Object.freeze(value);
+  }
+  freeze(analysis);
+  admittedAnalyses.add(analysis);
+  return analysis;
+}
+
+export function portraitAnalysisForEditing(input: PortraitAnalysis) {
+  return admittedAnalyses.has(input) ? input : validatePortraitAnalysis(input);
 }

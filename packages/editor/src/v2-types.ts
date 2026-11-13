@@ -98,6 +98,10 @@ export interface RasterMaskV2 {
   height: number;
   /** Alternating positive run length and byte weight, covering width*height cells. */
   runs: number[];
+  /** Old masks omit this and retain nearest-cell sampling. */
+  sampling?: 'bilinear-v1';
+  /** Source-normalized mask viewport. Full frame when omitted. */
+  bounds?: { x: number; y: number; width: number; height: number };
   invert: boolean;
 }
 export interface ColorRangeMaskV2 {

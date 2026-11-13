@@ -129,9 +129,15 @@ export function getSelectionBoundsV3(mask: SelectionMaskV3, dimensions: Dimensio
         }
         at = end;
       }
-      return bottom
-        ? box(left / mask.width, top / mask.height, right / mask.width, bottom / mask.height)
-        : empty;
+      if (!bottom) return empty;
+      const frame = mask.bounds ?? full;
+      const pad = mask.sampling === 'bilinear-v1' ? 0.5 : 0;
+      return box(
+        frame.x + (Math.max(0, left - pad) * frame.width) / mask.width,
+        frame.y + (Math.max(0, top - pad) * frame.height) / mask.height,
+        frame.x + (Math.min(mask.width, right + pad) * frame.width) / mask.width,
+        frame.y + (Math.min(mask.height, bottom + pad) * frame.height) / mask.height,
+      );
     }
     case 'compound': {
       if (mask.operation === 'subtract') return getSelectionBoundsV3(mask.masks[0]!, dimensions);

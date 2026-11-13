@@ -33,6 +33,7 @@ import type {
   AdjustmentRegionV3Overrides,
   RegionGroupV3,
   FineTransformV3,
+  FaceWarpAnchorV3,
   OpticsV3,
   SelectionMaskV3,
   PaintLayerV3,
@@ -525,9 +526,15 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
           let sampling: PaintStrokeV3['sampling'];
           let material: PaintStrokeV3['material'];
           if (Object.hasOwn(s, 'material')) {
-            const data = record(s.material, ['algorithm', 'finish', 'saturation', 'blendMode'], `${q}.material`, errors);
+            const data = record(
+              s.material,
+              ['algorithm', 'finish', 'saturation', 'blendMode'],
+              `${q}.material`,
+              errors,
+            );
             if (s.mode !== 'paint') errors.push(`${q}.material: requires paint mode`);
-            if (data.algorithm !== 'pigment-v1') errors.push(`${q}.material.algorithm: unsupported`);
+            if (data.algorithm !== 'pigment-v1')
+              errors.push(`${q}.material.algorithm: unsupported`);
             if (!['matte', 'satin', 'shimmer', 'metallic'].includes(String(data.finish)))
               errors.push(`${q}.material.finish: invalid`);
             material = {
@@ -674,6 +681,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'algorithm') ? ['algorithm'] : []),
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'resampling') ? ['resampling'] : []),
             ...(v && typeof v === 'object' && Object.hasOwn(v, 'guardId') ? ['guardId'] : []),
+            ...(v && typeof v === 'object' && Object.hasOwn(v, 'anchors') ? ['anchors'] : []),
           ],
           p,
           errors,
@@ -686,7 +694,10 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       if (
         restoring
           ? r.algorithm !== 'restore-v1'
-          : Object.hasOwn(r, 'algorithm') && r.algorithm !== 'flow-v1' && r.algorithm !== 'flow-v2'
+          : Object.hasOwn(r, 'algorithm') &&
+            r.algorithm !== 'flow-v1' &&
+            r.algorithm !== 'flow-v2' &&
+            r.algorithm !== 'face-field-v1'
       )
         errors.push(`${p}.algorithm: unsupported warp algorithm`);
       if (Object.hasOwn(r, 'resampling') && r.resampling !== 'bounded-cubic-v1')
@@ -695,13 +706,65 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         ? identifier(r.guardId, `${p}.guardId`, errors)
         : undefined;
       if (guardId && !guardIds.has(guardId)) errors.push(`${p}.guardId: unknown warp guard`);
+      const faceField = r.algorithm === 'face-field-v1';
+      if (faceField && r.mode !== 'push') errors.push(`${p}.mode: face field requires push`);
+      if (!faceField && r.anchors !== undefined)
+        errors.push(`${p}.anchors: requires face-field-v1`);
+      const anchors = faceField
+        ? arrayData(r.anchors, 1, 112, `${p}.anchors`, errors).map(
+            (value, index): FaceWarpAnchorV3 => {
+              const path = `${p}.anchors[${index}]`;
+              const a = record(value, ['from', 'to', 'radius', 'strength', 'mode'], path, errors, [
+                'affine',
+              ]);
+              if (!['push', 'pinch', 'bulge', 'twirl', 'pin', 'affine'].includes(String(a.mode)))
+                errors.push(`${path}.mode: unsupported face constraint`);
+              let affine: FaceWarpAnchorV3['affine'];
+              if (a.mode === 'affine') {
+                const q = record(
+                  a.affine,
+                  ['radiusY', 'axis', 'scaleX', 'scaleY', 'rotation'],
+                  path + '.affine',
+                  errors,
+                );
+                affine = {
+                  radiusY: number(q.radiusY, 0.000001, 0.75, path + '.affine.radiusY', errors),
+                  axis: number(q.axis, -180, 180, path + '.affine.axis', errors),
+                  scaleX: number(q.scaleX, 0.75, 1.3, path + '.affine.scaleX', errors),
+                  scaleY: number(q.scaleY, 0.75, 1.3, path + '.affine.scaleY', errors),
+                  rotation: number(q.rotation, -22, 22, path + '.affine.rotation', errors),
+                };
+              } else if (a.affine !== undefined)
+                errors.push(path + '.affine: requires affine mode');
+              return {
+                ...(affine ? { affine } : {}),
+                from: point(a.from, `${path}.from`, errors),
+                to: point(a.to, `${path}.to`, errors),
+                radius: number(a.radius, 0.000001, 0.75, `${path}.radius`, errors),
+                strength: number(
+                  a.strength,
+                  a.mode === 'pin' ? 0 : -1,
+                  1,
+                  `${path}.strength`,
+                  errors,
+                ),
+                mode: a.mode as FaceWarpAnchorV3['mode'],
+              };
+            },
+          )
+        : undefined;
+
       return {
         id,
-        ...(r.algorithm === 'flow-v1' || r.algorithm === 'flow-v2' || r.algorithm === 'restore-v1'
+        ...(r.algorithm === 'flow-v1' ||
+        r.algorithm === 'flow-v2' ||
+        r.algorithm === 'face-field-v1' ||
+        r.algorithm === 'restore-v1'
           ? { algorithm: r.algorithm }
           : {}),
         ...(Object.hasOwn(r, 'resampling') ? { resampling: 'bounded-cubic-v1' as const } : {}),
         ...(guardId ? { guardId } : {}),
+        ...(anchors ? { anchors } : {}),
         mode: r.mode as WarpStrokeV3['mode'],
         from: point(r.from, `${p}.from`, errors),
         to: point(r.to, `${p}.to`, errors),
@@ -712,6 +775,8 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
       };
     },
   );
+  if (warpStrokes.filter((stroke) => stroke.anchors).length > 8)
+    errors.push('warp.strokes: at most eight face fields');
   // Extra compact strokes support multiple faces within the old maximum aggregate brush support.
   if (
     warpStrokes.length > 64 &&

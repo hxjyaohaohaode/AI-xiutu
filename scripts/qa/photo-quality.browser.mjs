@@ -13,6 +13,7 @@ import {
   createRecipeV4,
   renderEditorRecipe,
   renderEditorRecipeTiled,
+  compileEditorCoordinateMap,
   renderCutout,
   compileSelectionMaskV3,
   renderPhotoRestoration,
@@ -24,6 +25,7 @@ import {
   validatePortraitAnalysis,
   applyPortraitValues,
   portraitToolAvailability,
+  REFINED_PORTRAIT_ANALYSIS,
 } from '@ai-xiutu/portrait';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
@@ -178,9 +180,24 @@ async function checkLocalCutout(browser, origin, image, view) {
     const beauty = page
       .getByRole('navigation', { name: '编辑工具', exact: true })
       .getByRole('button', { name: '美颜', exact: true });
-    if ((await beauty.getAttribute('aria-pressed')) !== 'true') await beauty.click();
-    await page.getByRole('button', { name: '识别照片中的人物', exact: true }).click();
-    await page.locator('summary').filter({ hasText: /^选区与抠图$/ }).click();
+    const detect = page.getByRole('button', { name: '识别照片中的人物', exact: true });
+    await page.locator('.canvas-stage[aria-busy="false"] .image-frame canvas').first().waitFor();
+    if (!(await detect.isVisible())) await beauty.click();
+    try {
+      await detect.click();
+    } catch (error) {
+      throw new Error(
+        'Portrait controls are unavailable in the ' +
+          view.id +
+          ' cutout layout: ' +
+          pageErrors.join(' | '),
+        { cause: error },
+      );
+    }
+    await page
+      .locator('summary')
+      .filter({ hasText: /^选区与抠图$/ })
+      .click();
     const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
     await button.waitFor({ timeout: 60000 });
     if (view.fine) {
@@ -372,6 +389,7 @@ try {
         Buffer.concat([Buffer.from(`${image.width}x${image.height}:srgb-rgba8:`), decoded.data]),
       ),
     };
+    const started = performance.now();
     const result = await page.evaluate(
       async (input) => {
         const { default: Worker } = await import('/src/editor/portrait.worker.ts?worker');
@@ -417,7 +435,18 @@ try {
       { ...frame, bytes: decoded.data.toString('base64') },
     );
     const analysis = validatePortraitAnalysis(result, frame);
+    assert.equal(analysis.algorithmVersion, REFINED_PORTRAIT_ANALYSIS);
+    if (source.name === 'basketball')
+      assert.ok(
+        analysis.targets.some(({ kind }) => kind === 'face'),
+        'preserve the distant face',
+      );
+    if (source.name === 'portrait-hopper')
+      assert.ok(
+        analysis.targets.some((target) => target.featureMasks?.skin?.sampling === 'bilinear-v1'),
+      );
     report.photos.push({
+      analysisMs: performance.now() - started,
       ...source,
       frame,
       targets: analysis.targets.map((t) => ({
@@ -428,11 +457,16 @@ try {
       warnings: analysis.warnings,
     });
     const beautyTiles = [{ label: 'Original', image }];
+    const shapeTiles = [{ label: 'Original', image }];
     for (const target of analysis.targets.filter((t) => t.kind === 'face')) {
       const available = new Map(
         portraitToolAvailability(analysis, target.id, 4).map((t) => [t.id, t]),
       );
-      if (target.featureMasks?.accessories) {
+      if (
+        target.featureMasks?.accessories &&
+        available.get('eyeSize')?.available &&
+        available.get('eyeSpacing')?.available
+      ) {
         const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, {
           eyeSize: 90,
           eyeSpacing: -30,
@@ -474,11 +508,160 @@ try {
           ]);
         }
       }
+      if (available.get('faceSlim')?.available && target.featureMasks?.skin) {
+        assert.equal(target.landmarks.length, 478);
+        const slim = applyPortraitValues(createRecipeV4(), analysis, target.id, { faceSlim: 55 });
+        assert.equal(slim.warp.strokes.length, 1);
+        const field = slim.warp.strokes[0];
+        assert.equal(field.algorithm, 'face-field-v1');
+        const moving = field.anchors.filter((point) => point.mode !== 'pin');
+        assert.ok(moving.length >= 3);
+        assert.ok(
+          moving.every((anchor) =>
+            target.landmarks.some(
+              (point) => point.x === anchor.from.x && point.y === anchor.from.y,
+            ),
+          ),
+          'face slimming follows observed mesh landmarks',
+        );
+        const shaped = renderEditorRecipe(image, slim);
+        assert.deepEqual(renderEditorRecipeTiled(image, slim, { tileSize: 61 }), shaped);
+        assert.notDeepEqual(
+          shaped.data,
+          image.data,
+          'a nonzero shape produces actual changed pixels',
+        );
+        report.cases.push({
+          photo: source.name,
+          target: target.id,
+          tool: 'faceSlim',
+          state: 'passed',
+          anchors: moving.length,
+          mseChange: mse(image, shaped),
+        });
+        if (
+          target === analysis.targets.find((item) => item.kind === 'face') &&
+          ['mediapipe-portrait', 'astronaut'].includes(source.name)
+        ) {
+          const forward = (params) => {
+            const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, params);
+            return compileEditorCoordinateMap(image, recipe, image).toContentOutput;
+          };
+          const distance = (a, b) =>
+            Math.hypot((a.x - b.x) * image.width, (a.y - b.y) * image.height);
+          const landmarks = target.landmarks;
+          const ratio = (map, a, b) =>
+            distance(map(landmarks[a]), map(landmarks[b])) / distance(landmarks[a], landmarks[b]);
+          const contour = { faceSlim: 70, vFace: 70 };
+          const combined = forward({ ...contour, eyeSize: 65, lipSize: 45, smooth: 50 });
+          const contourOnly = forward(contour);
+          const singleV = forward({ vFace: 70 });
+          const bigEyes = forward({ eyeSize: 65 });
+          const cheek = ratio(combined, 234, 454);
+          const jaw = ratio(combined, 150, 379);
+          const aperture = ratio(combined, 159, 145);
+          assert.ok(cheek < 0.97 && Math.abs(cheek - ratio(contourOnly, 234, 454)) < 0.008);
+          assert.ok(jaw < 0.96 && Math.abs(jaw - ratio(singleV, 150, 379)) < 0.02);
+          assert.ok(aperture > 1.06 && Math.abs(aperture - ratio(bigEyes, 159, 145)) < 0.02);
+          const mouth = ratio(contourOnly, 61, 291);
+          assert.ok(Math.abs(mouth - 1) < 0.005);
+          report.cases.push({
+            photo: source.name,
+            target: target.id,
+            tool: 'combined-feature-stability',
+            state: 'passed',
+            cheek,
+            jaw,
+            aperture,
+            mouth,
+          });
+        }
+        if (shapeTiles.length === 1) {
+          const values = { faceSlim: 65, smooth: 65, skinLight: 28 };
+          for (const id of [
+            'vFace',
+            'faceNarrow',
+            'jaw',
+            'noseWidth',
+            'eyeSize',
+            'eyeWidth',
+            'lowerLip',
+          ])
+            if (available.get(id)?.available) values[id] = 55;
+          const baseline = applyPortraitValues(
+            createRecipeV4(),
+            {
+              ...analysis,
+              algorithmVersion: 'mediapipe-v1-selfie256',
+            },
+            target.id,
+            values,
+          );
+          const refined = applyPortraitValues(createRecipeV4(), analysis, target.id, values);
+          const upgraded = applyPortraitValues(baseline, analysis, target.id, values, undefined, {
+            upgradeFace: true,
+          });
+          assert.deepEqual(
+            renderEditorRecipe(image, upgraded),
+            renderEditorRecipe(image, refined),
+            'a deliberate upgrade recompiles the automatic settings through the new path',
+          );
+          assert.equal(upgraded.retouch[0]?.algorithm, 'guided-v5');
+          assert.throws(
+            () =>
+              applyPortraitValues(
+                refined,
+                { ...analysis, algorithmVersion: 'mediapipe-v1-selfie256' },
+                target.id,
+                values,
+              ),
+            /重新识别/,
+          );
+          const output = renderEditorRecipe(image, refined);
+          assert.deepEqual(renderEditorRecipeTiled(image, refined, { tileSize: 61 }), output);
+          assert.equal(refined.warp.strokes.length, 1);
+          const { toContent } = compileEditorCoordinateMap(image, refined, image);
+          const reference = compileEditorCoordinateMap(image, baseline, image);
+          const faceWidth = target.bounds.width * image.width;
+          function largestDisplacement(map) {
+            return (
+              Math.max(
+                ...target.landmarks.map((point) => {
+                  const q = map(point);
+                  return Math.hypot((point.x - q.x) * image.width, (point.y - q.y) * image.height);
+                }),
+              ) / faceWidth
+            );
+          }
+          const after = largestDisplacement(toContent);
+          const before = largestDisplacement(reference.toContent);
+          assert.ok(
+            after < 0.15,
+            'combined controls must keep landmark displacement within the face',
+          );
+          assert.ok(after > 0.004, 'combined controls must still be visible');
+          report.cases.push({
+            photo: source.name,
+            target: target.id,
+            tool: 'coordinated-face',
+            state: 'passed',
+            beforeRelativeDisplacement: before,
+            afterRelativeDisplacement: after,
+            movingAnchors: refined.warp.strokes[0].anchors.filter((anchor) => anchor.mode !== 'pin')
+              .length,
+          });
+          shapeTiles.push(
+            { label: 'Previous combined retouch', image: renderEditorRecipe(image, baseline) },
+            { label: 'Coordinated retouch', image: output },
+          );
+        }
+      }
       for (const tool of [
         'smooth',
         'texture',
         'wrinkles',
         'even',
+        'skinLight',
         'skinShine',
         'skinBlemish',
         'skinColorSpot',
@@ -494,7 +677,7 @@ try {
           });
           continue;
         }
-        const signed = ['texture', 'teethTone', 'meshLight'].includes(tool);
+        const signed = ['texture', 'skinLight', 'teethTone', 'meshLight'].includes(tool);
         for (const value of signed ? [-100, -50, 0, 50, 100] : [0, 25, 50, 75, 100]) {
           const recipe = applyPortraitValues(createRecipeV4(), analysis, target.id, {
               [tool]: value,
@@ -520,6 +703,7 @@ try {
       }
     }
     await sheet(`${source.name}-beauty`, beautyTiles);
+    if (shapeTiles.length > 1) await sheet(`${source.name}-shape`, shapeTiles);
     if (analysis.segmentation?.subject) {
       const tiles = [{ label: 'Original', image }];
       for (const algorithm of ['guided-v4', 'guided-v5']) {

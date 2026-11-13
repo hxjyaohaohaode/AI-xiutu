@@ -1,7 +1,7 @@
 import { sourceFrameSchema, type AnalysisAdapter, type SourceFrame } from '@ai-xiutu/contracts';
 import type { RGBAImage } from '@ai-xiutu/editor';
 import type { PortraitAnalysis } from './types.js';
-import { validatePortraitAnalysis } from './validation.js';
+import { freezePortraitAnalysis, validatePortraitAnalysis } from './validation.js';
 
 export interface PortraitAnalysisInput {
   image: RGBAImage;
@@ -66,7 +66,7 @@ export function createPortraitAnalysisAdapter(
       const checked = validatePortraitAnalysis(result, frame);
       if (checked.provider !== driver.id || checked.algorithmVersion !== driver.algorithmVersion)
         throw new Error('分析模型版本与已注册适配器不一致。');
-      return checked;
+      return freezePortraitAnalysis(checked);
     },
   };
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPortraitAnalysisAdapter,
+  REFINED_PORTRAIT_ANALYSIS,
   validatePortraitAnalysis,
   type PortraitAnalysis,
 } from '@ai-xiutu/portrait';
@@ -29,6 +30,9 @@ export function usePortraitAnalysis(
 ) {
   const [analysis, setAnalysis] = useState<PortraitAnalysis | null>(null),
     [activeTargetId, setTarget] = useState<string | null>(null);
+  const [showLandmarks, setShowLandmarks] = useState(false);
+  const [faceFocus, setFaceFocus] = useState<{ id: string } | null>(null);
+  const focusFace = useCallback((id: string) => setFaceFocus({ id }), []);
   const [progress, setProgress] = useState<string | null>(null),
     [error, setError] = useState<string | null>(null);
   const worker = useRef<Worker | null>(null),
@@ -61,6 +65,8 @@ export function usePortraitAnalysis(
     matte.current = {};
     setAnalysis(null);
     setTarget(null);
+    setShowLandmarks(false);
+    setFaceFocus(null);
     setError(null);
     return stop;
   }, [source, stop]);
@@ -79,22 +85,9 @@ export function usePortraitAnalysis(
         60000,
       );
       try {
-        const manifestResponse = await fetch('/vision/manifest.json', {
-          signal: abort.signal,
-          credentials: 'same-origin',
-        });
-        if (!manifestResponse.ok || !manifestResponse.headers.get('content-type')?.includes('json'))
-          throw new Error('本地人像模型尚未安装。仍可使用手动局部、绘制与液化。');
-        const manifest = await manifestResponse.json();
-        if (
-          manifest.schemaVersion !== 1 ||
-          manifest.sdkVersion !== '1.2.2' ||
-          manifest.algorithmVersion !== ALGORITHM
-        )
-          throw new Error('人像模型资源版本与当前程序不一致。');
         const adapter = createPortraitAnalysisAdapter({
           id: 'mediapipe',
-          algorithmVersion: ALGORITHM,
+          algorithmVersion: REFINED_PORTRAIT_ANALYSIS,
           configured: true,
           analyze: async (input, options) =>
             new Promise((resolve, reject) => {
@@ -141,15 +134,19 @@ export function usePortraitAnalysis(
                 cleanup();
                 reject(new Error('本地分析进程未能运行，请检查模型与 WASM 资源。'));
               };
-              w.postMessage({
-                id,
-                image: input.image,
-                width: options.frame.width,
-                height: options.frame.height,
-                contentHash: input.contentHash,
-                body: input.includeBody,
-                segmentation: input.includeSegmentation,
-              });
+              const pixels = new Uint8ClampedArray(input.image.data);
+              w.postMessage(
+                {
+                  id,
+                  image: { ...input.image, data: pixels },
+                  width: options.frame.width,
+                  height: options.frame.height,
+                  contentHash: input.contentHash,
+                  body: input.includeBody,
+                  segmentation: input.includeSegmentation,
+                },
+                [pixels.buffer],
+              );
             }),
         });
         const result = await adapter.analyze(
@@ -167,7 +164,11 @@ export function usePortraitAnalysis(
         );
         if (request.current !== id || sourceRef.current !== sourceAtStart) return;
         setAnalysis(result);
-        setTarget(result.targets[0]?.id ?? null);
+        setTarget((selected) =>
+          result.targets.some((target) => target.id === selected)
+            ? selected
+            : (result.targets[0]?.id ?? null),
+        );
         if (!result.targets.length && !result.segmentation?.subject)
           setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
         return result;
@@ -250,7 +251,11 @@ export function usePortraitAnalysis(
         height: dimensions.height,
         contentHash,
       });
-      if (result.provider !== 'mediapipe' || result.algorithmVersion !== ALGORITHM)
+      if (
+        result.provider !== 'mediapipe' ||
+        (result.algorithmVersion !== ALGORITHM &&
+          result.algorithmVersion !== REFINED_PORTRAIT_ANALYSIS)
+      )
         throw new Error('人物标注的关键点协议不受当前版本支持，请先通过对应分析适配器转换。');
       stop();
       setError(null);
@@ -272,6 +277,10 @@ export function usePortraitAnalysis(
     analysis,
     activeTargetId,
     setTarget,
+    showLandmarks,
+    setShowLandmarks,
+    faceFocus,
+    focusFace,
     progress,
     error,
     analyze,

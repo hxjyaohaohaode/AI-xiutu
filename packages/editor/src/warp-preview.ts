@@ -57,7 +57,30 @@ export class WarpPreviewCache {
       projective: _projective,
       ...prefix
     } = recipe as RecipeV4;
-    const signature = JSON.stringify([prefix, options.maxPixels, options.tileSize, tiled]);
+    // Names and ownership are editor metadata. Changing a portrait strength
+    // updates provenance on all its operations even when their pixels are identical.
+    const pixelsOnly = <T extends { origin?: unknown; name?: string }>({
+      origin,
+      name,
+      ...pixels
+    }: T) => pixels;
+    const signature = JSON.stringify([
+      {
+        ...prefix,
+        regionEdits: prefix.regionEdits.map(pixelsOnly),
+        paintLayers: prefix.paintLayers.map(pixelsOnly),
+        imageLayers: prefix.imageLayers.map(pixelsOnly),
+        ...('healing' in prefix
+          ? {
+              healing: prefix.healing.map(pixelsOnly),
+              retouch: prefix.retouch.map(pixelsOnly),
+            }
+          : {}),
+      },
+      options.maxPixels,
+      options.tileSize,
+      tiled,
+    ]);
     const auxiliary = prefix.imageLayers
       .filter((layer) => layer.enabled && layer.opacity > 0)
       .map((layer) => options.images?.get(layer.sourceId));

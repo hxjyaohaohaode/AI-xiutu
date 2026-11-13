@@ -134,19 +134,47 @@ export function compileSelectionMask(
       ends[i] = end;
       weights[i] = mask.runs[i * 2 + 1]!;
     }
-    sample = (x, y) => {
-      const cellX = Math.min(mask.width - 1, Math.floor(x * mask.width));
-      const cellY = Math.min(mask.height - 1, Math.floor(y * mask.height));
-      const pixel = cellY * mask.width + cellX;
-      let low = 0,
-        high = count - 1;
-      while (low < high) {
-        const middle = (low + high) >>> 1;
-        if (pixel < ends[middle]!) high = middle;
-        else low = middle + 1;
-      }
-      return weights[low]! / 255;
-    };
+    const window = mask.bounds ?? { x: 0, y: 0, width: 1, height: 1 };
+    if (mask.sampling === 'bilinear-v1') {
+      const pixels = new Uint8Array(mask.width * mask.height);
+      for (let i = 0; i < count; i++) pixels.fill(weights[i]!, i ? ends[i - 1]! : 0, ends[i]!);
+      sample = (x, y) => {
+        const u = (x - window.x) / window.width;
+        const v = (y - window.y) / window.height;
+        if (u < 0 || v < 0 || u > 1 || v > 1) return 0;
+        const px = Math.max(0, Math.min(mask.width - 1, u * mask.width - 0.5));
+        const py = Math.max(0, Math.min(mask.height - 1, v * mask.height - 0.5));
+        const left = Math.floor(px),
+          top = Math.floor(py);
+        const right = Math.min(left + 1, mask.width - 1);
+        const bottom = Math.min(top + 1, mask.height - 1);
+        const fx = px - left,
+          fy = py - top;
+        const a =
+          pixels[top * mask.width + left]! * (1 - fx) + pixels[top * mask.width + right]! * fx;
+        const b =
+          pixels[bottom * mask.width + left]! * (1 - fx) +
+          pixels[bottom * mask.width + right]! * fx;
+        return (a + (b - a) * fy) / 255;
+      };
+    } else {
+      sample = (x, y) => {
+        x = (x - window.x) / window.width;
+        y = (y - window.y) / window.height;
+        if (x < 0 || y < 0 || x > 1 || y > 1) return 0;
+        const cellX = Math.min(mask.width - 1, Math.floor(x * mask.width));
+        const cellY = Math.min(mask.height - 1, Math.floor(y * mask.height));
+        const pixel = cellY * mask.width + cellX;
+        let low = 0,
+          high = count - 1;
+        while (low < high) {
+          const middle = (low + high) >>> 1;
+          if (pixel < ends[middle]!) high = middle;
+          else low = middle + 1;
+        }
+        return weights[low]! / 255;
+      };
+    }
   } else {
     if (!source) throw new RecipeValidationError(['color-range: original source RGBA is required']);
     validateTiledDimensions(source);
@@ -228,6 +256,7 @@ export function createRasterMask(
   height: number,
   weights: Uint8Array | Uint8ClampedArray,
   invert = false,
+  options: Pick<RasterMaskV2, 'sampling' | 'bounds'> = {},
 ): RasterMaskV2 {
   validateTiledDimensions({ width, height });
   if (!(weights instanceof Uint8Array) && !(weights instanceof Uint8ClampedArray))
@@ -251,5 +280,12 @@ export function createRasterMask(
     }
   }
   runs.push(count, last);
-  return parseSelectionMask({ type: 'raster', width, height, runs, invert }) as RasterMaskV2;
+  return parseSelectionMask({
+    type: 'raster',
+    width,
+    height,
+    runs,
+    invert,
+    ...options,
+  }) as RasterMaskV2;
 }

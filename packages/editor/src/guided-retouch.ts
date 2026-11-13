@@ -1,7 +1,7 @@
 import type { RGBAImage, RenderOptions } from './types.js';
 import type { RetouchRegionV4 } from './v4-types.js';
 import type { SpatialRegionV4 } from './v4-spatial.js';
-import { checkV3 } from './v3-pixels.js';
+import { checkV3, clamp01 } from './v3-pixels.js';
 import { linearToSrgb, srgbToLinear } from './engine.js';
 
 /** Separable running sums: O(pixels), independent of radius, no full integral image. */
@@ -55,7 +55,8 @@ export function guidedRetouch(
   options: RenderOptions,
 ): RGBAImage {
   const radius = Math.max(1, Math.round(op.radius * Math.min(image.width, image.height)));
-  const robust = op.algorithm === 'guided-v4';
+  const adaptive = op.algorithm === 'guided-v5';
+  const robust = adaptive || op.algorithm === 'guided-v4';
   const detailV3 = robust || op.algorithm === 'guided-v3';
   const respectMask = detailV3 || op.algorithm === 'guided-v2';
   // q depends on averages of local coefficients: the real footprint is 2r.
@@ -119,7 +120,7 @@ export function guidedRetouch(
   }
   const stats =
     !robust || op.smoothing || op.texture || op.uniformity || op.shine
-      ? guidance(radius, respectMask ? 0.0012 : 0.0025)
+      ? guidance(radius, adaptive ? 0.0018 : respectMask ? 0.0012 : 0.0025)
       : null;
   const low = !robust || op.smoothing || op.texture ? stats!.filter(guide) : guide,
     delta = new Float32Array(size);
@@ -138,6 +139,26 @@ export function guidedRetouch(
     [distance, -distance],
   ] as const;
   const localReflection = detailV3 && op.shine > 0 ? new Float32Array(size) : null;
+  const roughnessRadius = Math.max(1, Math.round(radius / 2));
+  const surfaceRoughness =
+    adaptive && op.smoothing
+      ? box(
+          Float32Array.from(guide, (value, i) => {
+            const x = i % width,
+              y = Math.floor(i / width);
+            if (
+              alpha[i]! < 0.15 ||
+              x === 0 ||
+              y === 0 ||
+              alpha[i - 1]! < 0.15 ||
+              alpha[i - width]! < 0.15
+            )
+              return 0;
+            return (Math.abs(value - guide[i - 1]!) + Math.abs(value - guide[i - width]!)) / 2;
+          }),
+          roughnessRadius,
+        )
+      : null;
   if (localReflection) {
     const light = new Float32Array(size);
     for (let at = 0; at < size; at++) {
@@ -265,7 +286,32 @@ export function guidedRetouch(
           line = Math.max(line, Math.min(guide[i]! - lum, guide[j]! - lum));
         }
       const residual = lum - low[at]!;
-      const smoothing = ((-0.85 * op.smoothing) / 100) * (fine ? fine[at]! - low[at]! : residual);
+      let band = fine ? fine[at]! - low[at]! : residual;
+      if (surfaceRoughness) {
+        // The mid-frequency band carries uneven tone; the highest-frequency
+        // pores are left alone. Reduce the correction around stronger gradients.
+        const localEdge = Math.max(
+          Math.abs(guide[atXY(x - 1, y)]! - guide[atXY(x + 1, y)]!),
+          Math.abs(guide[atXY(x, y - 1)]! - guide[atXY(x, y + 1)]!),
+        );
+        const protection = clamp01((localEdge - 0.05) / 0.14);
+        const r = roughnessRadius;
+        const area =
+          (Math.min(width - 1, x + r) - Math.max(0, x - r) + 1) *
+          (Math.min(height - 1, y + r) - Math.max(0, y - r) + 1);
+        const roughness = surfaceRoughness[at]! / area;
+        const textureGuard = clamp01((roughness - 0.045) / 0.07);
+        // Feather down in low-key and near-clipped skin. Retain high-frequency
+        // detail in facial hair and stronger edges and favor uneven midtones.
+        const illumination = 0.45 + 0.55 * Math.min(clamp01(lum / 0.22), clamp01((1 - lum) / 0.13));
+        const limit = 0.028 + 0.035 * Math.sqrt(lum);
+        band =
+          Math.max(-limit, Math.min(limit, band)) *
+          (1 - 0.86 * protection) *
+          (1 - 0.7 * textureGuard) *
+          illumination;
+      }
+      const smoothing = ((-(adaptive ? 1.08 : 0.85) * op.smoothing) / 100) * band;
       const detail =
         (((op.texture >= 0 ? 1.5 : 1) * op.texture) / 100) * (fine ? lum - fine[at]! : residual);
       const shine = detailV3 ? 0 : Math.max(0, lum - Math.max(0.58, stats!.meanGuide[at]! + 0.045));

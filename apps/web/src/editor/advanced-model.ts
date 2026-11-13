@@ -106,9 +106,13 @@ export function withNumeric<T extends object>(
   const keys = definition.path.split('.');
   if (keys.some((key) => ['__proto__', 'prototype', 'constructor'].includes(key)))
     throw new Error('无效参数路径。');
-  const next = structuredClone(value);
+  const next = { ...value };
   let target = next as Record<string, unknown>;
-  for (const key of keys.slice(0, -1)) target = target[key] as Record<string, unknown>;
+  for (const key of keys.slice(0, -1)) {
+    const child = { ...(target[key] as Record<string, unknown>) };
+    target[key] = child;
+    target = child;
+  }
   target[keys.at(-1)!] = amount;
   return next;
 }

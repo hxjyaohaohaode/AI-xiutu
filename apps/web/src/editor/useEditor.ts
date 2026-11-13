@@ -1179,6 +1179,7 @@ export function useEditor() {
     historyIndex,
     rendered,
     renderedRecipe,
+    isInteractive: interactiveInput.current !== null,
     liveFrame,
     geometryMode,
     cropGuide,

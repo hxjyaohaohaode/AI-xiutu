@@ -84,7 +84,13 @@ import {
 } from './projective-model';
 import type { CollaborationState } from '../collaboration/useCollaboration';
 import { CollaborationOverlay } from '../collaboration/CollaborationOverlay';
-import { CanvasReviewToggle, CanvasReviewPins, CanvasReviewCard, useCanvasReview, type CanvasReviewScope } from '../collaboration/CanvasReview';
+import {
+  CanvasReviewToggle,
+  CanvasReviewPins,
+  CanvasReviewCard,
+  useCanvasReview,
+  type CanvasReviewScope,
+} from '../collaboration/CanvasReview';
 import './editor-controls.css';
 import { StudioWelcome } from '../workspace/StudioWelcome';
 import { studioText } from '../workspace/studio-copy';
@@ -367,6 +373,7 @@ export function CanvasStage({
   const pointerPositions = useRef(new Map<number, Point>());
   const pinch = useRef<{ distance: number; camera: typeof camera; center: Point } | null>(null);
   const wheelAction = useRef<(event: WheelEvent) => void>(() => {});
+  const lastFaceFocus = useRef<typeof editor.portrait.faceFocus>(null);
   const brushFootprint = useRef<SVGPathElement>(null);
   const gestureTrail = useRef<SVGPathElement>(null);
   const gestureFrame = useRef(0);
@@ -386,7 +393,7 @@ export function CanvasStage({
     cropEditing,
     editor.layerImages,
     collaboration?.remotePreview ?? null,
-    editor.liveFrame !== null,
+    editor.isInteractive,
     comparing,
   );
   const liveFrame =
@@ -410,17 +417,19 @@ export function CanvasStage({
       : localViewRecipe;
   const recipeGeometry = editorGeometryKey(recipe, false);
   const liveGeometry = liveFrame ? editorGeometryKey(liveFrame.recipe, false) : null;
-  const settledGeometry = editor.renderedRecipe ? editorGeometryKey(editor.renderedRecipe, false) : null;
+  const settledGeometry = editor.renderedRecipe
+    ? editorGeometryKey(editor.renderedRecipe, false)
+    : null;
   const layoutRecipe = !comparing && cropEditing ? viewRecipe : liveFrame?.recipe;
-  const layoutGeometry = layoutRecipe ? editorGeometryKey(layoutRecipe) : null;
+  const layoutGeometry = layoutRecipe ? editorGeometryKey(layoutRecipe, false) : null;
   const referenceSize = useMemo(() => {
-    if (!source || !layoutRecipe) return null;
+    if (!dimensions || !layoutRecipe) return null;
     try {
-      return getEditorOutputDimensions(source, layoutRecipe);
+      return getEditorOutputDimensions(dimensions, layoutRecipe);
     } catch {
       return null;
     }
-  }, [source, layoutGeometry]);
+  }, [dimensions, layoutGeometry]);
   // Resolution can change while a stroke is still collecting points. Keep its
   // CSS frame in the same geometry rather than the live raster's rounded ratio.
   const frameRaster =
@@ -436,6 +445,27 @@ export function CanvasStage({
       return null;
     }
   }, [dimensions, editorGeometryKey(viewRecipe), source]);
+  const portraitTargets =
+    group === 'beauty' &&
+    editor.portrait.showLandmarks &&
+    !comparing &&
+    !previews.remote &&
+    editor.portrait.analysis?.frame.contentHash === editor.getSourceFrame()?.contentHash
+      ? (editor.portrait.analysis?.targets.filter((target) => target.kind === 'face') ?? [])
+      : [];
+  const activeFace =
+    portraitTargets.find((target) => target.id === editor.portrait.activeTargetId) ??
+    portraitTargets[0];
+  const shownPortraitRecipe = liveFrame?.recipe ?? editor.renderedRecipe;
+  const portraitMap = useMemo(() => {
+    if (!activeFace || !dimensions || !shownPortraitRecipe) return null;
+    try {
+      return compileEditorCoordinateMap(dimensions, shownPortraitRecipe, source ?? undefined);
+    } catch {
+      return null;
+    }
+  }, [activeFace, dimensions, shownPortraitRecipe, source]);
+  const projectFace = (point: Point) => portraitMap?.toContentOutput(point) ?? null;
   const protecting =
     (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
     group === 'liquify' &&
@@ -484,7 +514,13 @@ export function CanvasStage({
   const defaultRepairBrush = dimensions
     ? Math.min(0.012, 12 / Math.min(dimensions.width, dimensions.height))
     : 0;
-  const warpRadius = dimensions ? Math.min(editor.warpSettings.radius, 0.325, 800 / Math.min(dimensions.width, dimensions.height)) : editor.warpSettings.radius;
+  const warpRadius = dimensions
+    ? Math.min(
+        editor.warpSettings.radius,
+        0.325,
+        800 / Math.min(dimensions.width, dimensions.height),
+      )
+    : editor.warpSettings.radius;
   const footprintRadius =
     group === 'liquify' && !protecting
       ? warpRadius
@@ -711,7 +747,10 @@ export function CanvasStage({
   function boundedPan(value: typeof pan, z = zoom) {
     // Keep enough of the image on screen to grab it again, including at Fit.
     const x = Math.max(Math.min(120, bounds.width * 0.18), (display.width * z - bounds.width) / 2);
-    const y = Math.max(Math.min(120, bounds.height * 0.18), (display.height * z - bounds.height) / 2);
+    const y = Math.max(
+      Math.min(120, bounds.height * 0.18),
+      (display.height * z - bounds.height) / 2,
+    );
     return { x: clamp(value.x, -x, x), y: clamp(value.y, -y, y) };
   }
   function viewportPoint(clientX: number, clientY: number): Point {
@@ -734,19 +773,99 @@ export function CanvasStage({
       ),
     };
   }
+  useEffect(() => {
+    const request = editor.portrait.faceFocus;
+    if (
+      !request ||
+      lastFaceFocus.current === request ||
+      group !== 'beauty' ||
+      !geometryReady ||
+      !coordinateMap
+    )
+      return;
+    const face = editor.portrait.analysis?.targets.find(
+      (target) => target.id === request.id && target.kind === 'face',
+    );
+    if (
+      !face ||
+      editor.portrait.analysis?.frame.contentHash !== editor.getSourceFrame()?.contentHash
+    )
+      return;
+    const b = face.bounds;
+    const points = projectOverlayPath(
+      [
+        { x: b.x, y: b.y },
+        { x: b.x + b.width, y: b.y },
+        { x: b.x, y: b.y + b.height },
+        { x: b.x + b.width, y: b.y + b.height },
+      ],
+      coordinateMap.toContentOutput,
+    );
+    if (!points || fittedDisplay.width <= 0 || fittedDisplay.height <= 0) return;
+    const xs = points.map(({ x }) => x),
+      ys = points.map(({ y }) => y);
+    const left = Math.min(...xs),
+      right = Math.max(...xs);
+    const top = Math.min(...ys),
+      bottom = Math.max(...ys);
+    if (right <= 0 || bottom <= 0 || left >= 1 || top >= 1) return;
+    const ratio = Math.min(
+      (bounds.width * 0.64) / Math.max(1, fittedDisplay.width * (right - left)),
+      (bounds.height * 0.62) / Math.max(1, fittedDisplay.height * (bottom - top)),
+    );
+    const nextZoom = clamp(ratio, 1, 8);
+    lastFaceFocus.current = request;
+    setCamera({
+      zoom: nextZoom,
+      pan: boundedPan(
+        {
+          x: (0.5 - (left + right) / 2) * fittedDisplay.width * nextZoom,
+          y: (0.5 - (top + bottom) / 2) * fittedDisplay.height * nextZoom,
+        },
+        nextZoom,
+      ),
+    });
+  }, [
+    editor.portrait.faceFocus,
+    group,
+    geometryReady,
+    coordinateMap,
+    fittedDisplay.width,
+    fittedDisplay.height,
+  ]);
   function zoomBy(factor: number, anchor = { x: 0, y: 0 }) {
     if (editGesture.current || projectiveFrame) return;
     setCamera((current) => zoomedCamera(current, current.zoom * factor, anchor));
   }
   wheelAction.current = (event) => {
-    if (!image || !event.deltaY || isTyping(event.target)) return;
-    event.preventDefault();
-    const pixels =
-      event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1);
-    zoomBy(
-      Math.exp(-clamp(pixels, -200, 200) * 0.003),
-      viewportPoint(event.clientX, event.clientY),
-    );
+    if (!image || isTyping(event.target) || editGesture.current || projectiveFrame) return;
+    const units = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? bounds.height : 1;
+    if (
+      zoom > 1 &&
+      !event.ctrlKey &&
+      !event.metaKey &&
+      (event.deltaX || event.shiftKey || space || handMode)
+    ) {
+      event.preventDefault();
+      const dx = event.deltaX || (event.shiftKey ? event.deltaY : 0);
+      const dy = event.shiftKey && !event.deltaX ? 0 : event.deltaY;
+      setCamera((current) => ({
+        ...current,
+        pan: boundedPan(
+          {
+            x: current.pan.x - dx * units,
+            y: current.pan.y - dy * units,
+          },
+          current.zoom,
+        ),
+      }));
+    } else if (event.deltaY) {
+      event.preventDefault();
+      zoomBy(
+        Math.exp(-clamp(event.deltaY * units, -200, 200) * 0.003),
+        viewportPoint(event.clientX, event.clientY),
+      );
+    }
   };
   function toSource(
     clientX: number,
@@ -799,8 +918,11 @@ export function CanvasStage({
       outline.setAttribute('d', `M${points.map((p) => `${p.x * 100} ${p.y * 100}`).join('L')}Z`);
     else outline.removeAttribute('d');
   }
-  function overlayPolygon(points: Point[]): string | undefined {
-    return projectOverlayPath(points, toDisplay)
+  function overlayPolygon(
+    points: Point[],
+    project: (point: Point) => Point | null = toDisplay,
+  ): string | undefined {
+    return projectOverlayPath(points, project)
       ?.map((p) => `${p.x * 100},${p.y * 100}`)
       .join(' ');
   }
@@ -893,7 +1015,7 @@ export function CanvasStage({
     const points = state.points ?? (state.warp ? [state.warp.from, state.warp.to] : []);
     const projected = projectOverlayPath(points, toDisplay);
     if (!projected?.length) return;
-    const path = projected.map(({ x, y }, i) => (i ? 'L' : 'M') + (x * 100) + ' ' + (y * 100));
+    const path = projected.map(({ x, y }, i) => (i ? 'L' : 'M') + x * 100 + ' ' + y * 100);
     if (path.length === 1) path.push('l.001 .001');
     trail.setAttribute('d', path.join(' '));
   }
@@ -1660,18 +1782,17 @@ export function CanvasStage({
             !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
           )
             return;
+          if (event.ctrlKey || event.metaKey || event.nativeEvent.isComposing) return;
           const amount = event.altKey ? 0.1 : event.shiftKey ? 10 : 1;
+          const direction = {
+            x: Number(event.key === 'ArrowRight') - Number(event.key === 'ArrowLeft'),
+            y: Number(event.key === 'ArrowDown') - Number(event.key === 'ArrowUp'),
+          };
           if (kind.startsWith('crop-') && coordinateMap) {
             const step = event.shiftKey ? 10 : 1;
             const target = {
-              x:
-                p.x +
-                (event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0) /
-                  coordinateMap.dimensions.width,
-              y:
-                p.y +
-                (event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0) /
-                  coordinateMap.dimensions.height,
+              x: p.x + (direction.x * step) / coordinateMap.dimensions.width,
+              y: p.y + (direction.y * step) / coordinateMap.dimensions.height,
             };
             event.preventDefault();
             event.stopPropagation();
@@ -1685,7 +1806,7 @@ export function CanvasStage({
                     x: (targetSource.x - point.x) * dimensions.width,
                     y: (targetSource.y - point.y) * dimensions.height,
                   },
-                  false,
+                  event.shiftKey && kind !== 'crop-move',
                 ),
                 t('微调裁切'),
               );
@@ -1694,12 +1815,23 @@ export function CanvasStage({
             }
             return;
           }
-          const dx =
-            (event.key === 'ArrowRight' ? amount : event.key === 'ArrowLeft' ? -amount : 0) /
-            dimensions.width;
-          const dy =
-            (event.key === 'ArrowDown' ? amount : event.key === 'ArrowUp' ? -amount : 0) /
-            dimensions.height;
+          let dx = (direction.x * amount) / dimensions.width;
+          let dy = (direction.y * amount) / dimensions.height;
+          if (coordinateMap) {
+            try {
+              const nudged = {
+                x: p.x + (direction.x * amount) / coordinateMap.dimensions.width,
+                y: p.y + (direction.y * amount) / coordinateMap.dimensions.height,
+              };
+              const next = contentSpace
+                ? coordinateMap.toContent(nudged)
+                : coordinateMap.toSource(nudged);
+              dx = next.x - point.x;
+              dy = next.y - point.y;
+            } catch {
+              return;
+            }
+          }
           let next = mask;
           if (mask.type === 'polygon' && kind.startsWith('polygon-')) {
             if (kind === 'polygon-move') next = translatePolygon(mask, dx, dy);
@@ -1939,6 +2071,7 @@ export function CanvasStage({
         ref={viewport}
         tabIndex={image ? 0 : undefined}
         aria-label={image ? t('图像画布') : undefined}
+        aria-keyshortcuts={image ? '+ - 0 ArrowUp ArrowDown ArrowLeft ArrowRight' : undefined}
         onKeyDown={(event) => {
           if (
             !image ||
@@ -1952,10 +2085,14 @@ export function CanvasStage({
           if (event.key === '+' || event.key === '=') zoomBy(1.25);
           else if (event.key === '-' || event.key === '_') zoomBy(0.8);
           else if (event.key === '0') fit();
-          else if (handMode && /^Arrow/.test(event.key)) {
-            const dx = event.key === 'ArrowLeft' ? -16 : event.key === 'ArrowRight' ? 16 : 0;
-            const dy = event.key === 'ArrowUp' ? -16 : event.key === 'ArrowDown' ? 16 : 0;
-            setCamera((current) => ({ ...current, pan: boundedPan({ x: current.pan.x + dx, y: current.pan.y + dy }, current.zoom) }));
+          else if ((handMode || zoom > 1) && /^Arrow/.test(event.key)) {
+            const step = event.shiftKey ? 80 : 16;
+            const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+            const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+            setCamera((current) => ({
+              ...current,
+              pan: boundedPan({ x: current.pan.x + dx, y: current.pan.y + dy }, current.zoom),
+            }));
           } else return;
           event.preventDefault();
         }}
@@ -2187,6 +2324,36 @@ export function CanvasStage({
                 sampleAt(event.clientX, event.clientY);
                 return;
               }
+              if (portraitTargets.length > 1 && geometryReady && !handMode && !space) {
+                const frameRect = frame.current?.getBoundingClientRect();
+                const point =
+                  frameRect &&
+                  portraitMap &&
+                  sourcePointer(
+                    { x: event.clientX, y: event.clientY },
+                    frameRect,
+                    portraitMap,
+                    true,
+                    'strict',
+                  );
+                if (!point) return;
+                const hit = portraitTargets
+                  .filter(
+                    ({ bounds: b }) =>
+                      point.x >= b.x &&
+                      point.x <= b.x + b.width &&
+                      point.y >= b.y &&
+                      point.y <= b.y + b.height,
+                  )
+                  .sort(
+                    (a, b) => a.bounds.width * a.bounds.height - b.bounds.width * b.bounds.height,
+                  )[0];
+                if (hit && hit.id !== activeFace?.id) {
+                  editor.commitCurrent(t('完成人物调节'));
+                  editor.portrait.setTarget(hit.id);
+                }
+                return;
+              }
               if (editingSelection && mask.type === 'radial' && dimensions) {
                 const point = toSource(event.clientX, event.clientY);
                 if (!point) return;
@@ -2202,7 +2369,70 @@ export function CanvasStage({
             }}
           >
             <PixelCanvas image={image} />
-            {!comparing && <CanvasReviewPins review={review} map={(point) => coordinateMap?.toOutput(point) ?? point} zoom={zoom} />}
+            {activeFace && geometryReady && (
+              <svg
+                className="portrait-landmark-overlay"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-label={t('显示人脸关键点')}
+                role="img"
+              >
+                {Object.entries(activeFace.contours).map(([name, outline]) => (
+                  <polygon
+                    key={name}
+                    points={overlayPolygon(outline, projectFace)}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                ))}
+                <path
+                  d={activeFace.landmarks
+                    .flatMap((point) => {
+                      const p = projectOverlayPoint(point, projectFace);
+                      return p && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1
+                        ? ['M' + p.x * 100 + ' ' + p.y * 100 + 'h0.001']
+                        : [];
+                    })
+                    .join(' ')}
+                  vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+            )}
+            {portraitTargets.length > 1 &&
+              geometryReady &&
+              portraitTargets.map((target, index) => {
+                const b = target.bounds;
+                const point = projectOverlayPoint({ x: b.x + b.width / 2, y: b.y }, projectFace);
+                if (!point || point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1) return null;
+                return (
+                  <button
+                    key={target.id}
+                    type="button"
+                    className="portrait-face-pin"
+                    aria-label={t('选择人物 {v0}', { v0: index + 1 })}
+                    aria-pressed={target.id === activeFace?.id}
+                    style={{
+                      left: point.x * 100 + '%',
+                      top: point.y * 100 + '%',
+                      transform: 'translate(-50%, -55%) scale(' + 1 / zoom + ')',
+                    }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      editor.commitCurrent(t('完成人物调节'));
+                      editor.portrait.setTarget(target.id);
+                    }}
+                  >
+                    {index + 1}
+                  </button>
+                );
+              })}
+            {!comparing && (
+              <CanvasReviewPins
+                review={review}
+                map={(point) => coordinateMap?.toOutput(point) ?? point}
+                zoom={zoom}
+              />
+            )}
             {collaboration?.snapshot && (
               <CollaborationOverlay
                 snapshot={collaboration.snapshot}
@@ -2220,7 +2450,11 @@ export function CanvasStage({
                 preserveAspectRatio="none"
                 aria-hidden="true"
               >
-                <path ref={gestureTrail} className="canvas-gesture-trail" vectorEffect="non-scaling-stroke" />
+                <path
+                  ref={gestureTrail}
+                  className="canvas-gesture-trail"
+                  vectorEffect="non-scaling-stroke"
+                />
                 <path ref={brushFootprint} vectorEffect="non-scaling-stroke" />
               </svg>
             )}
@@ -2277,7 +2511,8 @@ export function CanvasStage({
                         points={overlayPolygon(mask.points)}
                         fill="none"
                         stroke="#fff"
-                        strokeWidth={0.25 / zoom} strokeDasharray={'6 4'}
+                        strokeWidth={0.25 / zoom}
+                        strokeDasharray={'6 4'}
                       />
                     )}
                   </svg>
@@ -2703,7 +2938,6 @@ export function CanvasStage({
               </button>
             </output>
           )}
-
         </>
       )}
       {editor.loading && (

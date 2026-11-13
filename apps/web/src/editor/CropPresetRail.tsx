@@ -46,7 +46,13 @@ export function CropPresetRail({
   const selected = matches.find((option) => option.id === chosen) ?? matches[0];
 
   function moveFocus(event: KeyboardEvent<HTMLDivElement>) {
-    if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+    if (
+      event.ctrlKey ||
+      event.metaKey ||
+      event.nativeEvent.isComposing ||
+      !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+    )
+      return;
     const buttons = Array.from(event.currentTarget.querySelectorAll('button'));
     const index = buttons.indexOf(event.target as HTMLButtonElement);
     if (index < 0) return;
@@ -57,7 +63,10 @@ export function CropPresetRail({
         : event.key === 'End'
           ? buttons.length - 1
           : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
-    buttons[next]?.focus();
+    const button = buttons[next];
+    if (!button) return;
+    button.focus({ preventScroll: true });
+    button.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }
 
   return (
@@ -73,6 +82,7 @@ export function CropPresetRail({
             title={cinema ? t('电影 {v0}', { v0: label }) : undefined}
             aria-label={cinema ? t('电影 {v0}', { v0: label }) : undefined}
             aria-pressed={id === selected?.id}
+            tabIndex={id === (selected?.id ?? 'free') ? 0 : -1}
             onClick={() => {
               setChosen(id);
               onChange(ratio, label);

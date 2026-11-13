@@ -8,7 +8,8 @@ import {
   type CSSProperties,
   type ReactNode,
 } from 'react';
-import { ArrowCounterClockwise, Check } from '../components/ControlGlyph';
+import { Minus } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, Check, Plus } from '../components/ControlGlyph';
 import { WarmTooltip } from '../components/control-motion';
 import { useWakeTicks } from './useWakeTicks';
 import {
@@ -79,6 +80,9 @@ export function PrecisionRange({
     moved: boolean;
   } | null>(null);
   const suppressNumberClick = useRef(false);
+  const wheel = useRef({ delta: 0, timer: 0 });
+  const wheelAction = useRef<(event: WheelEvent) => void>(() => {});
+  const unavailable = disabled || max <= min;
   const touchTrack = useRef<{ left: number; travel: number; offset: number } | null>(null);
   const ignoredPointer = useRef<number | null>(null);
   const numberEditing = useRef<{ initial: number } | null>(null);
@@ -117,7 +121,16 @@ export function PrecisionRange({
       onCancel?.();
     }
   }
+  function clearWheel() {
+    if (wheel.current.timer) window.clearTimeout(wheel.current.timer);
+    wheel.current = { delta: 0, timer: 0 };
+  }
+  function finishWheel() {
+    clearWheel();
+    complete(gesture.current.endWheel());
+  }
   function cancelGesture() {
+    clearWheel();
     const pointerId = gesture.current.pointerId;
     if (scrub.current) suppressNumberClick.current = true;
     scrub.current = null;
@@ -142,18 +155,19 @@ export function PrecisionRange({
     return () => {
       // A new source/scope may already own the parent; never roll an old preview into it.
       gesture.current.discard();
+      window.clearTimeout(wheel.current.timer);
       window.removeEventListener('blur', cancel);
       document.removeEventListener('visibilitychange', visibility);
     };
   }, []);
   useEffect(() => {
-    if (disabled) {
+    if (unavailable) {
       cancelRef.current();
       numberEditing.current = null;
       setEditing(false);
       setNumberError(null);
     }
-  }, [disabled]);
+  }, [unavailable]);
   function finishNumber() {
     if (!numberEditing.current) return;
     const result = resolveRangeNumber({
@@ -226,6 +240,67 @@ export function PrecisionRange({
     onChange(next);
     return true;
   }
+  function increment(shift: boolean, alt: boolean) {
+    return step * (alt && !integer ? 0.1 : shift ? 10 : 1);
+  }
+  function stepValue(direction: number, shift: boolean, alt: boolean) {
+    if (unavailable) return;
+    finishWheel();
+    if (gesture.current.active) return;
+    if (change(latest.current + direction * increment(shift, alt))) onCommit?.();
+  }
+  function adjustWithKey(event: React.KeyboardEvent<HTMLInputElement | HTMLButtonElement>) {
+    if (event.nativeEvent?.isComposing || event.ctrlKey || event.metaKey) return;
+    if (event.key === 'Escape' && (gesture.current.active || scrub.current)) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelGesture();
+      return;
+    }
+    if (!RANGE_KEYS.has(event.key)) return;
+    finishWheel();
+    event.preventDefault();
+    if (!gesture.current.beginKey(event.key, latest.current)) return;
+    ignoredPointer.current = null;
+    const amount = event.key.startsWith('Arrow') ? increment(event.shiftKey, event.altKey) : step;
+    change(keyRangeValue(event.key, latest.current, min, max, amount));
+  }
+  wheelAction.current = (event) => {
+    if (
+      unavailable ||
+      document.activeElement !== event.currentTarget ||
+      event.ctrlKey ||
+      event.metaKey ||
+      !event.deltaY ||
+      Math.abs(event.deltaX) > Math.abs(event.deltaY) ||
+      scrub.current ||
+      !gesture.current.beginWheel(latest.current)
+    )
+      return;
+    event.preventDefault();
+    const pixels =
+      event.deltaMode === 1
+        ? event.deltaY * 30
+        : event.deltaMode === 2
+          ? Math.sign(event.deltaY) * 60
+          : event.deltaY;
+    if (Math.sign(pixels) !== Math.sign(wheel.current.delta)) wheel.current.delta = 0;
+    wheel.current.delta += Math.max(-120, Math.min(120, pixels));
+    const steps = Math.trunc(wheel.current.delta / 24);
+    if (steps) {
+      wheel.current.delta -= steps * 24;
+      change(latest.current - steps * increment(event.shiftKey, event.altKey));
+    }
+    window.clearTimeout(wheel.current.timer);
+    wheel.current.timer = window.setTimeout(finishWheel, 180);
+  };
+  useEffect(() => {
+    const button = scrubButton.current;
+    if (!button) return;
+    const scroll = (event: WheelEvent) => wheelAction.current(event);
+    button.addEventListener('wheel', scroll, { passive: false });
+    return () => button.removeEventListener('wheel', scroll);
+  }, [editing]);
   function moveTouch(clientX: number) {
     const track = touchTrack.current;
     if (!track) return;
@@ -263,6 +338,17 @@ export function PrecisionRange({
         </label>
         {headingAccessory && <div className="precision-heading-accessory">{headingAccessory}</div>}
         <div className="precision-readout">
+          {!editing && (
+            <button
+              type="button"
+              className="precision-step"
+              aria-label={t('减少{v0}', { v0: label })}
+              disabled={unavailable || value <= min}
+              onClick={(event) => stepValue(-1, event.shiftKey, event.altKey)}
+            >
+              <Minus size={13} />
+            </button>
+          )}
           {editing ? (
             <>
               <input
@@ -289,6 +375,7 @@ export function PrecisionRange({
                   }
                   if (event.key === 'Escape') {
                     event.preventDefault();
+                    event.stopPropagation();
                     cancelNumber();
                     range.current?.focus({ preventScroll: true });
                   }
@@ -313,15 +400,17 @@ export function PrecisionRange({
               ref={scrubButton}
               type="button"
               className="precision-value"
+              title={t('按住数值拖动，聚焦后可滚轮或方向键微调')}
               aria-label={t('{v0}数值 {v1}{v2}，点击精确输入', {
                 v0: label,
                 v1: readable,
                 v2: unit,
               })}
-              disabled={disabled}
+              disabled={unavailable}
               onPointerDown={(event) => {
+                finishWheel();
                 if (
-                  disabled ||
+                  unavailable ||
                   event.button !== 0 ||
                   !event.isPrimary ||
                   gesture.current.active ||
@@ -389,20 +478,20 @@ export function PrecisionRange({
               onLostPointerCapture={(event) => {
                 if (scrub.current?.id === event.pointerId && scrub.current.moved) cancelGesture();
               }}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && scrub.current) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  cancelGesture();
-                }
-              }}
+              onKeyDown={adjustWithKey}
+              onKeyUp={(event) => complete(gesture.current.endKey(event.key))}
               onBlur={() => {
                 if (scrub.current) cancelGesture();
+                else {
+                  finishWheel();
+                  complete(gesture.current.commit());
+                }
               }}
               onClick={(event) => {
                 const ignore = suppressNumberClick.current && event.detail > 0;
                 suppressNumberClick.current = false;
                 if (ignore) return;
+                finishWheel();
                 if (gesture.current.active) return;
                 numberEditing.current = { initial: latest.current };
                 setDraft(String(latest.current));
@@ -412,6 +501,17 @@ export function PrecisionRange({
             >
               {readable}
               <small>{unit}</small>
+            </button>
+          )}
+          {!editing && (
+            <button
+              type="button"
+              className="precision-step"
+              aria-label={t('增加{v0}', { v0: label })}
+              disabled={unavailable || value >= max}
+              onClick={(event) => stepValue(1, event.shiftKey, event.altKey)}
+            >
+              <Plus size={13} />
             </button>
           )}
           {onReset && (
@@ -465,14 +565,17 @@ export function PrecisionRange({
             if (change(next) && !gesture.current.active) onCommit?.();
           }}
           onPointerDown={(event) => {
-            if (!gesture.current.beginPointer(event.pointerId, latest.current, event.isPrimary)) {
+            if (
+              event.button !== 0 ||
+              !gesture.current.beginPointer(event.pointerId, latest.current, event.isPrimary)
+            ) {
               event.preventDefault();
               return;
             }
             ignoredPointer.current = null;
             const control = event.currentTarget;
             control.setPointerCapture(event.pointerId);
-            if (event.pointerType === 'touch') {
+            if (event.pointerType !== 'mouse') {
               // Track the finger immediately. Native range input waits for a touch movement threshold.
               event.preventDefault();
               control.focus({ preventScroll: true });
@@ -489,7 +592,7 @@ export function PrecisionRange({
               const offset = event.clientX - thumb;
               // A finger rarely lands on the exact center of a small visible
               // thumb. Keep its grab offset across the 44px touch target.
-              const grabRadius = 22;
+              const grabRadius = event.pointerType === 'pen' ? 11 : 22;
               touchTrack.current = {
                 left,
                 travel,
@@ -499,7 +602,7 @@ export function PrecisionRange({
             }
           }}
           onPointerMove={(event) => {
-            if (event.pointerType === 'touch' && gesture.current.pointerId === event.pointerId)
+            if (touchTrack.current && gesture.current.pointerId === event.pointerId)
               moveTouch(event.clientX);
           }}
           onPointerUp={(event) => {
@@ -515,24 +618,7 @@ export function PrecisionRange({
           onLostPointerCapture={(event) => {
             if (gesture.current.pointerId === event.pointerId) cancelGesture();
           }}
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') {
-              event.preventDefault();
-              cancelGesture();
-              return;
-            }
-            if (!RANGE_KEYS.has(event.key)) return;
-            if (!gesture.current.beginKey(event.key, latest.current)) {
-              event.preventDefault();
-              return;
-            }
-            ignoredPointer.current = null;
-            event.preventDefault();
-            const increment = event.key.startsWith('Arrow')
-              ? step * (event.altKey ? (integer ? 1 : 0.1) : event.shiftKey ? 10 : 1)
-              : step;
-            change(keyRangeValue(event.key, latest.current, min, max, increment));
-          }}
+          onKeyDown={adjustWithKey}
           onKeyUp={(event) => {
             complete(gesture.current.endKey(event.key));
           }}

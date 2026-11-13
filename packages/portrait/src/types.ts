@@ -1,6 +1,8 @@
 import type { SourceFrame } from '@ai-xiutu/contracts';
 import type { Point, SelectionMaskV3 } from '@ai-xiutu/editor';
 
+export const REFINED_PORTRAIT_ANALYSIS = 'mediapipe-v2-face-roi';
+
 /** Detection is geometric analysis, never identity recognition or a beauty score. */
 export interface PortraitTarget {
   id: string;
@@ -10,6 +12,7 @@ export interface PortraitTarget {
   contours: Record<string, Point[]>;
   bounds: { x: number; y: number; width: number; height: number };
   featureMasks?: {
+    skin?: SelectionMaskV3;
     teeth?: SelectionMaskV3;
     accessories?: SelectionMaskV3;
     relight?: { light: SelectionMaskV3; shade: SelectionMaskV3 };

@@ -17,11 +17,20 @@ import {
   visibleTeeth,
   visibleEyeAccessories,
   visibleMeshLighting,
+  REFINED_PORTRAIT_ANALYSIS,
   anchoredSubjectPrior,
   type PortraitAnalysis,
   type PortraitTarget,
 } from '@ai-xiutu/portrait';
 import { portraitAnalysisErrorMessage } from './portrait-analysis-errors';
+import {
+  analysisCanvas,
+  confidenceRaster,
+  confidenceWeight,
+  detectFaceDetails,
+  entireFrame,
+  faceWindow,
+} from './portrait-refinement';
 
 type Request = {
   id: number;
@@ -33,36 +42,6 @@ type Request = {
   contentHash: string;
 };
 const ALGORITHM = 'mediapipe-v1-selfie256';
-function limitMask(
-  data: Uint8Array,
-  width: number,
-  height: number,
-  ids: number[],
-): SelectionMaskV3 {
-  // The bounded category grid is intentionally a coarse selection, not a pixel-perfect matte.
-  let edge = 128;
-  for (;;) {
-    const w = Math.max(1, Math.round(edge * Math.min(1, width / height))),
-      h = Math.max(1, Math.round(edge * Math.min(1, height / width)));
-    const pixels = new Uint8Array(w * h);
-    for (let y = 0; y < h; y++)
-      for (let x = 0; x < w; x++)
-        pixels[y * w + x] = ids.includes(
-          data[
-            Math.min(height - 1, Math.floor(((y + 0.5) * height) / h)) * width +
-              Math.min(width - 1, Math.floor(((x + 0.5) * width) / w))
-          ]!,
-        )
-          ? 255
-          : 0;
-    try {
-      return createRasterMask(w, h, pixels);
-    } catch (error) {
-      if (edge <= 32) throw error;
-      edge /= 2;
-    }
-  }
-}
 function subjectMatte(background: Float32Array, width: number, height: number) {
   for (const edge of [160, 128, 96, 64, 40]) {
     const w = Math.max(1, Math.round(edge * Math.min(1, width / height)));
@@ -156,7 +135,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     const result: PortraitAnalysis = {
       schemaVersion: 1,
       provider: 'mediapipe',
-      algorithmVersion: ALGORITHM,
+      algorithmVersion: REFINED_PORTRAIT_ANALYSIS,
       frame: {
         coordinates: 'source-normalized',
         contentHash: hash,
@@ -196,76 +175,19 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       minFacePresenceConfidence: 0.6,
     });
     try {
-      let found = face.detect(canvas).faceLandmarks;
-      if (!found.length && Math.min(canvas.width, canvas.height) >= 128) {
-        // Full-frame inference can miss small faces in a wide or busy composition.
-        // Retry overlapping crops only when the first pass produced no targets.
-        const width = Math.round(canvas.width * 0.64);
-        const height = Math.round(canvas.height * 0.64);
-        const crop = new OffscreenCanvas(width, height);
-        const context = crop.getContext('2d');
-        if (context) {
-          const boxes: { x: number; y: number; width: number; height: number }[] = [];
-          for (const top of [0, canvas.height - height]) {
-            for (const left of [0, canvas.width - width]) {
-              context.clearRect(0, 0, width, height);
-              context.drawImage(canvas, left, top, width, height, 0, 0, width, height);
-              for (const candidate of face.detect(crop).faceLandmarks) {
-                const remapped = candidate.map((p) => ({
-                  ...p,
-                  x: (p.x * width + left) / canvas.width,
-                  y: (p.y * height + top) / canvas.height,
-                  z: (p.z * width) / canvas.width,
-                }));
-                try {
-                  const box = boundsOf(contours(remapped).oval);
-                  if (
-                    boxes.some((previous) => {
-                      const overlapX = Math.max(
-                        0,
-                        Math.min(previous.x + previous.width, box.x + box.width) -
-                          Math.max(previous.x, box.x),
-                      );
-                      const overlapY = Math.max(
-                        0,
-                        Math.min(previous.y + previous.height, box.y + box.height) -
-                          Math.max(previous.y, box.y),
-                      );
-                      return (
-                        overlapX * overlapY >
-                        0.45 * Math.min(previous.width * previous.height, box.width * box.height)
-                      );
-                    })
-                  )
-                    continue;
-                  boxes.push(box);
-                  found.push(remapped);
-                } catch {
-                  // Cropped partial contours cannot establish an editing target.
-                }
-              }
-            }
-          }
-          found = found.slice(0, 8);
-        }
-      }
-      const targets = found
-        .flatMap((points) => {
-          try {
-            const shape = contours(points),
-              bounds = boundsOf(shape.oval);
-            return [
-              {
-                landmarks: points.map((p) => ({ x: p.x, y: p.y, z: p.z })),
-                contours: shape,
-                bounds,
-              },
-            ];
-          } catch {
-            return [];
-          }
-        })
-        .sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y);
+      const found = detectFaceDetails(
+        canvas,
+        face,
+        (points) => contourLoops(points, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL)[0] ?? [],
+      );
+      const targets = found.map((points) => {
+        const shape = contours(points);
+        return {
+          landmarks: points.map((point) => ({ x: point.x, y: point.y, z: point.z })),
+          contours: shape,
+          bounds: boundsOf(shape.oval),
+        };
+      });
       result.targets = targets.map((t, i) => ({
         ...t,
         id: `face-${hash.slice(0, 12)}-${i + 1}`,
@@ -288,6 +210,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     if (segmentation) {
       progress('正在分离皮肤、头发与背景');
       let segment: ImageSegmenter | null = null;
+      const overview = analysisCanvas(canvas, entireFrame, 576);
       try {
         segment = await ImageSegmenter.createFromOptions(freshWasm(), {
           canvas: new OffscreenCanvas(1, 1),
@@ -299,12 +222,16 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           outputCategoryMask: true,
           outputConfidenceMasks: true,
         });
-        segment.segment(canvas, (output) => {
+        segment.segment(overview, (output) => {
           const mask = output.categoryMask;
           if (!mask) throw new Error('没有分割结果');
           const data = mask.getAsUint8Array();
           const confidence = output.confidenceMasks?.[0];
+          const hair = output.confidenceMasks?.[1]?.getAsFloat32Array();
+          const bodySkin = output.confidenceMasks?.[2]?.getAsFloat32Array();
+          const faceSkin = output.confidenceMasks?.[3]?.getAsFloat32Array();
           const accessory = output.confidenceMasks?.[5];
+          const background = confidence?.getAsFloat32Array();
           if (accessory) {
             const probabilities = accessory.getAsFloat32Array();
             for (const target of result.targets) {
@@ -315,7 +242,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           const subject = confidence
             ? subjectMatte(
                 anchoredSubjectPrior(
-                  confidence.getAsFloat32Array(),
+                  background!,
                   data,
                   confidence.width,
                   confidence.height,
@@ -328,17 +255,92 @@ self.onmessage = async (event: MessageEvent<Request>) => {
                 confidence.height,
               )
             : undefined;
+          const grid = (weight: (index: number) => number, budget?: number) =>
+            confidenceRaster(mask.width, mask.height, weight, 192, budget) ??
+            createRasterMask(1, 1, new Uint8Array(1));
           result.segmentation = {
-            skin: limitMask(data, mask.width, mask.height, [2, 3]),
-            hair: limitMask(data, mask.width, mask.height, [1]),
-            background: limitMask(data, mask.width, mask.height, [0]),
+            skin: grid(
+              (at) =>
+                confidenceWeight(
+                  faceSkin && bodySkin
+                    ? faceSkin[at]! + bodySkin[at]!
+                    : Number(data[at] === 2 || data[at] === 3),
+                  0.44,
+                  0.86,
+                ),
+              1800,
+            ),
+            hair: grid((at) => confidenceWeight(hair?.[at] ?? Number(data[at] === 1), 0.29, 0.83)),
+            background: grid((at) =>
+              confidenceWeight(background?.[at] ?? Number(data[at] === 0), 0.3, 0.88),
+            ),
             ...(subject ? { subject } : {}),
           };
         });
+        for (const target of result.targets) {
+          const window = faceWindow(canvas, target.bounds, 1.3);
+          if (Math.min(window.width * canvas.width, window.height * canvas.height) < 28) continue;
+          const crop = analysisCanvas(canvas, window, 448);
+          try {
+            segment.segment(crop, (output) => {
+              const skin = output.confidenceMasks?.[3];
+              if (!skin) return;
+              const pixels = skin.getAsFloat32Array();
+              const accessory = output.confidenceMasks?.[5]?.getAsFloat32Array();
+              const hair = output.confidenceMasks?.[1]?.getAsFloat32Array();
+              const alpha = accessory
+                ? confidenceRaster(
+                    skin.width,
+                    skin.height,
+                    (at) => {
+                      const u = window.x + (((at % skin.width) + 0.5) / skin.width) * window.width;
+                      const v =
+                        window.y +
+                        ((Math.floor(at / skin.width) + 0.5) / skin.height) * window.height;
+                      const b = target.bounds;
+                      if (
+                        u < b.x - b.width * 0.05 ||
+                        u > b.x + b.width * 1.05 ||
+                        v < b.y + b.height * 0.15 ||
+                        v > b.y + b.height * 0.7
+                      )
+                        return 0;
+                      return confidenceWeight(accessory[at]!, 0.36, 0.68);
+                    },
+                    120,
+                    800,
+                    window,
+                  )
+                : undefined;
+              const faceSkin = confidenceRaster(
+                skin.width,
+                skin.height,
+                (at) => {
+                  const confidence = confidenceWeight(pixels[at]!, 0.43, 0.84);
+                  const occlusion = confidenceWeight(
+                    Math.max(accessory?.[at] ?? 0, hair?.[at] ?? 0),
+                    0.23,
+                    0.68,
+                  );
+                  return confidence * (1 - occlusion);
+                },
+                128,
+                900,
+                window,
+              );
+              if (faceSkin) target.featureMasks = { ...target.featureMasks, skin: faceSkin };
+              if (alpha && !target.featureMasks?.accessories)
+                target.featureMasks = { ...target.featureMasks, accessories: alpha };
+            });
+          } finally {
+            crop.width = crop.height = 1;
+          }
+        }
       } catch (error) {
         if (import.meta.env.DEV) console.error('Portrait segmentation unavailable', error);
         result.warnings.push('皮肤分割未完成，当前只使用面部轮廓并排除五官；请检查蒙版。');
       } finally {
+        overview.width = overview.height = 1;
         segment?.close();
       }
     }

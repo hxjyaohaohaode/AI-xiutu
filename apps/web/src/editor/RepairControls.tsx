@@ -174,7 +174,7 @@ export function RepairControls({ controller }: { controller: InspectorController
         step: 0.1,
         onChange: (value) => patch({ [id]: value }, t('调整{v0}', { v0: t(label) })),
       });
-    if (retouch.algorithm === 'guided-v4')
+    if (retouch.algorithm === 'guided-v4' || retouch.algorithm === 'guided-v5')
       controls.push({
         id: 'chromaSpots',
         label: t('局部色斑'),
@@ -303,44 +303,46 @@ export function RepairControls({ controller }: { controller: InspectorController
           )}
           {mode === 'retouch' && (
             <div className="tonal-tabs" aria-label={t('质感算法')}>
-              {(['guided-v4', 'guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const).map(
-                (algorithm) => (
-                  <button
-                    key={algorithm}
-                    aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
-                    onClick={() =>
-                      apply(
-                        {
-                          ...recipe,
-                          retouch: recipe.retouch.map((op) => {
-                            if (op.id !== item.id) return op;
-                            const { algorithm: _old, chromaSpots, ...rest } = op;
-                            return {
-                              ...rest,
-                              ...(algorithm !== 'legacy' ? { algorithm } : {}),
-                              ...(algorithm === 'guided-v4' && chromaSpots !== undefined
-                                ? { chromaSpots }
-                                : {}),
-                            };
-                          }),
-                        },
-                        t('切换质感算法'),
-                        true,
-                      )
-                    }
-                  >
-                    {
+              {(
+                ['guided-v5', 'guided-v4', 'guided-v3', 'guided-v2', 'guided-v1', 'legacy'] as const
+              ).map((algorithm) => (
+                <button
+                  key={algorithm}
+                  aria-pressed={((item as RetouchRegionV4).algorithm ?? 'legacy') === algorithm}
+                  onClick={() =>
+                    apply(
                       {
-                        'guided-v4': t('纹理与斑点分离'),
-                        'guided-v3': t('细纹与反光分离'),
-                        'guided-v2': t('选区保边与双尺度纹理'),
-                        'guided-v1': t('保边美肤'),
-                        legacy: t('原版质感'),
-                      }[algorithm]
-                    }
-                  </button>
-                ),
-              )}
+                        ...recipe,
+                        retouch: recipe.retouch.map((op) => {
+                          if (op.id !== item.id) return op;
+                          const { algorithm: _old, chromaSpots, ...rest } = op;
+                          return {
+                            ...rest,
+                            ...(algorithm !== 'legacy' ? { algorithm } : {}),
+                            ...((algorithm === 'guided-v4' || algorithm === 'guided-v5') &&
+                            chromaSpots !== undefined
+                              ? { chromaSpots }
+                              : {}),
+                          };
+                        }),
+                      },
+                      t('切换质感算法'),
+                      true,
+                    )
+                  }
+                >
+                  {
+                    {
+                      'guided-v5': t('自适应保边磨皮'),
+                      'guided-v4': t('纹理与斑点分离'),
+                      'guided-v3': t('细纹与反光分离'),
+                      'guided-v2': t('选区保边与双尺度纹理'),
+                      'guided-v1': t('保边美肤'),
+                      legacy: t('原版质感'),
+                    }[algorithm]
+                  }
+                </button>
+              ))}
             </div>
           )}
           <MotionDetails>

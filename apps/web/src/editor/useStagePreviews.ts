@@ -17,10 +17,18 @@ type PreviewJob = {
   kind: PreviewKind;
   key: string;
   source: RGBAImage;
+  images: ReadonlyMap<string, RGBAImage>;
   recipe: EditorRecipe;
   live: boolean;
 };
-type PreviewResult = { source: RGBAImage; image: RGBAImage; key: string; geometryKey: string };
+type PreviewResult = {
+  source: RGBAImage;
+  images: ReadonlyMap<string, RGBAImage>;
+  image: RGBAImage;
+  key: string;
+  geometryKey: string;
+  live: boolean;
+};
 
 /** One in-flight operation, at most one latest job per purpose; obsolete frames never label as current. */
 export function useStagePreviews(
@@ -44,6 +52,8 @@ export function useStagePreviews(
   const inFlight = useRef<PreviewJob | null>(null);
   const sourceRef = useRef(source);
   sourceRef.current = source;
+  const imagesRef = useRef(images);
+  imagesRef.current = images;
   const [compare, setCompare] = useState<PreviewResult | null>(null);
   const [crop, setCrop] = useState<PreviewResult | null>(null);
   const [remote, setRemote] = useState<PreviewResult | null>(null);
@@ -56,6 +66,7 @@ export function useStagePreviews(
     [recipe],
   );
   const cropKey = JSON.stringify(uncropped);
+  const cropGeometryKey = editorGeometryKey(uncropped);
   function failWorker() {
     releaseWorker(worker);
     inFlight.current = null;
@@ -80,7 +91,7 @@ export function useStagePreviews(
   }
   function enqueue(kind: PreviewKind, key: string, value: EditorRecipe, draft = false) {
     if (!source || !worker.current) return;
-    const job = { id: ++nextId.current, kind, key, source, recipe: value, live: draft };
+    const job = { id: ++nextId.current, kind, key, source, images, recipe: value, live: draft };
     latest.current[kind] = job.id;
     pending.current[kind] = job;
     pump();
@@ -104,15 +115,21 @@ export function useStagePreviews(
           const job = inFlight.current;
           if (!job || job.id !== id) return;
           inFlight.current = null;
-          if ((job.live || id === latest.current[job.kind]) && job.source === sourceRef.current) {
+          if (
+            (id === latest.current[job.kind] || (job.live && latest.current[job.kind] > 0)) &&
+            job.source === sourceRef.current &&
+            (job.kind === 'compare' || job.images === imagesRef.current)
+          ) {
             if (failure && !job.live) setError(failure);
             else if (result) {
               setError(null);
               (job.kind === 'remote' ? setRemote : job.kind === 'compare' ? setCompare : setCrop)({
                 source: job.source,
+                images: job.images,
                 image: result,
                 key: job.key,
                 geometryKey: editorGeometryKey(job.recipe),
+                live: job.live,
               });
             }
           }
@@ -139,7 +156,11 @@ export function useStagePreviews(
     }
   }, [images]);
   useEffect(() => {
-    if (source && (comparing || compare?.source !== source) && (compare?.source !== source || compare.key !== comparisonKey))
+    if (
+      source &&
+      (comparing || compare?.source !== source) &&
+      (compare?.source !== source || compare.key !== comparisonKey)
+    )
       enqueue(
         'compare',
         comparisonKey,
@@ -157,9 +178,16 @@ export function useStagePreviews(
   useEffect(() => {
     if (!source || !cropOpen) {
       pending.current.crop = null;
+      latest.current.crop = 0;
       return;
     }
-    // Crop movement alone does not redraw: this key excludes the crop rectangle.
+    // The viewport draws its crop rectangle over an uncropped raster.
+    // Moving that rectangle alone never needs another raster.
+    if (crop?.source === source && crop.images === images && crop.key === cropKey && !crop.live) {
+      pending.current.crop = null;
+      latest.current.crop = 0;
+      return;
+    }
     enqueue('crop', cropKey, uncropped, live);
   }, [source, cropOpen, cropKey, images, live]);
   useEffect(() => {
@@ -170,10 +198,13 @@ export function useStagePreviews(
     }
   }, [source, remoteKey, images]);
   return {
-    remote: remote?.source === source && remote.key === remoteKey ? remote.image : null,
+    remote:
+      remote?.source === source && remote.images === images && remote.key === remoteKey
+        ? remote.image
+        : null,
     compare: compare?.source === source && compare.key === comparisonKey ? compare.image : null,
     crop:
-      crop?.source === source && crop.geometryKey === editorGeometryKey(uncropped)
+      crop?.source === source && crop.images === images && crop.geometryKey === cropGeometryKey
         ? crop.image
         : null,
     error,

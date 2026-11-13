@@ -10,6 +10,15 @@ import {
 } from '@ai-xiutu/editor';
 
 export const MAX_PREVIEW_PIXELS = 4_194_304;
+export const MAX_INTERACTIVE_PIXELS = 307_200;
+
+export function interactiveRaster(source: RGBAImage, maxPixels = MAX_INTERACTIVE_PIXELS) {
+  const scale = Math.min(1, Math.sqrt(maxPixels / (source.width * source.height)));
+  return previewRaster(source, {
+    width: Math.max(1, Math.floor(source.width * scale)),
+    height: Math.max(1, Math.floor(source.height * scale)),
+  });
+}
 const linear = Float64Array.from({ length: 256 }, (_, i) => srgbToLinear(i / 255));
 const lastResample = new WeakMap<RGBAImage, RGBAImage>();
 

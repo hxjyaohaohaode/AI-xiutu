@@ -148,9 +148,27 @@ export interface PaintLayerV3 {
   mask: SelectionMaskV3 | null;
   strokes: PaintStrokeV3[];
 }
+export interface FaceWarpAnchorV3 {
+  from: Point;
+  to: Point;
+  radius: number;
+  strength: number;
+  mode: 'push' | 'pinch' | 'bulge' | 'twirl' | 'pin' | 'affine';
+  /** An eye or mouth transformation in its own oriented, elliptical support. */
+  affine?: {
+    radiusY: number;
+    axis: number;
+    scaleX: number;
+    scaleY: number;
+    rotation: number;
+  };
+}
+
 export interface WarpStrokeV3 {
   /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
-  algorithm?: 'flow-v1' | 'flow-v2' | 'restore-v1';
+  algorithm?: 'flow-v1' | 'flow-v2' | 'face-field-v1' | 'restore-v1';
+  /** Only face-field-v1 reads these source-space constraints. */
+  anchors?: FaceWarpAnchorV3[];
   resampling?: 'bounded-cubic-v1';
   guardId?: string;
   origin?: OperationOriginV3;

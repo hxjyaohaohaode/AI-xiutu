@@ -161,7 +161,10 @@ function readSelectionMask(input: unknown, path: string, errors: string[]): Sele
     return { type, strokes, invert: boolean(v.invert, `${path}.invert`, errors) };
   }
   if (type === 'raster') {
-    const v = record(input, ['type', 'width', 'height', 'runs', 'invert'], path, errors);
+    const v = record(input, ['type', 'width', 'height', 'runs', 'invert'], path, errors, [
+      'sampling',
+      'bounds',
+    ]);
     const width = integer(v.width, 1, 16384, `${path}.width`, errors),
       height = integer(v.height, 1, 16384, `${path}.height`, errors);
     if (width * height > 67_108_864) errors.push(`${path}: raster pixel budget exceeded`);
@@ -181,7 +184,32 @@ function readSelectionMask(input: unknown, path: string, errors: string[]): Sele
     });
     if (sum !== width * height)
       errors.push(`${path}.runs: run lengths must cover exactly width × height`);
-    return { type, width, height, runs, invert: boolean(v.invert, `${path}.invert`, errors) };
+    if (v.sampling !== undefined && v.sampling !== 'bilinear-v1')
+      errors.push(`${path}.sampling: unsupported raster sampling`);
+    let bounds;
+    if (v.bounds !== undefined) {
+      const name = `${path}.bounds`;
+      const b = record(v.bounds, ['x', 'y', 'width', 'height'], name, errors);
+      bounds = {
+        x: number(b.x, 0, 1, `${name}.x`, errors),
+        y: number(b.y, 0, 1, `${name}.y`, errors),
+        width: number(b.width, 0.000001, 1, `${name}.width`, errors),
+        height: number(b.height, 0.000001, 1, `${name}.height`, errors),
+      };
+      if (bounds.x + bounds.width > 1 + 1e-12 || bounds.y + bounds.height > 1 + 1e-12)
+        errors.push(`${name}: raster window exceeds source`);
+    }
+    if (v.sampling === 'bilinear-v1' && width * height > 262_144)
+      errors.push(`${path}: interpolated raster pixel budget exceeded`);
+    return {
+      type,
+      width,
+      height,
+      runs,
+      invert: boolean(v.invert, `${path}.invert`, errors),
+      ...(v.sampling === 'bilinear-v1' ? { sampling: v.sampling } : {}),
+      ...(bounds ? { bounds } : {}),
+    };
   }
   if (type === 'color-range') {
     const v = record(
