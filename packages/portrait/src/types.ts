@@ -2,6 +2,7 @@ import type { SourceFrame } from '@ai-xiutu/contracts';
 import type { Point, SelectionMaskV3 } from '@ai-xiutu/editor';
 
 export const REFINED_PORTRAIT_ANALYSIS = 'mediapipe-v2-face-roi';
+export const PRECISE_PORTRAIT_ANALYSIS = 'mediapipe-v3-part-evidence';
 
 /** Detection is geometric analysis, never identity recognition or a beauty score. */
 export interface PortraitTarget {
@@ -14,9 +15,14 @@ export interface PortraitTarget {
   featureMasks?: {
     skin?: SelectionMaskV3;
     teeth?: SelectionMaskV3;
+    nostrils?: SelectionMaskV3;
     accessories?: SelectionMaskV3;
     relight?: { light: SelectionMaskV3; shade: SelectionMaskV3 };
   };
+  /** Local per-person pose segmentation; absent when the outline is unreliable. */
+  bodyMask?: SelectionMaskV3;
+  /** Soft edit corridor around the observed outline, before protecting neighbors. */
+  bodySupport?: SelectionMaskV3;
 }
 export interface PortraitAnalysis {
   schemaVersion: 1;

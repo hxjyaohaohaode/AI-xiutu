@@ -21,12 +21,53 @@ export function faceWindow(canvas: OffscreenCanvas, bounds: Window, padding: num
   };
 }
 
-export function analysisCanvas(source: OffscreenCanvas, window: Window, maxEdge: number) {
+export function headWindow(bounds: Window): Window {
+  const x = Math.max(0, bounds.x - bounds.width * 0.57);
+  const y = Math.max(0, bounds.y - bounds.height * 0.72);
+  return {
+    x,
+    y,
+    width: Math.min(1, bounds.x + bounds.width * 1.57) - x,
+    height: Math.min(1, bounds.y + bounds.height * 1.22) - y,
+  };
+}
+
+export function confidenceSampler(
+  values: Float32Array,
+  width: number,
+  height: number,
+  bounds: Window = entireFrame,
+) {
+  return (p: Point) => {
+    const u = (p.x - bounds.x) / bounds.width,
+      v = (p.y - bounds.y) / bounds.height;
+    if (u < 0 || u > 1 || v < 0 || v > 1) return 0;
+    const x = Math.max(0, Math.min(width - 1, u * width - 0.5)),
+      y = Math.max(0, Math.min(height - 1, v * height - 0.5));
+    const i = Math.floor(x),
+      j = Math.floor(y),
+      a = x - i,
+      b = y - j,
+      i1 = Math.min(i + 1, width - 1),
+      j1 = Math.min(j + 1, height - 1);
+    return (
+      ((values[j * width + i] ?? 0) * (1 - a) + (values[j * width + i1] ?? 0) * a) * (1 - b) +
+      ((values[j1 * width + i] ?? 0) * (1 - a) + (values[j1 * width + i1] ?? 0) * a) * b
+    );
+  };
+}
+
+export function analysisCanvas(
+  source: OffscreenCanvas,
+  window: Window,
+  maxEdge: number,
+  rowAlignment = 1,
+) {
   const width = source.width * window.width;
   const height = source.height * window.height;
   const scale = Math.min(1, maxEdge / Math.max(width, height));
   const canvas = new OffscreenCanvas(
-    Math.max(1, Math.round(width * scale)),
+    Math.max(rowAlignment, Math.round((width * scale) / rowAlignment) * rowAlignment),
     Math.max(1, Math.round(height * scale)),
   );
   const context = canvas.getContext('2d');
@@ -210,4 +251,41 @@ export function confidenceRaster(
 export function confidenceWeight(value: number, low: number, high: number) {
   const t = Math.max(0, Math.min(1, (value - low) / (high - low)));
   return t * t * (3 - 2 * t);
+}
+
+/** Bounded distance transform around the observed person, in source pixels. */
+export function poseEditCorridor(
+  weights: Float32Array,
+  width: number,
+  height: number,
+  pixelWidth: number,
+  pixelHeight: number,
+  shoulderSpan: number,
+) {
+  const distance = Float32Array.from(weights, (value) => (value >= 0.52 ? 0 : Infinity));
+  if (!distance.some((value) => value === 0)) return;
+  const dx = pixelWidth / width,
+    dy = pixelHeight / height,
+    diagonal = Math.hypot(dx, dy);
+  for (const reverse of [false, true]) {
+    const step = reverse ? -1 : 1;
+    for (let iy = 0; iy < height; iy++)
+      for (let ix = 0; ix < width; ix++) {
+        const y = reverse ? height - 1 - iy : iy,
+          x = reverse ? width - 1 - ix : ix;
+        const i = y * width + x,
+          prevX = x - step,
+          prevY = y - step;
+        let d = distance[i]!;
+        if (prevX >= 0 && prevX < width) d = Math.min(d, distance[y * width + prevX]! + dx);
+        if (prevY >= 0 && prevY < height) {
+          d = Math.min(d, distance[prevY * width + x]! + dy);
+          if (x > 0) d = Math.min(d, distance[prevY * width + x - 1]! + diagonal);
+          if (x + 1 < width) d = Math.min(d, distance[prevY * width + x + 1]! + diagonal);
+        }
+        distance[i] = d;
+      }
+  }
+  const margin = Math.max(Math.max(dx, dy) * 2.2, shoulderSpan * 0.2);
+  return (i: number) => 1 - confidenceWeight(distance[i]!, margin * 0.4, margin);
 }

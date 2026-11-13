@@ -14,10 +14,12 @@ import {
   boundsOf,
   contourLoops,
   contourHull,
-  visibleTeeth,
+  analyzeFacePixels,
+  analyzeHeadBoundaries,
+  measureBodySections,
   visibleEyeAccessories,
   visibleMeshLighting,
-  REFINED_PORTRAIT_ANALYSIS,
+  PRECISE_PORTRAIT_ANALYSIS,
   anchoredSubjectPrior,
   type PortraitAnalysis,
   type PortraitTarget,
@@ -26,10 +28,13 @@ import { portraitAnalysisErrorMessage } from './portrait-analysis-errors';
 import {
   analysisCanvas,
   confidenceRaster,
+  confidenceSampler,
   confidenceWeight,
   detectFaceDetails,
   entireFrame,
   faceWindow,
+  headWindow,
+  poseEditCorridor,
 } from './portrait-refinement';
 
 type Request = {
@@ -135,7 +140,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     const result: PortraitAnalysis = {
       schemaVersion: 1,
       provider: 'mediapipe',
-      algorithmVersion: REFINED_PORTRAIT_ANALYSIS,
+      algorithmVersion: PRECISE_PORTRAIT_ANALYSIS,
       frame: {
         coordinates: 'source-normalized',
         contentHash: hash,
@@ -195,14 +200,12 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         label: `人物 ${i + 1}`,
       }));
       for (const target of result.targets) {
-        const teeth = visibleTeeth(image, target);
         const relight = visibleMeshLighting(
           target,
           image,
           FaceLandmarker.FACE_LANDMARKS_TESSELATION,
         );
-        if (teeth || relight)
-          target.featureMasks = { ...(teeth ? { teeth } : {}), ...(relight ? { relight } : {}) };
+        if (relight) target.featureMasks = { relight };
       }
     } finally {
       face.close();
@@ -335,6 +338,31 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           } finally {
             crop.width = crop.height = 1;
           }
+          const head = headWindow(target.bounds);
+          const headCrop = analysisCanvas(canvas, head, 448);
+          try {
+            segment.segment(headCrop, (output) => {
+              const masks = output.confidenceMasks;
+              if (!masks?.[0] || !masks[1] || !masks[3]) return;
+              const samplers = masks.map((mask) =>
+                confidenceSampler(mask.getAsFloat32Array(), mask.width, mask.height, head),
+              );
+              Object.assign(
+                target.contours,
+                analyzeHeadBoundaries(
+                  target,
+                  image,
+                  head,
+                  (index, point) => samplers[index]?.(point) ?? 0,
+                  result.targets
+                    .filter((person) => person !== target)
+                    .map((person) => person.bounds),
+                ),
+              );
+            });
+          } finally {
+            headCrop.width = headCrop.height = 1;
+          }
         }
       } catch (error) {
         if (import.meta.env.DEV) console.error('Portrait segmentation unavailable', error);
@@ -343,6 +371,12 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         overview.width = overview.height = 1;
         segment?.close();
       }
+    }
+    for (const target of result.targets) {
+      const evidence = analyzeFacePixels(image, target);
+      Object.assign(target.contours, evidence.contours);
+      if (evidence.featureMasks && Object.keys(evidence.featureMasks).length)
+        target.featureMasks = { ...target.featureMasks, ...evidence.featureMasks };
     }
     if (body) {
       progress('正在定位身体关键点');
@@ -355,14 +389,27 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           numPoses: 8,
           minPoseDetectionConfidence: 0.6,
           minPosePresenceConfidence: 0.6,
-          outputSegmentationMasks: false,
+          outputSegmentationMasks: true,
         });
-        const poses = pose.detect(canvas).landmarks;
-        const targets: PortraitTarget[] = poses
-          .flatMap((points) => {
-            try {
-              return [
-                {
+        const targets: PortraitTarget[] = [];
+        // The native float mask listener expects contiguous rows. Align the
+        // inference width to four float samples; normalized positions still
+        // address the complete source without cropping or padding.
+        const poseCanvas = analysisCanvas(canvas, entireFrame, 896, 4);
+        try {
+          pose.detect(poseCanvas, (output) => {
+            const masks =
+              output.segmentationMasks?.map((mask) => ({
+                width: mask.width,
+                height: mask.height,
+                values: mask.getAsFloat32Array(),
+              })) ?? [];
+            const samplers = masks.map(({ width, height, values }) =>
+              confidenceSampler(values, width, height),
+            );
+            output.landmarks.forEach((points, index) => {
+              try {
+                const target: PortraitTarget = {
                   id: '',
                   kind: 'body' as const,
                   label: '',
@@ -374,13 +421,76 @@ self.onmessage = async (event: MessageEvent<Request>) => {
                   })),
                   contours: {},
                   bounds: boundsOf(points.filter((p) => (p.visibility ?? 0) > 0.5)),
-                },
-              ];
-            } catch {
-              return [];
-            }
-          })
-          .sort((a, b) => a.bounds.x - b.bounds.x);
+                };
+                const raster = masks[index],
+                  subject = samplers[index];
+                if (raster && subject) {
+                  const neighbor = (p: Point) =>
+                    samplers.reduce(
+                      (maximum, sample, i) =>
+                        i === index ? maximum : Math.max(maximum, sample(p)),
+                      0,
+                    );
+                  target.contours = measureBodySections(target, image, subject, neighbor);
+                  const { x, y, width, height } = target.bounds;
+                  const x0 = Math.max(0, x - width * 0.28),
+                    y0 = Math.max(0, y - height * 0.14);
+                  const extent = {
+                    x: x0,
+                    y: y0,
+                    width: Math.min(1, x + width * 1.28) - x0,
+                    height: Math.min(1, y + height * 1.14) - y0,
+                  };
+                  const scale = Math.min(
+                    1,
+                    100 / Math.max(extent.width * image.width, extent.height * image.height),
+                  );
+                  const w = Math.max(1, Math.round(extent.width * image.width * scale));
+                  const h = Math.max(1, Math.round(extent.height * image.height * scale));
+                  const samples = Float32Array.from({ length: w * h }, (_, i) =>
+                    subject({
+                      x: extent.x + (((i % w) + 0.5) / w) * extent.width,
+                      y: extent.y + ((Math.floor(i / w) + 0.5) / h) * extent.height,
+                    }),
+                  );
+                  const mask = confidenceRaster(
+                    w,
+                    h,
+                    (i) => confidenceWeight(samples[i]!, 0.28, 0.75),
+                    100,
+                    560,
+                    extent,
+                  );
+                  if (mask) target.bodyMask = mask;
+                  const a = points[11],
+                    b = points[12];
+                  if (mask && a && b) {
+                    const shoulder = Math.hypot(
+                      (a.x - b.x) * image.width,
+                      (a.y - b.y) * image.height,
+                    );
+                    const support = poseEditCorridor(
+                      samples,
+                      w,
+                      h,
+                      extent.width * image.width,
+                      extent.height * image.height,
+                      shoulder,
+                    );
+                    const corridor = support && confidenceRaster(w, h, support, 100, 680, extent);
+                    if (corridor) target.bodySupport = corridor;
+                  }
+                }
+                targets.push(target);
+              } catch {
+                // A partly out-of-frame detection may have no usable bounds.
+              }
+            });
+          });
+        } finally {
+          poseCanvas.width = poseCanvas.height = 1;
+        }
+        targets.sort((a, b) => a.bounds.x - b.bounds.x);
         result.targets.push(
           ...targets.map((t, i) => ({
             ...t,

@@ -1,5 +1,5 @@
 export type * from './types.js';
-export { REFINED_PORTRAIT_ANALYSIS } from './types.js';
+export { REFINED_PORTRAIT_ANALYSIS, PRECISE_PORTRAIT_ANALYSIS } from './types.js';
 export { PORTRAIT_TOOLS } from './catalog.js';
 export {
   center,
@@ -30,5 +30,7 @@ export type {
   PortraitPixelOperation,
 } from './retouch-adapter.js';
 export { visibleTeeth, visibleEyeAccessories, visibleMeshLighting } from './visible-features.js';
+export { analyzeFacePixels, analyzeHeadBoundaries } from './part-evidence.js';
+export { measureBodySections } from './body-proportions.js';
 export { anchoredSubjectPrior } from './subject-prior.js';
 export { fusePortraitCutoutPrior, restoreOpaqueCutoutCore } from './cutout-prior.js';

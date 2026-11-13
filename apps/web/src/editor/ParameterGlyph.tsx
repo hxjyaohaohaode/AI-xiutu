@@ -96,6 +96,21 @@ const portraitMarks: Record<string, ReactNode> = {
       <path d="M19 2v4m-2-2h4" />
     </>
   ),
+  nostrilTone: (
+    <>
+      {nose}
+      <path d="M7.5 17h2m5 0h2" strokeWidth="2" />
+    </>
+  ),
+  hairline: <path d="M4 19V12a8 8 0 0 1 16 0v7M4 13q5 1 8-4 3 5 8 4" />,
+  hairVolume: <path d="M4 19v-5a8 8 0 0 1 16 0v5M12 10V2m-3 3 3-3 3 3M6 17q2-5 6-5t6 5" />,
+  earSize: <path d="M5 11a7 7 0 1 1 12 5c-2 2-2 5-5 5-2 0-3-1-3-3m0-6a3.5 3.5 0 1 1 6 2.5l-2 2" />,
+  pupilSize: (
+    <>
+      {eye}
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" />
+    </>
+  ),
   meshLight: (
     <>
       <path d="m12 3-7 5 2 10 5 4 5-4 2-10ZM5 8l7 5 7-5M7 18l5-5 5 5M12 3v19" />
@@ -523,9 +538,7 @@ const marks: Record<string, ReactNode> = {
       <path d="M2 4v6m20 4v6" />
     </>
   ),
-  paintColor: (
-    <path d="M12 3c-2 4-7 7.6-7 12a7 7 0 0 0 14 0c0-4.4-5-8-7-12Zm-4 12a4 4 0 0 0 4 4" />
-  ),
+  paintColor: <path d="M12 3c-2 4-7 7.6-7 12a7 7 0 0 0 14 0c0-4.4-5-8-7-12Zm-4 12a4 4 0 0 0 4 4" />,
   blend: (
     <>
       <circle cx="9" cy="12" r="6" />

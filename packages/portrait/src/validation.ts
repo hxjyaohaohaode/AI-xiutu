@@ -100,7 +100,7 @@ function readTarget(input: unknown): PortraitTarget {
   const r = object(
     input,
     ['id', 'kind', 'label', 'landmarks', 'contours', 'bounds'],
-    ['featureMasks'],
+    ['featureMasks', 'bodyMask', 'bodySupport'],
   );
   if (r.kind !== 'face' && r.kind !== 'body') throw new Error('人像目标类别不支持。');
   const id = string(r.id, 80);
@@ -131,10 +131,11 @@ function readTarget(input: unknown): PortraitTarget {
   let featureMasks: PortraitTarget['featureMasks'];
   if (r.featureMasks !== undefined) {
     if (r.kind !== 'face') throw new Error('身形目标不能携带面部蒙版。');
-    const raw = object(r.featureMasks, [], ['skin', 'teeth', 'accessories', 'relight']);
+    const raw = object(r.featureMasks, [], ['skin', 'teeth', 'nostrils', 'accessories', 'relight']);
     featureMasks = {};
     if (raw.skin !== undefined) featureMasks.skin = parseSelectionMaskV3(raw.skin);
     if (raw.teeth !== undefined) featureMasks.teeth = parseSelectionMaskV3(raw.teeth);
+    if (raw.nostrils !== undefined) featureMasks.nostrils = parseSelectionMaskV3(raw.nostrils);
     if (raw.accessories !== undefined)
       featureMasks.accessories = parseSelectionMaskV3(raw.accessories);
     if (raw.relight !== undefined) {
@@ -145,6 +146,8 @@ function readTarget(input: unknown): PortraitTarget {
       };
     }
   }
+  if ((r.bodyMask !== undefined || r.bodySupport !== undefined) && r.kind !== 'body')
+    throw new Error('面部目标不能携带身体蒙版。');
   return {
     id,
     kind: r.kind,
@@ -153,6 +156,8 @@ function readTarget(input: unknown): PortraitTarget {
     contours,
     bounds,
     ...(featureMasks ? { featureMasks } : {}),
+    ...(r.bodyMask !== undefined ? { bodyMask: parseSelectionMaskV3(r.bodyMask) } : {}),
+    ...(r.bodySupport !== undefined ? { bodySupport: parseSelectionMaskV3(r.bodySupport) } : {}),
   };
 }
 export function validateTarget(input: PortraitTarget): PortraitTarget {

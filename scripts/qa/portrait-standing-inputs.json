@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "inputs": [
+    {
+      "name": "real-standing-pat",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/21/Pat-standing-medium.png",
+      "sha256": "5b122ff3db2e41ebf6317365bfe7dda21c4ba21b70a6ccd346b71e6376863584",
+      "bytes": 217605,
+      "source": "Pat-standing-medium.png, Contatta, CC BY-SA 3.0, Wikimedia Commons. Unmodified source cached only for QA; comparison output contains an edited version.",
+      "page": "https://commons.wikimedia.org/wiki/File:Pat-standing-medium.png",
+      "license": "https://creativecommons.org/licenses/by-sa/3.0/"
+    },
+    {
+      "name": "real-standing-guo",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/d/d0/%E9%83%AD%E6%98%8E%E7%BF%94.jpg",
+      "sha256": "e7974df10dcd7912f575b88222ce818c22c157e6a36006b761dd41b837098723",
+      "bytes": 94641,
+      "source": "郭明翔.jpg, Tan J3nny, CC BY-SA 3.0, Wikimedia Commons. Unmodified source cached only for QA; comparison output contains an edited version.",
+      "page": "https://commons.wikimedia.org/wiki/File:%E9%83%AD%E6%98%8E%E7%BF%94.jpg",
+      "license": "https://creativecommons.org/licenses/by-sa/3.0/"
+    }
+  ]
+}

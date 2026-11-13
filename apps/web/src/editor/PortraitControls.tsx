@@ -9,7 +9,7 @@ import { makeupPalettes } from './makeup-palettes';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
-  REFINED_PORTRAIT_ANALYSIS,
+  PRECISE_PORTRAIT_ANALYSIS,
   CURRENT_PORTRAIT_GEOMETRY,
   portraitValues,
   applyPortraitValues,
@@ -31,7 +31,13 @@ import { AutomaticMakeupControls } from './AutomaticMakeupControls';
 import { ParameterShelf } from './ParameterShelf';
 import { ParameterGlyph } from './ParameterGlyph';
 import { PrecisionRange } from './PrecisionRange';
-import { currentV3, hexRgba, manualPaintOrigin, newMask, type InspectorController } from './advanced-model';
+import {
+  currentV3,
+  hexRgba,
+  manualPaintOrigin,
+  newMask,
+  type InspectorController,
+} from './advanced-model';
 import type { ToolGroup } from './ToolInspector';
 import { portraitTargetDisplayLabel } from './portrait-label';
 import { interactionText } from '../workspace/interaction-copy';
@@ -124,10 +130,21 @@ export function PortraitControls({
   useEffect(() => {
     if (mode !== 'auto' || category === 'makeup' || !editor.sourceHash || state.progress) return;
     const key = sourceIdentity + ':' + kind;
-    if ((analysisCurrent && (kind === 'face' || target)) || automaticAnalysis.current.has(key)) return;
+    if ((analysisCurrent && (kind === 'face' || target)) || automaticAnalysis.current.has(key))
+      return;
     automaticAnalysis.current.add(key);
     void state.analyze(kind === 'body');
-  }, [mode, category, sourceIdentity, kind, editor.sourceHash, state.progress, state.analyze, analysisCurrent, target]);
+  }, [
+    mode,
+    category,
+    sourceIdentity,
+    kind,
+    editor.sourceHash,
+    state.progress,
+    state.analyze,
+    analysisCurrent,
+    target,
+  ]);
   const hasSubject = analysisCurrent && !!state.analysis?.segmentation?.subject;
   const [fineMatteAvailable, setFineMatteAvailable] = useState(false);
   useEffect(() => {
@@ -175,22 +192,22 @@ export function PortraitControls({
       item.origin?.moduleId === 'portrait.basic.v2',
   );
   const hasManual = targetOperations.some((item) => item.origin?.moduleId === 'portrait.manual.v1');
-  const hasCurrentFace = targetOperations.some(
+  const hasCurrentPortrait = targetOperations.some(
     (item) => item.origin?.parameters?.portraitGeometry === CURRENT_PORTRAIT_GEOMETRY,
   );
-  const canUpdateFace =
+  const canUpdatePortrait =
     recipe.schemaVersion === 4 &&
-    target?.kind === 'face' &&
+    !!target &&
     hasAutomatic &&
-    state.analysis?.algorithmVersion === REFINED_PORTRAIT_ANALYSIS &&
-    !hasCurrentFace;
+    state.analysis?.algorithmVersion === PRECISE_PORTRAIT_ANALYSIS &&
+    !hasCurrentPortrait;
   const values = target ? portraitValues(recipe, target.id) : {};
   const availability = useMemo(
     () =>
       state.analysis && target
         ? portraitToolAvailability(state.analysis, target.id, recipe.schemaVersion, recipe)
         : [],
-    [state.analysis, target, recipe.schemaVersion, hasAutomatic, hasCurrentFace],
+    [state.analysis, target, recipe.schemaVersion, hasAutomatic, hasCurrentPortrait],
   );
   const hasLegacyNeck =
     recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;
@@ -309,7 +326,7 @@ export function PortraitControls({
       report(error instanceof Error ? error.message : '这个人物控制当前无法使用，请检查识别范围。');
     }
   }
-  function updateFace() {
+  function updatePortrait() {
     if (!target || !state.analysis || !analysisCurrent || editor.isLoading() || state.progress)
       return;
     try {
@@ -320,9 +337,9 @@ export function PortraitControls({
         target.id,
         portraitValues(latest, target.id),
         undefined,
-        { upgradeFace: true },
+        { upgradePortrait: true },
       );
-      apply(next, t('重新计算当前人物的美颜'), true);
+      apply(next, t(target.kind === 'body' ? '重新计算当前身形' : '重新计算当前人物的美颜'), true);
     } catch (failure) {
       report(errorMessage(failure));
     }
@@ -589,7 +606,10 @@ export function PortraitControls({
     <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
       {headerTarget ? createPortal(portraitToolbar, headerTarget) : portraitToolbar}
       {mode === 'manual' ? (
-        <div className="makeup-parameter-tabs portrait-manual-rail" hidden={compact && category === 'makeup' && activeManualTool === 'paint'}>
+        <div
+          className="makeup-parameter-tabs portrait-manual-rail"
+          hidden={compact && category === 'makeup' && activeManualTool === 'paint'}
+        >
           {category === 'skin' ? (
             <button
               type="button"
@@ -604,7 +624,7 @@ export function PortraitControls({
               type="button"
               className="text-button"
               disabled={!onGroupChange}
-              onClick={() => compact ? openMobileMakeup() : openManual('paint', false)}
+              onClick={() => (compact ? openMobileMakeup() : openManual('paint', false))}
             >
               {t('手动涂妆与细修')}
             </button>
@@ -623,7 +643,9 @@ export function PortraitControls({
                 type="button"
                 className="text-button"
                 disabled={!onGroupChange}
-                aria-pressed={activeManualTool === 'liquify' && editor.warpSettings.axis === 'horizontal'}
+                aria-pressed={
+                  activeManualTool === 'liquify' && editor.warpSettings.axis === 'horizontal'
+                }
                 onClick={() => manualStretch('horizontal')}
               >
                 {t('横向拉伸')}
@@ -632,7 +654,9 @@ export function PortraitControls({
                 type="button"
                 className="text-button"
                 disabled={!onGroupChange}
-                aria-pressed={activeManualTool === 'liquify' && editor.warpSettings.axis === 'vertical'}
+                aria-pressed={
+                  activeManualTool === 'liquify' && editor.warpSettings.axis === 'vertical'
+                }
                 onClick={() => manualStretch('vertical', compact && category === 'body')}
               >
                 {t('纵向拉伸')}
@@ -738,13 +762,15 @@ export function PortraitControls({
                 <div className="portrait-ownership-note">
                   {hasAutomatic && (
                     <>
-                      {canUpdateFace && (
+                      {canUpdatePortrait && (
                         <button
                           className="text-button"
                           disabled={!analysisCurrent || !!state.progress}
-                          onClick={updateFace}
+                          onClick={updatePortrait}
                         >
-                          {t('重新计算当前人物的美颜')}
+                          {t(
+                            target.kind === 'body' ? '重新计算当前身形' : '重新计算当前人物的美颜',
+                          )}
                         </button>
                       )}
                       <button
@@ -762,6 +788,16 @@ export function PortraitControls({
               )}
               <MotionDetails className="advanced-disclosure">
                 <summary>{t('识别与手动修正说明')}</summary>
+                {target.kind === 'body' && (
+                  <button
+                    className="text-button"
+                    type="button"
+                    aria-pressed={state.showLandmarks}
+                    onClick={() => state.setShowLandmarks((show) => !show)}
+                  >
+                    {t(state.showLandmarks ? '隐藏身形定位' : '显示身形定位')}
+                  </button>
+                )}
                 {target.kind === 'face' && (
                   <div className="advanced-row portrait-review-actions">
                     <button

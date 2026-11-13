@@ -669,7 +669,8 @@
   height: 100%;
   pointer-events: none;
 }
-.portrait-landmark-overlay polygon {
+.portrait-landmark-overlay polygon,
+.portrait-landmark-overlay polyline {
   fill: none;
   stroke: #91deff;
   stroke-width: 1;
@@ -679,6 +680,10 @@
   stroke: #edfbff;
   stroke-width: 1.9;
   stroke-linecap: round;
+}
+.portrait-landmark-overlay [data-part] {
+  stroke: #f4d482;
+  stroke-opacity: 1;
 }
 .portrait-face-pin {
   position: absolute;

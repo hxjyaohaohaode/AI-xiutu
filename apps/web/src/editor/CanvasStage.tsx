@@ -523,13 +523,16 @@ export function CanvasStage({
       return null;
     }
   }, [dimensions, editorGeometryKey(viewRecipe), source]);
+  const shownPortrait = editor.portrait.analysis?.targets.find(
+    (target) => target.id === editor.portrait.activeTargetId,
+  );
   const portraitTargets =
     group === 'beauty' &&
     editor.portrait.showLandmarks &&
     !inspectingOriginal &&
     !previews.remote &&
     editor.portrait.analysis?.frame.contentHash === editor.getSourceFrame()?.contentHash
-      ? (editor.portrait.analysis?.targets.filter((target) => target.kind === 'face') ?? [])
+      ? (editor.portrait.analysis?.targets.filter((target) => target.kind === (shownPortrait?.kind ?? 'face')) ?? [])
       : [];
   const activeFace =
     portraitTargets.find((target) => target.id === editor.portrait.activeTargetId) ??
@@ -2497,19 +2500,32 @@ export function CanvasStage({
                 className="portrait-landmark-overlay"
                 viewBox="0 0 100 100"
                 preserveAspectRatio="none"
-                aria-label={t('显示人脸关键点')}
+                aria-label={t(activeFace.kind === 'body' ? '显示身形定位' : '显示人脸关键点')}
                 role="img"
               >
-                {Object.entries(activeFace.contours).map(([name, outline]) => (
-                  <polygon
-                    key={name}
-                    points={overlayPolygon(outline, projectFace)}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
+                {Object.entries(activeFace.contours).flatMap(([name, outline]) => {
+                  if (activeFace.kind === 'body') {
+                    if (name.endsWith('Pins')) return [];
+                    return Array.from({ length: Math.floor(outline.length / 3) }, (_, i) => (
+                      <polyline key={name + i} points={overlayPolygon(outline.slice(i * 3 + 1, i * 3 + 3), projectFace)}
+                        vectorEffect="non-scaling-stroke" />
+                    ));
+                  }
+                  if (name === 'hairline' || name === 'hairCrown' || name === 'earA' || name === 'earB')
+                    return [<polyline key={name} data-part={name} points={overlayPolygon(name.startsWith('ear') ? outline.slice(1) : outline, projectFace)} vectorEffect="non-scaling-stroke" />];
+                  if (name.endsWith('Pupil') || name === 'nostrilCenters') {
+                    const points = name.endsWith('Pupil') ? outline.slice(0, 1) : outline;
+                    return points.flatMap((point, i) => {
+                      const p = projectOverlayPoint(point, projectFace);
+                      return p ? [<path key={name + i} data-part={name} d={'M' + p.x * 100 + ' ' + p.y * 100 + 'h0.001'} vectorEffect="non-scaling-stroke" />] : [];
+                    });
+                  }
+                  return [<polygon key={name} points={overlayPolygon(outline, projectFace)} vectorEffect="non-scaling-stroke" />];
+                })}
                 <path
                   d={activeFace.landmarks
                     .flatMap((point) => {
+                      if (activeFace.kind === 'body' && ((point.visibility ?? 0) < 0.62 || point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1)) return [];
                       const p = projectOverlayPoint(point, projectFace);
                       return p && p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1
                         ? ['M' + p.x * 100 + ' ' + p.y * 100 + 'h0.001']

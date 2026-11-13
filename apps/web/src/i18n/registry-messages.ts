@@ -1,4 +1,39 @@
 export const registryEnglish: Readonly<Record<string, string>> = {
+  鼻孔阴影: 'Nostril shadows',
+  '只调整有像素证据的鼻孔暗部。负值加深，正值提亮。':
+    'Adjusts confirmed nostril shadows. Negative darkens; positive brightens.',
+  发顶蓬松: 'Crown volume',
+  '沿可见发顶轮廓调整高度。负值压低，正值抬高；保留现有发丝。':
+    'Changes the height of the visible crown. Negative lowers it; positive raises it. Existing strands are preserved.',
+  耳廓大小: 'Outer ear size',
+  '围绕可见耳根缩放外耳轮廓。负值收小，正值放大。':
+    'Resizes the outer ear around its visible base. Negative shrinks it; positive enlarges it.',
+  瞳孔大小: 'Pupil size',
+  '根据可见瞳孔边缘调整暗色核心，保留虹膜外缘和眼睑。':
+    'Adjusts the dark center using the visible pupil boundary while preserving the outer iris and eyelids.',
+  '沿可见肩部轮廓调整宽度。负值放宽，正值收窄。':
+    'Changes shoulder width along the visible outline. Negative widens; positive narrows.',
+  '沿可见上臂和前臂轮廓收放。负值放宽，正值收窄。':
+    'Changes visible upper-arm and forearm widths. Negative widens; positive narrows.',
+  '以实际腰线为边界平滑收放。负值放宽，正值收窄。':
+    'Smoothly adjusts the waist along its visible outline. Negative widens; positive narrows.',
+  '沿可见髋部轮廓收放。负值收窄，正值放宽。':
+    'Changes hip width along the visible outline. Negative narrows; positive widens.',
+  '在髋、膝和踝之间分配长度，保持脚底位置。负值缩短，正值拉长。':
+    'Redistributes length between hip, knee, and ankle while keeping the feet in place. Negative shortens; positive lengthens.',
+  '沿可见大腿和小腿轮廓收放。负值放宽，正值收窄。':
+    'Changes visible thigh and calf widths. Negative widens; positive narrows.',
+  '按可见躯干和腿部分配纵向变化。负值压缩，正值拉长。':
+    'Distributes vertical changes across the visible torso and legs. Negative compresses; positive lengthens.',
+  '该参数需要新版人物分析与配方。':
+    'This control requires an updated portrait analysis and recipe.',
+  '这个部位的可见边界不足，可以手动精修。':
+    'This feature is not clearly visible. You can retouch it manually.',
+  '看不清这段身体的完整轮廓或支点，可以手动调节。':
+    'The outline or joints in this area are unclear. You can adjust it manually.',
+  重新计算当前身形: "Recalculate this person's body edits",
+  隐藏身形定位: 'Hide body landmarks',
+  显示身形定位: 'Show body landmarks',
   曝光: 'Exposure',
   '在线性光域乘以 2^EV；不恢复照片已截断的高光。':
     'Multiplies linear light by 2^EV; cannot recover clipped highlights.',
