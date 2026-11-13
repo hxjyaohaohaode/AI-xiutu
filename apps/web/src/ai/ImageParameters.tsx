@@ -299,7 +299,7 @@ export function ImageParameters({
                   </select>
                 </label>
               )}
-              {selectedAuthor?.efforts.length && (
+              {!!selectedAuthor?.efforts.length && (
                 <label className="ai-numeric-setting">
                   <span>{t('SVG 作者推理强度')}</span>
                   <select value={options.svg?.reasoning?.effort ?? ''} disabled={disabled}

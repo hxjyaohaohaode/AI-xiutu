@@ -751,6 +751,7 @@ export function createAiService(
       // provider flag. Unknown recovery remains safe even with a broken journal;
       // the journal check then blocks all new external dispatch.
       await recoverStaleAiJobs(db);
+      await db.query('DELETE FROM ai_job_image_previews WHERE expires_at<=clock_timestamp()');
       await journal.assertDatabaseMatches(db);
       preferMultimodal = !preferMultimodal;
       return preferMultimodal

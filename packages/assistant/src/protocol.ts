@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import type { VoiceServerEvent } from '@ai-xiutu/contracts';
-import { voiceModel, type AssistantModelConfig, type LiveOptions } from './models.js';
+import { OPENAI_DECISIONS_MODEL, OPENAI_TRANSLATION_MODEL,
+  type LiveDelegationOptions, type LiveTranslationOptions, type VoiceServerEvent } from '@ai-xiutu/contracts';
+import { responsesParameters, voiceModel, type AssistantModelConfig, type LiveOptions } from './models.js';
 import type { HistoryMessage } from './context-budget.js';
 
 function boundedLiveText(value: string): string {
@@ -30,6 +31,8 @@ export function liveContextAppend(
 
 export const LIVE_URL = 'wss://api.openai.com/v1/live/sessions';
 export function voiceEndpoint(modelId: string): string {
+  if (modelId === OPENAI_TRANSLATION_MODEL)
+    return 'wss://api.openai.com/v1/realtime/translations?model=' + OPENAI_TRANSLATION_MODEL;
   return voiceModel(modelId).protocol === 'live'
     ? LIVE_URL
     : `wss://api.openai.com/v1/realtime?model=${encodeURIComponent(modelId)}`;
@@ -50,8 +53,30 @@ export function voiceStartEvent(
   team = false,
   effort?: AssistantModelConfig['voiceReasoningEffort'],
   options?: Pick<AssistantModelConfig, 'live' | 'realtime'>,
+  native?: {
+    delegation?: LiveDelegationOptions;
+    translation?: LiveTranslationOptions;
+    backend?: { id: string; model: AssistantModelConfig };
+    webSearch?: boolean;
+  },
 ) {
   const profile = voiceModel(modelId);
+  if (profile.protocol === 'translation') {
+    const translation = native?.translation;
+    if (!translation) throw new Error('TRANSLATION_OPTIONS_REQUIRED');
+    return {
+      type: 'session.update',
+      session: { audio: {
+        input: {
+          ...(translation.sourceTranscript ? { transcription: { model: 'gpt-realtime-whisper' } } : {}),
+          ...(translation.noiseReduction !== undefined ? { noise_reduction: translation.noiseReduction
+            ? { type: translation.noiseReduction, ...(translation.noiseStrength !== undefined
+              ? { strength: translation.noiseStrength } : {}) } : null } : {}),
+        },
+        output: { language: translation.language },
+      } },
+    };
+  }
   if (!(profile.voices as readonly string[]).includes(voice)) throw new Error('VOICE_NOT_ALLOWED');
   if (effort && !(profile.reasoning as readonly string[]).includes(effort))
     throw new Error('VOICE_REASONING_NOT_ALLOWED');
@@ -61,22 +86,49 @@ export function voiceStartEvent(
     : voiceInstructions + ' 支持双向实时交流。有人打断时跟随最新需求。';
   if (profile.protocol === 'live') {
     const opening = liveOpeningText(options?.live);
+    const selected = native?.delegation;
+    const mode = selected?.type ?? 'client';
+    const backend = native?.backend;
+    let delegation: Record<string, unknown> = {
+      type: 'client',
+      ...(options?.live?.acknowledgementDelayMs !== undefined
+        ? { acknowledgement_delay_ms: options.live.acknowledgementDelayMs }
+        : {}),
+    };
+    if (selected?.type === 'responses' && backend) {
+      const parameters = responsesParameters(backend.model);
+      delegation = {
+        type: 'responses',
+        responses: {
+          model: backend.id,
+          instructions: 'Give concise photo and creative guidance. Do not claim edits or writes. ' +
+            (selected.prompt ?? ''),
+          max_output_tokens: selected.maxOutputTokens ?? backend.model.maxOutputTokens,
+          service_tier: selected.serviceTier ?? 'default',
+          ...(parameters.reasoning ? { reasoning: parameters.reasoning } : {}),
+          ...(parameters.text ? { text: parameters.text } : {}),
+          ...(native?.webSearch ? { tools: [{ type: 'web_search' }], tool_choice: 'auto' } : {}),
+        },
+      };
+    } else if (selected?.type === 'decisions') {
+      delegation = { type: 'decisions', decisions: { model: OPENAI_DECISIONS_MODEL, questions: selected.questions } };
+    }
+    const delegationPolicy = mode === 'client'
+      ? 'Backend tools: 查看授权画面与参数、搜素材、规划修图或生图。'
+      : mode === 'responses'
+        ? 'Use the native Responses backend for reasoning and factual questions. The backend can advise. It does not edit the project.'
+        : 'Use the native Decisions backend to classify the latest user request. Wait for its results. Do not execute actions.';
     return {
       type: 'session.start',
       session: {
         model: modelId,
         store: false,
-        instructions: `${instructions}\nBackchannel policy: 适度回应，等用户讲完具体要求。\nInterruption policy: 被打断时停止播报，听取最新纠正。\nDelegation policy:\nBackend tools: 查看授权画面与参数、搜素材、规划修图或生图。\nGenerate <|SpawnThinking|> when: 用户要求看图、搜索、制作、编辑，或纠正正在处理的目标。\nDo not generate <|SpawnThinking|> when: 可直接回答寒暄、闲聊，或需先澄清对象。收到后端结果再说明执行状态。${options?.live?.prompt ? `\nVoice style: ${options.live.prompt}` : ''}`,
+        instructions: `${instructions}\nBackchannel policy: 适度回应，等用户讲完具体要求。\nInterruption policy: 被打断时停止播报，听取最新纠正。\nDelegation policy:\n${delegationPolicy}\nGenerate <|SpawnThinking|> when: 用户要求看图、搜索、制作、编辑，或纠正正在处理的目标。\nDo not generate <|SpawnThinking|> when: 可直接回答寒暄、闲聊，或需先澄清对象。收到后端结果再说明执行状态。${options?.live?.prompt ? `\nVoice style: ${options.live.prompt}` : ''}`,
         ...(opening
           ? { input: [{ role: 'developer', content: [{ type: 'input_text', text: opening }] }] }
           : {}),
         audio: { format: { type: 'audio/pcm', rate: 24000 }, output: { voice } },
-        delegation: {
-          type: 'client',
-          ...(options?.live?.acknowledgementDelayMs !== undefined
-            ? { acknowledgement_delay_ms: options.live.acknowledgementDelayMs }
-            : {}),
-        },
+        delegation,
       },
     };
   }
@@ -150,6 +202,8 @@ export function voiceAudioEvent(modelId: string, pcm: string) {
   const bytes = Buffer.from(pcm, 'base64');
   if (!bytes.length || bytes.length > 9600 || bytes.length % 2 || bytes.toString('base64') !== pcm)
     throw new Error('INVALID_PCM');
+  if (modelId === OPENAI_TRANSLATION_MODEL)
+    return { type: 'session.input_audio_buffer.append', audio: pcm };
   return {
     type:
       voiceModel(modelId).protocol === 'live'

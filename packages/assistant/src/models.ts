@@ -4,6 +4,7 @@ import {
   RESPONSES_SERVICE_TIERS,
   RESPONSES_SUMMARIES,
   responsesModel,
+  OPENAI_TRANSLATION_MODEL,
 } from '@ai-xiutu/contracts';
 
 export {
@@ -122,6 +123,15 @@ export type RealtimeOptions = z.infer<typeof realtimeOptionsSchema>;
 export type LiveOptions = z.infer<typeof liveOptionsSchema>;
 
 export const VOICE_MODELS = Object.freeze([
+  {
+    id: OPENAI_TRANSLATION_MODEL,
+    protocol: 'translation' as const,
+    label: 'GPT-Realtime Translate',
+    imageInput: false,
+    fullDuplex: false,
+    voices: [],
+    reasoning: [],
+  },
   {
     id: 'gpt-live-1',
     protocol: 'live' as const,
@@ -298,6 +308,7 @@ export function modelProfileError(
       settings.responses ||
       (settings.live && voice.protocol !== 'live') ||
       (settings.realtime && voice.protocol !== 'realtime') ||
+      (voice.protocol === 'translation' && (settings.imageInput || settings.webSearch)) ||
       (settings.voiceReasoningEffort &&
         !(voice.reasoning as readonly string[]).includes(settings.voiceReasoningEffort)))
   )

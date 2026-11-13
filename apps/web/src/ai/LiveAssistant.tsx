@@ -40,13 +40,17 @@ import type {
   AssistantResearchBranch,
   AssistantVisualAttachment,
   AssistantResponseTuning,
+  LiveDelegationOptions,
+  LiveTranslationOptions,
 } from '@ai-xiutu/contracts';
-import { assistantSearchEvidenceSchema } from '@ai-xiutu/contracts';
+import { assistantSearchEvidenceSchema, defaultLiveDecisionQuestions,
+  OPENAI_DECISIONS_MODEL, OPENAI_TRANSLATION_MODEL, liveDelegationSchema } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
 import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import type { Artwork, Project, Session, Space } from '../lib/types';
 import { EditorVoiceClient } from './voiceClient';
+import { LiveModeSettings } from './LiveModeSettings';
 import { appendCaption, type CaptionState, VoiceCaptions } from './VoiceCaptions';
 import {
   acknowledgeEditCandidate,
@@ -119,11 +123,13 @@ interface Model {
   unitCost: number;
   maxSeconds: number;
   maxDelegations: number;
+  maxOutputTokens?: number;
   imageInput: boolean;
   webSearch: boolean;
   webImageSearch?: boolean;
   voice?: { voices: string[] } | null;
-  responses?: { reasoning: readonly string[]; defaultEffort?: string; verbosity?: boolean; deprecated?: boolean } | null;
+  responses?: { reasoning: readonly string[]; defaultEffort?: string; verbosity?: boolean;
+    deprecated?: boolean; streaming?: boolean; tiers?: readonly string[] } | null;
   responseDefaults?: AssistantResponseTuning & { effortFixedForSampling?: boolean };
 }
 interface Catalog {
@@ -281,6 +287,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [modelId, setModelId] = useState(''),
     [voiceId, setVoiceId] = useState(''),
     [voice, setVoice] = useState('marin');
+  const [liveDelegation, setLiveDelegation] = useState<LiveDelegationOptions>({ type: 'client' });
+  const [liveTranslation, setLiveTranslation] = useState<LiveTranslationOptions>({ language: 'en' });
+  const [delegatedResult, setDelegatedResult] = useState<{ kind: 'responses' | 'decisions'; text: string } | null>(null);
   const [mode, setMode] = useState<'text' | 'voice'>('text'),
     [callState, setCallState] = useState<'idle' | 'connecting' | 'active' | 'closing'>('idle');
   const [voiceExpanded, setVoiceExpanded] = useState(false);
@@ -498,6 +507,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
   };
   const submissionBlocked = !submissionReady || !!pendingSubmission;
   const voiceOptions = selectedVoice?.voice?.voices ?? [];
+  const translating = voiceId === OPENAI_TRANSLATION_MODEL;
+  const actualDelegation = voiceId === 'gpt-live-1' ? liveDelegation : undefined;
+  const nativeMode = actualDelegation?.type === 'responses' || actualDelegation?.type === 'decisions';
+  const voiceBackendOk = translating || actualDelegation?.type === 'decisions' ||
+    (!!selected && (actualDelegation?.type !== 'responses' || (
+      !!selected.responses?.streaming && !selected.responseDefaults?.effortFixedForSampling &&
+      liveDelegationSchema.safeParse(actualDelegation).success &&
+      (actualDelegation.maxOutputTokens ?? 16) <= (selected.maxOutputTokens ?? 2048) &&
+      (!actualDelegation.serviceTier || ['auto','default'].includes(actualDelegation.serviceTier) ||
+        selected.responses.tiers?.includes(actualDelegation.serviceTier))
+    )));
   useEffect(() => {
     if (voiceOptions.length && !voiceOptions.includes(voice)) setVoice(voiceOptions[0]!);
   }, [voiceId, voiceOptions.join(','), voice]);
@@ -1039,7 +1059,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setCallState('active');
       setElapsed(0);
       setVoiceSearchRemaining(event.maxPublicSearches ?? 1);
-      setContextStatus(shareImage ? '当前画面已共享，调整后会更新' : '仅共享参数，未发送画面');
+      setContextStatus(translating ? '正在同传' : nativeMode ? '使用本轮语音与文字' :
+        shareImage ? '当前画面已共享，调整后会更新' : '仅共享参数，未发送画面');
     }
     if (event.type === 'closed') {
       setCallState('idle');
@@ -1049,6 +1070,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         setError('通话已停止，供应商最终状态待核验；系统不会自动重拨或重复扣额。');
     }
     if (event.type === 'error') setError(event.message);
+    if (event.type === 'delegated-result') setDelegatedResult({ kind: event.kind, text: event.text });
     if (event.type === 'search-started') setVoiceSearchRemaining((count) => Math.max(0, count - 1));
     if (event.type === 'context') {
       const pending = voiceCanvas.current.pending;
@@ -1145,7 +1167,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       !isLoggedIn ||
       !actorId ||
       !project ||
-      (!recovery && (!voiceId || !modelId)) ||
+      (!recovery && (!voiceId || !voiceBackendOk)) ||
       callState !== 'idle' ||
       !submissionReady ||
       !voiceSubmissionReady ||
@@ -1190,6 +1212,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     // reachable as soon as a preserved voice request starts connecting.
     setMode('voice');
     setVoiceCaptions({});
+    setDelegatedResult(null);
     setExecutionEvents([]);
     setVoiceSearchRemaining(0);
     lastVoiceContextSend.current = -Infinity;
@@ -1242,6 +1265,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         }
         voiceClient.end();
       },
+      translating,
     );
     client.current = voiceClient;
     const baseline = assistantEditorKey(editorState(current.current));
@@ -1252,12 +1276,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
         return;
       }
       if (!prepared) {
-        const context = await getContext();
+        const context = translating || nativeMode ? undefined : await getContext();
         if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
           voiceClient.dispose();
           return;
         }
-        const authorizedScope = await requestScopeWithGrant();
+        const authorizedScope = translating || nativeMode
+          ? { spaceIds: [], referenceAssetIds: [], usePersonalMemory: false,
+              allowWebSearch: actualDelegation?.type === 'responses' && allowWebSearch && Boolean(selected?.webSearch) }
+          : await requestScopeWithGrant();
         if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
           voiceClient.dispose();
           return;
@@ -1272,7 +1299,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
           body: {
             idempotencyKey: secureUuid(),
             modelId: voiceId,
-            backendModelId: modelId,
+            ...(translating ? { translation: liveTranslation } : {
+              backendModelId: actualDelegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL : modelId,
+              ...(actualDelegation ? { delegation: actualDelegation } : {}),
+            }),
             voice,
             context,
             scope: authorizedScope,
@@ -2060,7 +2090,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const researchTurnId = activeTurn?.id ?? researchGraph?.turnId ?? parentTurnId;
   const canStartVoice = !inCall && !busy && !submissionBlocked && voiceSubmissionReady &&
     !pendingVoiceSubmission && !pendingTeamVoiceSubmission && catalog?.voiceReady &&
-    !!project && !!selected && !!selectedVoice;
+    !!project && voiceBackendOk && !!selectedVoice && (!grant || (!nativeMode && !translating));
   const voiceAction = inCall
     ? t(muted ? '开启麦克风' : '静音麦克风')
     : t('开始实时通话');
@@ -2110,10 +2140,19 @@ export function LiveAssistant(props: LiveAssistantProps) {
             onChange={setVoiceId} disabled={busy || submissionBlocked || !!grant}
             placeholder={t('暂无语音模型')}
             options={voices.map((item) => ({ value: item.id, label: item.label }))} />
-          <ChoiceSelect ariaLabel={t('语音音色')} size="compact" value={voice}
+          {!translating && <ChoiceSelect ariaLabel={t('语音音色')} size="compact" value={voice}
             disabled={!selectedVoice || busy || !!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !voiceSubmissionReady}
             onValueChange={setVoice} placeholder={t('选择音色')}
-            options={voiceOptions.map((option) => ({ value: option, label: option }))} />
+            options={voiceOptions.map((option) => ({ value: option, label: option }))} />}
+          {(translating || actualDelegation) && <LiveModeSettings
+            disabled={busy || submissionBlocked || !!grant}
+            mode={translating ? 'translation' : liveDelegation.type}
+            setMode={(value) => setLiveDelegation(value === 'decisions'
+              ? { type: value, questions: [...defaultLiveDecisionQuestions] } : { type: value })}
+            delegation={liveDelegation} setDelegation={setLiveDelegation}
+            translation={liveTranslation} setTranslation={setLiveTranslation}
+            tiers={selected?.responses?.tiers ?? []} maxOutputTokens={selected?.maxOutputTokens ?? 2048}
+          />}
         </div>
       ) : null}
     </div>
@@ -2123,7 +2162,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
       {(inCall || voiceCaptions.user || voiceCaptions.assistant) && (
         <VoiceCaptions captions={voiceCaptions} />
       )}
-      {callState === 'active' && allowWebSearch && selected?.webSearch && (
+      {delegatedResult && <section className="assistant-voice-search" aria-label={t('委派结果')}>
+        <strong>{delegatedResult.kind === 'responses' ? 'Responses' : 'Decisions'}</strong>
+        <p style={{ whiteSpace: 'pre-wrap' }}>{delegatedResult.text}</p>
+      </section>}
+      {callState === 'active' && !translating && !nativeMode && allowWebSearch && selected?.webSearch && (
         <MotionDetails className="assistant-voice-search">
           <summary>{t('通话中公开搜索')}</summary>
           <form
@@ -2340,7 +2383,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         <div>
           <strong>{selectedVoice?.label ?? t('实时语音')}</strong>
           {selectedVoice && (
-            <span>{[inCall && voice, t('{v0} 服务点 · 最长 {v1} 秒', {
+            <span>{[inCall && !translating && voice, t('{v0} 服务点 · 最长 {v1} 秒', {
               v0: selectedVoice.unitCost, v1: selectedVoice.maxSeconds,
             })].filter(Boolean).join(' · ')}</span>
           )}
@@ -2370,18 +2413,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
       <footer className="voice-workspace-footer">
         <form className="ai-composer-surface voice-composer" data-ai-voice-composer onSubmit={(event) => {
           event.preventDefault();
-          if (callState === 'active' && canSend) void submit();
+          if (callState === 'active' && canSend && !translating) void submit();
         }}>
           <ComposerInput label={t('向智能体描述修改需求')} placeholder={t('补充通话要求…')}
             value={prompt} onChange={setPrompt} maxLength={4000}
-            canSubmit={callState === 'active' && canSend}
-            readOnly={callState !== 'active' || !!pendingSubmission || !submissionReady} />
+            canSubmit={callState === 'active' && canSend && !translating}
+            readOnly={translating || callState !== 'active' || !!pendingSubmission || !submissionReady} />
           <ComposerAction state={busy ? 'waiting' : 'send'} label={t('发送协作请求')}
-            disabled={callState !== 'active' || !canSend} />
+            disabled={translating || callState !== 'active' || !canSend} />
         </form>
         <div className="voice-workspace-actions">
           <button className="text-button voice-share-canvas" type="button" aria-pressed={shareImage}
-            disabled={!artwork || !selected?.imageInput || busy || callState === 'connecting' || callState === 'closing'}
+            disabled={translating || nativeMode || !artwork || !selected?.imageInput || busy || callState === 'connecting' || callState === 'closing'}
             onClick={() => setShareImage((enabled) => !enabled)}>
             <ImageSquare size={16} />{t('当前预览')}
           </button>

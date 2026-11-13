@@ -13,8 +13,10 @@ import {
 } from '@ai-xiutu/db';
 import {
   assistantPublicSearchSchema,
+  OPENAI_TRANSLATION_MODEL,
   voiceClientEventSchema,
   type AssistantContext,
+  type LiveDelegationOptions,
   type VoiceClientEvent,
   type VoiceServerEvent,
 } from '@ai-xiutu/contracts';
@@ -45,6 +47,48 @@ import { registerTeamVoice } from './team-voice.js';
 import { executeAutomaticCandidate } from './apply.js';
 
 type PublicSearch = Extract<VoiceClientEvent, { type: 'search' }>['search'];
+function summarizeLiveDecision(config: LiveDelegationOptions | undefined, raw: unknown) {
+  if (config?.type !== 'decisions' || !Array.isArray(raw)) return '';
+  const answers = new Map(raw.filter((answer) => typeof answer?.name === 'string')
+    .map((answer) => [answer.name, answer]));
+  const probability = (value: unknown) => typeof value === 'number' && Number.isFinite(value) &&
+    value >= 0 && value <= 1;
+  return config.questions.flatMap((question) => {
+    const answer = answers.get(question.name);
+    if (!answer || answer.type !== question.type) return [];
+    if (question.type === 'choice' && question.choices.some((choice) => choice.value === answer.choice))
+      return [question.name + ': ' + answer.choice];
+    if (question.type === 'predicate' && probability(answer.probability))
+      return [question.name + ': ' + Number(answer.probability).toFixed(3)];
+    if (question.type === 'score' && Number.isFinite(answer.score) &&
+        answer.score >= 0 && answer.score <= question.levels.length - 1)
+      return [question.name + ': ' + Number(answer.score).toFixed(3)];
+    return [];
+  }).join('\n').slice(0, 8000);
+}
+
+function nativeVoiceUsage(raw: unknown) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const usage = raw as Record<string, unknown>;
+  const count = (value: unknown): value is number =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 100_000_000;
+  if (!count(usage.total_tokens) || !count(usage.input_tokens) || !count(usage.output_tokens) ||
+      usage.total_tokens !== usage.input_tokens + usage.output_tokens) return undefined;
+  const details = (field: string, names: string[]) => {
+    const source = usage[field];
+    return source && typeof source === 'object'
+      ? Object.fromEntries(names.flatMap((name) => {
+          const value = (source as Record<string, unknown>)[name];
+          return count(value) ? [[name, value]] : [];
+        }))
+      : {};
+  };
+  return {
+    input_tokens: usage.input_tokens, output_tokens: usage.output_tokens, total_tokens: usage.total_tokens,
+    input_tokens_details: details('input_tokens_details', ['cached_tokens', 'cache_write_tokens']),
+    output_tokens_details: details('output_tokens_details', ['reasoning_tokens']),
+  };
+}
 function spokenPublicSearch(text: string): PublicSearch | undefined {
   // Only a literal spoken query may leave the workspace, never the conversation or a model guess.
   const command =
@@ -138,6 +182,9 @@ export function attachVoiceBridge(
   };
   function connect(row: VoiceRow, client: VoicePort, authHash: string) {
     const live = voiceModel(row.model_id).protocol === 'live';
+    const translation = row.model_id === OPENAI_TRANSLATION_MODEL;
+    const native = row.config.delegation?.type;
+    const nativeMode = native === 'responses' || native === 'decisions';
     let context = snapshots.get(row.id)?.context;
     let contextEpoch = row.context_epoch;
     const searched = new Set<string>();
@@ -183,6 +230,15 @@ export function attachVoiceBridge(
     const visualDeletes = new Set<string>();
     let providerVisualItem: string | null = null;
     let delegationChain = Promise.resolve();
+    let translationBytes = 0;
+    let translationOutputBytes = 0;
+    let nativeExplicit = false;
+    const nativePending = new Set<string>();
+    const nativeFinished = new Set<string>();
+    const nativeText = new Map<string, string>();
+    const nativeReceipts: {
+      kind: 'responses' | 'decisions'; model: string; at: string; usage: unknown; serviceTier?: string;
+    }[] = [];
     const searchLimit = Math.min(
       3,
       Math.max(1, Math.floor(row.config.voiceModel.maxDelegations / 2)),
@@ -286,7 +342,8 @@ export function attachVoiceBridge(
         await assertAssistantGrant(db, row.scope.executionGrantId, row.actor_id, row.project_id);
       await validateScope(db, row.actor_id, row.scope);
       await service.model(db, row.model_id, 'realtime-voice');
-      await service.model(db, row.backend_model_id, 'assistant-turn');
+      if (!translation && native !== 'decisions')
+        await service.model(db, row.backend_model_id, 'assistant-turn');
     };
     const finish = async (
       requestedState: 'closed' | 'unknown' | 'failed',
@@ -351,6 +408,11 @@ export function attachVoiceBridge(
                   !responsePending && !responses.size && !unconfirmedAudio && !receiptMissing,
                 responseReceipts,
                 billingBasis: 'configured_session_unit',
+                ...(translation ? {
+                  inputAudioSeconds: translationBytes / 48_000,
+                  outputAudioSeconds: translationOutputBytes / 48_000,
+                } : {}),
+                ...(nativeMode ? { nativeReceipts } : {}),
                 voiceChannel: row.config.teamArtworkId ? 'team' : 'individual',
                 providerSessionId,
               }),
@@ -384,7 +446,7 @@ export function attachVoiceBridge(
       stopReason = reason;
       queuedResponse = false;
       try {
-        if (live && active && upstream.readyState === WebSocket.OPEN) {
+        if ((live || translation) && active && upstream.readyState === WebSocket.OPEN) {
           upstreamSend({ type: 'session.close' });
           endTimer = setTimeout(() => void finish('unknown', 'FINAL_USAGE_UNCONFIRMED'), 8000);
         } else if (active && upstream.readyState === WebSocket.OPEN) {
@@ -657,6 +719,12 @@ export function attachVoiceBridge(
               Boolean(row.config.teamArtworkId),
               row.config.voiceModel.voiceReasoningEffort,
               row.config.voiceModel,
+              {
+                delegation: row.config.delegation,
+                translation: row.config.translation,
+                backend: { id: row.backend_model_id, model: row.config.backendModel },
+                webSearch: row.scope.allowWebSearch,
+              },
             ),
           );
       } catch {
@@ -694,9 +762,9 @@ export function attachVoiceBridge(
                 sessionId: row.id,
                 modelId: row.model_id,
                 maxSeconds: row.config.voiceModel.maxSeconds,
-                maxPublicSearches: searchLimit,
+                maxPublicSearches: nativeMode || translation ? 0 : searchLimit,
               });
-              publishContext();
+              if (!translation && !nativeMode) publishContext();
               const opening = live && liveOpeningText(row.config.voiceModel.live);
               if (opening) upstreamSend(liveContextAppend('commentary', opening));
               durationTimer = setTimeout(
@@ -740,6 +808,89 @@ export function attachVoiceBridge(
             message: '语音服务拒绝了当前配置或请求，请结束后检查运营配置。',
           });
           stop('VOICE_PROVIDER_ERROR');
+          return;
+        }
+        if (translation) {
+          if (event.type === 'session.output_audio.delta') {
+            const pcm = event.delta;
+            if (typeof pcm !== 'string' || pcm.length > 300000 ||
+                (event.sample_rate !== undefined && event.sample_rate !== 24000) ||
+                (event.channels !== undefined && event.channels !== 1))
+              throw new Error('translation audio format');
+            const bytes = Buffer.from(pcm, 'base64');
+            if (!bytes.length || bytes.length % 2 || bytes.toString('base64') !== pcm)
+              throw new Error('translation audio content');
+            translationOutputBytes += bytes.length;
+            send(client, { type: 'audio', pcm });
+          } else if (['session.output_transcript.delta', 'session.input_transcript.delta'].includes(event.type)) {
+            if (typeof event.delta !== 'string' || event.delta.length > 4000)
+              throw new Error('translation transcript format');
+            send(client, {
+              type: 'transcript',
+              role: event.type === 'session.input_transcript.delta' ? 'user' : 'assistant',
+              text: event.delta,
+              delta: true,
+              itemId: event.type,
+            });
+          } else if (event.type === 'session.closed') {
+            transportClosedConfirmed = true;
+            const confirmed = closing && !!providerSessionId;
+            const settled = confirmed ? (translationBytes ? 'closed' : 'failed') : 'unknown';
+            void finish(settled, confirmed ? stopReason || 'SESSION_CLOSED' : 'TRANSLATION_CLOSE_UNCONFIRMED');
+          }
+          return;
+        }
+        if (live && nativeMode && (
+          event.type === 'session.delegation.created' || event.type === 'response.event' || event.type === 'decision.event'
+        )) {
+          if (event.type === 'session.delegation.created') {
+            if (event.delegation?.target !== native || typeof event.delegation?.id !== 'string')
+              throw new Error('unexpected native delegation');
+            const delegationId = event.delegation.id;
+            if (!nativePending.has(delegationId) && !nativeFinished.has(delegationId)) {
+              nativePending.add(delegationId);
+              if (nativePending.size + nativeFinished.size > row.config.voiceModel.maxDelegations)
+                stop('DELEGATION_BUDGET');
+            }
+            return;
+          }
+          const nested = event.event;
+          const key = String(event.delegation_id ?? nested?.response?.id ?? event.event_id ?? '');
+          if (!key || key.length > 256 || !nested || nativeFinished.has(key)) return;
+          if (nested.type === 'response.output_text.delta') {
+            if (typeof nested.delta === 'string')
+              nativeText.set(key, ((nativeText.get(key) ?? '') + nested.delta).slice(0, 10000));
+            return;
+          }
+          if (!['response.completed','response.incomplete','response.failed','decision.completed'].includes(nested.type)) return;
+          const kind = nested.type === 'decision.completed' ? 'decisions' : 'responses';
+          if (kind !== native) throw new Error('native receipt mode');
+          const result = kind === 'decisions' ? nested.decision : nested.response;
+          const metered = nativeVoiceUsage(result?.usage);
+          if (!metered) {
+            receiptMissing = true;
+            return;
+          }
+          nativePending.delete(key);
+          nativeFinished.add(key);
+          nativeExplicit = false;
+          nativeReceipts.push({
+            kind, model: row.backend_model_id, at: new Date().toISOString(), usage: metered,
+            ...(typeof result.service_tier === 'string' ? { serviceTier: result.service_tier } : {}),
+          });
+          if (nativeFinished.size >= row.config.voiceModel.maxDelegations && nativePending.size)
+            stop('DELEGATION_BUDGET');
+          const text = kind === 'decisions'
+            ? summarizeLiveDecision(row.config.delegation, result.answers)
+            : (nativeText.get(key) ?? '').trim();
+          nativeText.delete(key);
+          if (text && !closing)
+            delegationChain = delegationChain.then(async () => {
+              await assertAccess();
+              await service.moderate(text);
+              await assertAccess();
+              if (!ended && !closing) send(client, { type: 'delegated-result', kind, text });
+            }).catch(() => undefined);
           return;
         }
         if (!live && event.type === 'response.created') {
@@ -797,10 +948,9 @@ export function attachVoiceBridge(
             usage.push(event.usage ?? null);
             usageTimes.push(new Date().toISOString());
           }
-          void finish(
-            finalUsage ? 'closed' : 'unknown',
-            finalUsage ? stopReason || 'SESSION_CLOSED' : 'FINAL_USAGE_UNCONFIRMED',
-          );
+          const confirmed = finalUsage && (!nativeMode || (!nativeExplicit && !nativePending.size && !receiptMissing));
+          void finish(confirmed ? 'closed' : 'unknown',
+            confirmed ? stopReason || 'SESSION_CLOSED' : 'FINAL_USAGE_UNCONFIRMED');
         }
         if (live && event.type === 'session.usage.updated') {
           const last = usage.findIndex((item: any) => item?.kind === 'live-duration');
@@ -888,7 +1038,7 @@ export function attachVoiceBridge(
       if (ended) return;
       transportClosedConfirmed = code === 1000;
       const confirmed =
-        !live &&
+        !live && !translation &&
         active &&
         closing &&
         transportClosedConfirmed &&
@@ -927,6 +1077,8 @@ export function attachVoiceBridge(
       }
       if (!active) return;
       try {
+        if (translation && !['audio','mute','interrupt','playback-cut'].includes(event.type)) return;
+        if (nativeMode && ['context','context.invalidate','search'].includes(event.type)) return;
         if (event.type === 'context.invalidate') {
           invalidateContext();
           return;
@@ -943,6 +1095,7 @@ export function attachVoiceBridge(
             return;
           }
           upstreamSend(voiceAudioEvent(row.model_id, event.pcm));
+          if (translation) translationBytes += Buffer.from(event.pcm, 'base64').length;
           sentInputAudio = true;
           return;
         }
@@ -952,7 +1105,7 @@ export function attachVoiceBridge(
             upstreamSend({
               type: muted ? 'session.input_audio.mute' : 'session.input_audio.unmute',
             });
-          else if (muted) upstreamSend({ type: 'input_audio_buffer.clear' });
+          else if (muted && !translation) upstreamSend({ type: 'input_audio_buffer.clear' });
           return;
         }
         if (event.type === 'playback-cut') {
@@ -977,6 +1130,10 @@ export function attachVoiceBridge(
         if (event.type === 'interrupt') {
           queuedResponse = false;
           speechCutUntil = 0;
+          if (translation) {
+            send(client, { type: 'interrupted' });
+            return;
+          }
           if (!live) {
             if (responsePending || responses.size) upstreamSend({ type: 'response.cancel' });
             if (
@@ -1066,8 +1223,22 @@ export function attachVoiceBridge(
             await assertAccess();
             if (ended || closing) return;
             transcript.push({ type: 'transcript', role: 'user', text: event.text, delta: false });
-            sendEvents(voiceTextEvents(row.model_id, event.text));
-            if (live) delegate(`typed_${randomUUID()}`, event.text);
+            if (nativeMode) {
+              if (nativeExplicit || nativePending.size || nativeFinished.size >= row.config.voiceModel.maxDelegations)
+                throw new Error('NATIVE_DELEGATION_BUDGET');
+              const eventId = 'evt_' + randomUUID();
+              nativeExplicit = true;
+              upstreamSend({
+                type: (native === 'responses' ? 'response' : 'decision') + '.item.create',
+                event_id: eventId,
+                item: { type: 'message', role: 'user', content: [{ type: 'input_text', text: event.text }] },
+              });
+              upstreamSend({ type: native === 'responses' ? 'response.create' : 'decision.create',
+                event_id: 'evt_' + randomUUID() });
+            } else {
+              sendEvents(voiceTextEvents(row.model_id, event.text));
+              if (live) delegate(`typed_${randomUUID()}`, event.text);
+            }
           }
         })()
           .catch((reason) => {
@@ -1133,7 +1304,8 @@ export function attachVoiceBridge(
       for (const modelId of [...new Set([found.model_id, found.backend_model_id])].sort())
         await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
       await service.model(tx, found.model_id, 'realtime-voice');
-      await service.model(tx, found.backend_model_id, 'assistant-turn');
+      if (!found.config.translation && found.config.delegation?.type !== 'decisions')
+        await service.model(tx, found.backend_model_id, 'assistant-turn');
       await tx.query(
         "UPDATE voice_sessions SET state='connecting',updated_at=clock_timestamp() WHERE id=$1",
         [found.id],

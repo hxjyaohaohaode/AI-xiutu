@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Database } from '@ai-xiutu/db';
-import { publishedModelPrices, type ProviderStage, type UsageJobDetail } from '@ai-xiutu/contracts';
+import { OPENAI_TRANSLATION_MODEL, publicPricingSnapshot, publishedModelPrices,
+  type ProviderStage, type UsageJobDetail } from '@ai-xiutu/contracts';
 import { HttpError, id, requireOperator, requireUser, spaceRole } from './core.js';
 import { meterStage, recordedPricing } from './provider-metering.js';
 
@@ -113,7 +114,20 @@ export function registerUsageJobs(app: FastifyInstance, db: Database) {
                 : 'responses',
           ),
         );
+      const svg = row.kind === 'image-job' ? row.usage?.svg_author : undefined;
+      if (svg && typeof svg.model === 'string')
+        stages.push(meterStage({
+          stageId: jobId + '-svg-author',
+          branchId: null,
+          purpose: 'svg-author',
+          modelId: svg.model,
+          dispatchedAt: iso(row.dispatched_at),
+          receivedAt: iso(row.received_at),
+          status: 'received',
+          pricing: null,
+        }, svg, 'responses'));
       if (row.kind === 'voice') {
+        const translation = row.model_id === OPENAI_TRANSLATION_MODEL;
         const duration = row.model_id === 'gpt-live-1';
         const usage = Array.isArray(row.usage?.events) ? row.usage.events : [];
         const receipts = duration
@@ -121,9 +135,9 @@ export function registerUsageJobs(app: FastifyInstance, db: Database) {
             ? [{ value: usage.at(-1), index: usage.length - 1 }]
             : []
           : usage.map((value: unknown, index: number) => ({ value, index }));
-        if (!receipts.length || (!duration && row.usage?.responseReceiptsComplete === false))
+        if (!translation && (!receipts.length || (!duration && row.usage?.responseReceiptsComplete === false)))
           receipts.push({ value: null, index: usage.length });
-        for (const { value, index } of receipts)
+        for (const { value, index } of translation ? [] : receipts)
           stages.push(
             meterStage(
               {
@@ -140,6 +154,35 @@ export function registerUsageJobs(app: FastifyInstance, db: Database) {
               duration ? 'duration' : 'realtime',
             ),
           );
+        if (translation) {
+          const confirmed = row.state === 'closed' && row.usage?.transportClosedConfirmed === true;
+          stages.push(meterStage({
+            stageId: jobId + '-translation',
+            branchId: null,
+            purpose: 'live-translation',
+            modelId: row.model_id,
+            dispatchedAt: null,
+            receivedAt: confirmed ? iso(row.updated_at) : null,
+            status: status(confirmed ? {} : null),
+            pricing: null,
+          }, confirmed ? { seconds: row.usage?.inputAudioSeconds } : null, 'duration'));
+        }
+        if (Array.isArray(row.usage?.nativeReceipts))
+          for (const [index, receipt] of row.usage.nativeReceipts.entries()) {
+            if (!receipt || typeof receipt.model !== 'string' ||
+                !['responses','decisions'].includes(receipt.kind)) continue;
+            stages.push(meterStage({
+              stageId: jobId + '-native-' + index,
+              branchId: null,
+              purpose: receipt.kind === 'decisions' ? 'live-native-decisions' : 'live-native-responses',
+              modelId: receipt.model,
+              dispatchedAt: null,
+              receivedAt: iso(receipt.at),
+              status: status(receipt.usage),
+              pricing: receipt.kind === 'responses' && receipt.serviceTier === 'default' &&
+                receipt.usage?.input_tokens <= 128_000 ? publicPricingSnapshot(receipt.model, 'openai') : null,
+            }, receipt.usage, 'responses'));
+          }
       }
       await check();
       const detail: UsageJobDetail = {

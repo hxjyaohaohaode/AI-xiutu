@@ -52,7 +52,10 @@ export function meterStage(
     total === null ||
     parts.some((part) => part === null) ||
     parts.reduce<number>((sum, part) => sum + (part ?? 0), 0) !== total;
-  if (format === 'duration') add('voice-seconds', count(usage.seconds));
+  if (format === 'duration')
+    add('voice-seconds', typeof usage.seconds === 'number' &&
+      Number.isFinite(usage.seconds) && usage.seconds >= 0 && usage.seconds <= 86_400
+      ? Math.ceil(usage.seconds) : null);
   else {
     if (mismatch(totals.total, [totals.input, totals.output])) full = false;
     if (format === 'responses') {
