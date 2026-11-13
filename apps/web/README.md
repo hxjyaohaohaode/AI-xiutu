@@ -47,7 +47,7 @@ npm run typecheck -w @ai-xiutu/web
 npm run build -w @ai-xiutu/web
 ```
 
-Vite 配置自身的工作目录为 `apps/web`，也兼容根目录启动器直接传 `--config apps/web/vite.config.ts`。`/v1` 在开发时代理到可信本地进程环境 `PORT` 指定的 API 端口（默认 `127.0.0.1:3001`），允许开发主机 `terminal.local`。Vite 使用 `strictPort`，避免自动换端口后与 Origin allowlist 不一致。生产环境应把网页和 API 部署为同源，按服务器的 Origin allowlist 设置真实域名。
+在仓库根目录用 `npm run dev` 同时启动前端、API 和 worker。`WEB_PORT` 设置网页端口（默认 5173），`PORT` 设置 API 端口（默认 3001）；两个值从进程环境或根目录的 `.env` 读取。开发和本地构建预览的 `/v1` 与 `/health` 都走同一个本地 API。`npm run dev` 根据网页端口生成默认 localhost Origin；自定义主机名或独立启动服务时设置精确的 `APP_ORIGIN`。端口被占用时会报错，避免前端悄悄切到另一个入口。生产环境使用同源路由及真实域名的 Origin allowlist。
 
 `qa-responsive.html?focus=390` 是开发验收页面，提供 320、390、768、844×390横屏、1024、1440px 的真实工作台 iframe。它没有加入 Vite 生产构建入口，也不是产品导航的一部分。iframe 只检验布局，不模拟手机内存、指针类型、真实网络或麦克风权限。
 

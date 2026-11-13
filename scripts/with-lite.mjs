@@ -23,9 +23,13 @@ const env = {
   TEST_DATABASE_URL: url,
   DB_POOL_MAX: '1',
   SESSION_SECRET: process.env.SESSION_SECRET || randomBytes(32).toString('hex'),
-  APP_ORIGIN:
-    process.env.APP_ORIGIN ||
-    'http://localhost:5173,http://127.0.0.1:5173,http://terminal.local:4173',
+  ...(mode === 'dev'
+    ? {}
+    : {
+        APP_ORIGIN:
+          process.env.APP_ORIGIN ||
+          'http://localhost:5173,http://127.0.0.1:5173,http://terminal.local:4173',
+      }),
   HOST: '127.0.0.1',
   PORT: process.env.PORT || '3001',
   NODE_ENV: isolated ? 'test' : 'development',
