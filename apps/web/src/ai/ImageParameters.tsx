@@ -11,6 +11,7 @@ import {
 import { Disclosure, OptionChips } from '../components/Controls';
 import { modelCopy } from './model-copy';
 import { CheckControl } from '../components/CheckControl';
+import { gifFrameCount, gifFrameDelay, openAISvgAuthorSchema } from '@ai-xiutu/contracts';
 import './model-settings.css';
 
 const names: Record<string, string> = {
@@ -25,6 +26,8 @@ const names: Record<string, string> = {
   png: 'PNG',
   jpeg: 'JPEG',
   webp: 'WebP',
+  svg: 'SVG',
+  gif: 'GIF',
 };
 const capabilityNames = {
   inputFidelity: '输入保真度',
@@ -60,12 +63,17 @@ export function ImageParameters({
     field: 'background' | 'outputFormat';
   } | null>(null);
   const c = model?.parameterCapabilities;
-  const choices = allowedImageSizes(model);
-  const sizeError = options.size === 'auto' ? null : imageSizeError(model, width, height);
+  const svg = options.outputFormat === 'svg';
+  const gif = options.outputFormat === 'gif';
+  const authors = c?.svg.authors ?? [];
+  const selectedAuthor = authors.find((author) => author.id === options.svg?.model);
+  const choices = allowedImageSizes(model, options);
+  const sizeError = options.size === 'auto' ? null : imageSizeError(model, width, height, options);
   const batchError = imageBatchError(model, width, height, options);
   const optionError = imageOptionsError(model, options);
   const step = c?.size.multipleOf ?? 1;
-  const maxDimension = Math.min(model?.maxDimension ?? 8192, c?.size.maxDimension ?? 8192);
+  const maxDimension = Math.min(model?.maxDimension ?? 8192,
+    (gif ? c?.gif.maxDimension : c?.size.maxDimension) ?? 8192);
   const fields = [
     ['quality', '质量'],
     ['background', '背景'],
@@ -103,8 +111,10 @@ export function ImageParameters({
             ...(capability.values ?? []).map((value) => ({
               value,
               label: names[value] ? t(names[value]) : value,
-              disabled: !changeImageOption(model, options, field, value),
-              reason: !changeImageOption(model, options, field, value)
+              disabled: (field === 'outputFormat' && value === 'svg' && hasReference) ||
+                !changeImageOption(model, options, field, value),
+              reason: field === 'outputFormat' && value === 'svg' && hasReference
+                ? t('SVG 仅支持文字生图。') : !changeImageOption(model, options, field, value)
                 ? copy.invalidPair
                 : undefined,
             })),
@@ -168,7 +178,7 @@ export function ImageParameters({
         label={t('常用生成尺寸')}
         value={options.size ?? width + 'x' + height}
         options={[
-          ...(c?.size.auto ? [{ value: 'auto', label: t('自动尺寸') }] : []),
+          ...((gif ? c?.gif.autoSizes?.length : c?.size.auto) ? [{ value: 'auto', label: t('自动尺寸') }] : []),
           ...(c?.size.allowedSizes ? choices : choices.slice(0, 3)).map((size) => ({
             value: size.width + 'x' + size.height,
             label: (
@@ -266,9 +276,9 @@ export function ImageParameters({
             inputMode="numeric"
             value={options.n ?? 1}
             min={c.n.min ?? 1}
-            max={options.stream ? 1 : (c.n.max ?? 1)}
+            max={options.stream || svg ? 1 : (c.n.max ?? 1)}
             step={1}
-            disabled={disabled || options.stream}
+            disabled={disabled || options.stream || svg}
             onChange={(event) => onOptions({ ...options, n: Number(event.target.value) })}
           />
         </label>
@@ -278,7 +288,54 @@ export function ImageParameters({
           {renderField('background', '背景')}
           {renderField('outputFormat', '供应商编码')}
           {renderField('complexity', '复杂度')}
-          {c?.stream.supported && (
+          {svg && (
+            <div className="parameter-row">
+              {authors.length > 0 && (
+                <label className="ai-numeric-setting">
+                  <span>{t('SVG 作者模型')}</span>
+                  <select value={options.svg?.model ?? ''} disabled={disabled}
+                    onChange={(event) => onOptions({ ...options, svg: { model: event.target.value } })}>
+                    {authors.map((author) => <option key={author.id} value={author.id}>{author.id}</option>)}
+                  </select>
+                </label>
+              )}
+              {selectedAuthor?.efforts.length && (
+                <label className="ai-numeric-setting">
+                  <span>{t('SVG 作者推理强度')}</span>
+                  <select value={options.svg?.reasoning?.effort ?? ''} disabled={disabled}
+                    onChange={(event) => {
+                      const author = openAISvgAuthorSchema.parse({
+                        model: selectedAuthor.id,
+                        ...(event.target.value ? { reasoning: { effort: event.target.value } } : {}),
+                      });
+                      onOptions({ ...options, svg: author });
+                    }}>
+                    <option value="">{t('使用官方默认')}</option>
+                    {selectedAuthor.efforts.map((effort) => <option key={effort}>{effort}</option>)}
+                  </select>
+                </label>
+              )}
+              <p className="fine-print">{t('SVG 为单张文字生图。结果可下载矢量文件，工作台使用可编辑的 PNG 副本。')}</p>
+            </div>
+          )}
+          {gif && (
+            <div className="parameter-row">
+              {([
+                ['frameCount', 'GIF 帧数', gifFrameCount],
+                ['frameDurationMs', '每帧停留时间（毫秒）', gifFrameDelay],
+              ] as const).map(([field, label, range]) => (
+                <label key={field} className="ai-numeric-setting">
+                  <span>{t(label)}</span>
+                  <input type="number" min={range.min} max={range.max} step={1} disabled={disabled}
+                    value={options[field] ?? range.default}
+                    onChange={(event) => onOptions({ ...options, [field]: event.target.valueAsNumber })}
+                  />
+                </label>
+              ))}
+              <p className="fine-print">{t('GIF 逐帧审核，按帧数预留服务点，停留时间按 10 毫秒取整。')}</p>
+            </div>
+          )}
+          {c?.stream.supported && !svg && !gif && (
             <>
               <CheckControl
                 label={t('使用 OpenAI 流式生成')}
@@ -310,7 +367,7 @@ export function ImageParameters({
               )}
               {options.stream && c.partialImages.supported && (
                 <p className="fine-print">
-                  {t('审核通过后展示最终图。部分图每张按当前单张点数预留。')}
+                  {t('部分图审核通过后实时展示，每张按当前单张点数预留。')}
                 </p>
               )}
             </>

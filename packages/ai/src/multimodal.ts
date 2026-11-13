@@ -29,6 +29,11 @@ import {
   openAISearchOptionsSchema,
   openAISpeechOptionsSchema,
   openAITranslationOptionsSchema,
+  openAIImageFormats,
+  openAISvgAuthorSchema,
+  gifFrameCount,
+  gifFrameDelay,
+  imageBillableOutputs,
 } from '@ai-xiutu/contracts';
 import { freezePreviouslyDispatchedJob } from './lifecycle.js';
 import {
@@ -46,6 +51,9 @@ import {
   getOpenAIImageBudgets,
   normalizeOpenAIImageOptions,
   buildOpenAIImageRequest,
+  normalizePartialImage,
+  renderSvgForReview,
+  reviewableGifFrames,
   OPENAI_IMAGE_SOURCES,
   OPENAI_IMAGE_VERIFIED_AT,
   OPENAI_IMAGE_MODEL_PROFILES,
@@ -89,7 +97,7 @@ const imageOptionsSchema = z
   .object({
     quality: z.enum(['auto', 'low', 'medium', 'high', 'xhigh', 'max']).optional(),
     background: z.enum(['auto', 'opaque', 'transparent']).optional(),
-    outputFormat: z.enum(['png', 'jpeg', 'webp']).optional(),
+    outputFormat: z.enum(openAIImageFormats).optional(),
     outputCompression: z.number().int().min(0).max(100).optional(),
     n: z.number().int().min(1).max(10).optional(),
     complexity: z.enum(['low', 'medium', 'high']).optional(),
@@ -98,6 +106,9 @@ const imageOptionsSchema = z
     moderation: z.enum(['auto', 'low']).optional(),
     stream: z.boolean().optional(),
     partialImages: z.number().int().min(0).max(3).optional(),
+    frameCount: z.number().int().min(gifFrameCount.min).max(gifFrameCount.max).optional(),
+    frameDurationMs: z.number().int().min(gifFrameDelay.min).max(gifFrameDelay.max).optional(),
+    svg: openAISvgAuthorSchema.optional(),
   })
   .strict();
 const imageInput = z
@@ -371,8 +382,8 @@ export function createMultimodalService(
   ) {
     if (input.imageOptions?.size !== 'auto')
       return allowedImageDimensions(config, input.width, input.height);
-    const sizes = openAIImages.models.find((model) => model.id === input.modelId)
-      ?.parameterCapabilities?.size.autoSizes;
+    const capabilities = openAIImages.models.find((model) => model.id === input.modelId)?.parameterCapabilities;
+    const sizes = input.imageOptions.outputFormat === 'gif' ? capabilities?.gif.autoSizes : capabilities?.size.autoSizes;
     return (
       config.provider === 'openai' &&
       !!sizes?.length &&
@@ -397,6 +408,23 @@ export function createMultimodalService(
       .digest('hex');
     if (result.decision !== 'passed' || result.inputHash !== binaryHash)
       throw new AiError('IMAGE_REVIEW_REQUIRED', '图片未通过审核');
+  }
+  async function publishImagePreview(job: Job, frame: { index: number; bytes: Uint8Array }) {
+    const png = await normalizePartialImage(frame.bytes, imagePixelLimit);
+    if (png.length > 1_600_000) return;
+    await assertImage(png, 'image/png', job.id);
+    await transaction(db, async (tx) => {
+      await requireAiMember(tx, job.actor_id, job.project_id, true, true);
+      await lockRunningAiJob(tx, job);
+      await assertReferenceBindings(tx, job, true);
+      await tx.query(
+        `INSERT INTO ai_job_image_previews (job_id,frame_index,bytes,expires_at)
+         VALUES($1,$2,$3,clock_timestamp()+interval '5 minutes')
+         ON CONFLICT (job_id) DO UPDATE SET frame_index=EXCLUDED.frame_index,bytes=EXCLUDED.bytes,expires_at=EXCLUDED.expires_at
+         WHERE ai_job_image_previews.frame_index < EXCLUDED.frame_index`,
+        [job.id, frame.index, png],
+      );
+    });
   }
   async function assertJobGrant(tx: Queryable, job: Job, lock: boolean) {
     if (job.operation !== 'generate-image') return;
@@ -805,7 +833,8 @@ export function createMultimodalService(
             ? (config.imageUnitCosts?.[options.quality] ?? config.unitCost)
             : config.unitCost;
           const partialImages = options?.partialImages ?? 0;
-          quotedUnits = (n + partialImages) * perImage;
+          const billableOutputs = imageBillableOutputs(options);
+          quotedUnits = billableOutputs * perImage;
           if (!Number.isSafeInteger(quotedUnits) || quotedUnits > 100000)
             throw new AiError('QUOTA_QUOTE_LIMIT', '本次整批预留超过额度单次上限');
           // Local validation only: no supplier/moderation call occurs before the wallet reservation.
@@ -884,7 +913,9 @@ export function createMultimodalService(
               threadId: frozen.threadId,
               threadDepth: manifest.threadDepth ?? 0,
               quote: { perImage, n, totalUnits: quotedUnits, modelVersion: setting!.version,
-                ...(partialImages ? { partialImages } : {}) },
+                ...(partialImages ? { partialImages } : {}),
+                ...(options?.outputFormat === 'svg' || options?.outputFormat === 'gif'
+                  ? { billableOutputs } : {}) },
             });
             if (config.provider === 'openai') {
               const readReference = async (meta: FrozenReference): Promise<ImageReference> => {
@@ -1048,6 +1079,7 @@ export function createMultimodalService(
     async runOnce(): Promise<boolean> {
       if (!availableOperations.length) return false;
       await storage.initialize();
+      await db.query('DELETE FROM ai_job_image_previews WHERE expires_at<=clock_timestamp()');
       const job = await transaction(db, async (tx) => {
         const selected = (
           await tx.query(
@@ -1109,6 +1141,7 @@ export function createMultimodalService(
         if (!(await journal.start(job.id, job.input_hash)))
           throw new ProviderError('DISPATCH_ALREADY_RECORDED', 'unknown');
         let output: Record<string, unknown>;
+        const imageArtifacts: Array<{ index: number; format: 'svg' | 'gif'; bytes: Buffer; frames?: number }> = [];
         if (manifest.adapterVersion === 3) {
           const payload = specialistInput.parse({ ...job.input.input, ...(job.input.audioBase64 ? { audioBase64: job.input.audioBase64 } : {}) });
           const bodyHash = digest(canonical(payload));
@@ -1241,6 +1274,7 @@ export function createMultimodalService(
               perImage: z.number().int().positive(),
               n: z.number().int().min(1).max(10),
               partialImages: z.number().int().min(0).max(3).default(0),
+              billableOutputs: z.number().int().min(1).max(160).optional(),
               totalUnits: z.number().int().min(1).max(100000),
               modelVersion: z.number().int().positive(),
             })
@@ -1251,7 +1285,8 @@ export function createMultimodalService(
           if (
             quote.n !== (options?.n ?? 1) ||
             quote.partialImages !== (options?.partialImages ?? 0) ||
-            quote.totalUnits !== quote.perImage * (quote.n + quote.partialImages) ||
+            (quote.billableOutputs ?? quote.n + quote.partialImages) !== imageBillableOutputs(options) ||
+            quote.totalUnits !== quote.perImage * imageBillableOutputs(options) ||
             Number(held?.units) !== quote.totalUnits
           )
             throw new AiError('QUOTE_INTEGRITY_FAILED', '整批额度预留与冻结报价不一致');
@@ -1323,7 +1358,10 @@ export function createMultimodalService(
             await assertImage(reference.bytes, reference.mime, job.id);
           assertLimits(await fenceDispatch(job));
           uncertain = true;
-          const result = await provider.generate(request);
+          let previews = Promise.resolve();
+          const result = await provider.generate(request, options?.partialImages ? (frame) => {
+            previews = previews.then(() => publishImagePreview(job, frame)).catch(() => undefined);
+          } : undefined);
           modelCompleted = true;
           requestId = result.requestId;
           if (result.usage && Object.keys(result.usage).length)
@@ -1336,11 +1374,34 @@ export function createMultimodalService(
             throw new ProviderError('IMAGE_BATCH_COUNT_MISMATCH', 'unknown');
           let encodedBytes = 0;
           let normalizedBytes = 0;
-          for (const item of results) {
+          for (const [index, item] of results.entries()) {
             encodedBytes += item.bytes.length;
             if (encodedBytes > (isOpenAI ? openAIBudgets.maxTotalBytes : 7_000_000))
               throw new ProviderError('IMAGE_BATCH_BYTES_EXCEEDED', 'unknown');
-            const file = await storage.storeGenerated(item.bytes);
+            let raster = item.bytes;
+            if (item.mime === 'image/svg+xml') {
+              if (options?.outputFormat !== 'svg') throw new AiError('IMAGE_FORMAT_MISMATCH', '图像格式与请求不一致');
+              raster = await renderSvgForReview(item.bytes, imagePixelLimit);
+              imageArtifacts.push({ index, format: 'svg', bytes: Buffer.from(item.bytes) });
+            } else if (item.mime === 'image/gif') {
+              if (options?.outputFormat !== 'gif') throw new AiError('IMAGE_FORMAT_MISMATCH', '图像格式与请求不一致');
+              const animation = await reviewableGifFrames(item.bytes, {
+                maxPixels: openAIBudgets.maxTotalPixels,
+                maxBytes: 7_000_000,
+                frames: options.frameCount ?? gifFrameCount.default,
+              });
+              if (animation.width !== item.width || animation.height !== item.height)
+                throw new AiError('IMAGE_DIMENSIONS_MISMATCH', '动画分辨率与供应商回执不一致');
+              let first: Buffer | undefined;
+              for await (const frame of animation.frames) {
+                await assertImage(frame, 'image/png', job.id);
+                first ??= frame;
+              }
+              if (!first) throw new AiError('IMAGE_FORMAT_MISMATCH', '动画未返回可用帧');
+              raster = first;
+              imageArtifacts.push({ index, format: 'gif', bytes: Buffer.from(item.bytes), frames: animation.count });
+            }
+            const file = await storage.storeGenerated(raster);
             storedBatch.push(file);
             if (
               options?.size === 'auto'
@@ -1453,6 +1514,11 @@ export function createMultimodalService(
             storedBatch.map((file) => file.key),
           );
           const published: Array<Record<string, unknown>> = [];
+          for (const artifact of imageArtifacts)
+            await tx.query(
+              'INSERT INTO ai_job_image_artifacts(job_id,output_index,format,bytes) VALUES($1,$2,$3,$4)',
+              [job.id, artifact.index, artifact.format, artifact.bytes],
+            );
           for (const [index, file] of storedBatch.entries()) {
             const provenance = {
               kind: 'ai-generated',
@@ -1494,6 +1560,7 @@ export function createMultimodalService(
               )
             ).rows[0]!;
             await tx.query('UPDATE artworks SET head_revision_id=$2 WHERE id=$1', [art.id, rev.id]);
+            const artifact = imageArtifacts.find((value) => value.index === index);
             published.push({
               index,
               width: file.width,
@@ -1502,6 +1569,13 @@ export function createMultimodalService(
               artworkId: art.id,
               url: `/v1/assets/${asset.id}/file`,
               thumbnailUrl: `/v1/assets/${asset.id}/thumbnail`,
+              ...(artifact ? {
+                original: {
+                  format: artifact.format,
+                  url: `/v1/ai-jobs/${job.id}/image-artifacts/${index}`,
+                  ...(artifact.frames ? { frames: artifact.frames } : {}),
+                },
+              } : {}),
             });
           }
           if (published.length) output = { ...output, ...published[0], images: published };
@@ -1514,6 +1588,8 @@ export function createMultimodalService(
             [job.id, JSON.stringify(output), requestId],
           );
           await emit(tx, access.space_id, job.project_id, 'ai.completed', job.id);
+          if (job.operation === 'generate-image')
+            await tx.query('DELETE FROM ai_job_image_previews WHERE job_id=$1', [job.id]);
         });
         attached = true;
       } catch (error) {
@@ -1540,6 +1616,8 @@ export function createMultimodalService(
             "UPDATE ai_jobs SET state=$2,error_code=$3,provider_request_id=COALESCE(NULLIF($4,''),provider_request_id),input=input-'audioBase64',updated_at=clock_timestamp() WHERE id=$1",
             [job.id, unknown ? 'unknown' : 'failed', code, requestId],
           );
+          if (job.operation === 'generate-image')
+            await tx.query('DELETE FROM ai_job_image_previews WHERE job_id=$1', [job.id]);
           await audit(tx, job.actor_id, unknown ? 'ai.unknown' : 'ai.failed', 'ai_job', job.id, {
             code,
             operation: job.operation,

@@ -454,7 +454,7 @@ export function AIPanel({
   };
   const caps = selected?.parameterCapabilities;
   const sizeFailure =
-    operation === 'generate-image' && imageOptions.size !== 'auto' ? imageSizeError(selected, width, height) : null;
+    operation === 'generate-image' && imageOptions.size !== 'auto' ? imageSizeError(selected, width, height, imageOptions) : null;
   const optionsFailure =
     operation === 'generate-image' ? imageOptionsError(selected, imageOptions) : null;
   const batchFailure =
@@ -468,12 +468,12 @@ export function AIPanel({
   const referencedCount = referenceIds.length + (referenceFile ? 1 : 0);
   const referenceLimit = caps?.references.maxCount ?? 0;
   const referenceFailure =
-    operation === 'generate-image' &&
-    referencedCount &&
-    (!caps?.references.supported || referencedCount > referenceLimit)
-      ? t('当前模型最多支持 {count} 张参考图，请移除多余参考或切换模型。', {
-          count: referenceLimit,
-        })
+    operation === 'generate-image' && referencedCount
+      ? imageOptions.outputFormat === 'svg'
+        ? t('SVG 仅支持文字生图。')
+        : !caps?.references.supported || referencedCount > referenceLimit
+          ? t('当前模型最多支持 {count} 张参考图，请移除多余参考或切换模型。', { count: referenceLimit })
+          : null
       : null;
   const reason =
     selected?.runtimeReason ||

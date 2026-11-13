@@ -1,7 +1,10 @@
 import sharp from 'sharp';
 import { MAX_HEADER_BYTES, readImageHeader } from '@ai-xiutu/editor';
+import { gifFrameCount, gifFrameDelay, openAISvgAuthorSchema, responsesModel } from '@ai-xiutu/contracts';
 import { postEventStream, postJson, record, reject, token, unknown } from './http.js';
+import { sanitizeOpenAISvg } from './openai-image-artifacts.js';
 import type {
+  GeneratedImageOutput,
   ImageGenerationInput,
   ImageMime,
   ImageModelDescriptor,
@@ -35,6 +38,7 @@ export const OPENAI_IMAGE_MODEL_PROFILES = Object.freeze({
   'gpt-image-2.6-flare': 'gpt-image-2.6',
 } satisfies Record<string, OpenAIImageProfile>);
 const standardSizes = ['1024x1024', '1536x1024', '1024x1536'] as const;
+const gifAutoSizes = ['512x512'] as const;
 export const OPENAI_MAX_IMAGE_BYTES = 7_000_000;
 const MAX_REFERENCE_TOTAL_BYTES = 28_000_000;
 const MAX_REFERENCE_TOTAL_PIXELS = 33_554_432;
@@ -79,6 +83,14 @@ export function describeOpenAIImageModel(
   const profile = OPENAI_IMAGE_MODEL_PROFILES[id as keyof typeof OPENAI_IMAGE_MODEL_PROFILES];
   const limits = getOpenAIImageBudgets(env);
   const is26 = profile === 'gpt-image-2.6';
+  const svg = is26 && env.OPENAI_IMAGE_SVG_ENABLED === 'true';
+  const gif = is26 && env.OPENAI_IMAGE_GIF_ENABLED === 'true';
+  const svgAuthors = (env.OPENAI_IMAGE_SVG_AUTHORS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (svg && (svgAuthors.length > 47 || new Set(svgAuthors).size !== svgAuthors.length ||
+      svgAuthors.some((id) => !responsesModel(id)))) reject('OPENAI_SVG_AUTHOR_CONFIG_INVALID');
   const old =
     profile === 'gpt-image-1-mini' ||
     profile === 'gpt-image-1.5' ||
@@ -96,7 +108,11 @@ export function describeOpenAIImageModel(
       default: 'auto',
     },
     background: { supported: true, values: ['auto', 'opaque', 'transparent'], default: 'auto' },
-    outputFormat: { supported: true, values: ['png', 'jpeg', 'webp'], default: 'png' },
+    outputFormat: {
+      supported: true,
+      values: ['png', 'jpeg', 'webp', ...(svg ? ['svg'] : []), ...(gif ? ['gif'] : [])],
+      default: 'png',
+    },
     outputCompression: {
       supported: true,
       min: 0,
@@ -140,7 +156,7 @@ export function describeOpenAIImageModel(
         : { supported: false, reason: '此型号由 OpenAI 决定输入保真度。' },
     stream: {
       supported: !old,
-      reason: old ? '该型号暂采用单次 JSON 返回。' : '流式请求仅支持单张图。最终图通过审核后发布。',
+      reason: old ? '该型号暂采用单次 JSON 返回。' : 'PNG、JPEG、WebP 支持单张流式生成。',
     },
     partialImages: {
       supported: !old && env.OPENAI_IMAGE_PARTIALS_ENABLED === 'true',
@@ -149,14 +165,24 @@ export function describeOpenAIImageModel(
       default: 0,
       reason:
         env.OPENAI_IMAGE_PARTIALS_ENABLED === 'true'
-          ? '部分图可能增加供应商图像 token。应用只发布通过审核的最终图。'
-          : '应用暂未向用户发布部分图，运营可单独启用供应商预览请求。',
+          ? '部分图通过审核后展示。最终图完成后替换预览。'
+          : '部署尚未启用供应商部分图预览。',
     },
     svg: {
-      supported: false,
-      reason: '2.6官方预览能力尚未接入安全矢量解析、审核与作者模型费用账。',
+      supported: svg,
+      authors: svg ? svgAuthors.map((id) => ({ id, efforts: responsesModel(id)!.reasoning })) : [],
+      reason: svg ? 'SVG 支持单张从文字生成。矢量作者另计用量。' : '此型号或部署未启用 SVG。',
     },
-    gif: { supported: false, reason: '2.6官方预览能力尚未接入逐帧审核、动画存储与总帧像素预算。' },
+    gif: {
+      supported: gif,
+      frames: { supported: gif, ...gifFrameCount },
+      durationMs: { supported: gif, ...gifFrameDelay },
+      minPixels: 16 * 16,
+      maxPixels: 8_294_400,
+      maxDimension: 1920,
+      autoSizes: gifAutoSizes,
+      reason: gif ? '总尺寸由每帧画幅、帧数和模型分镜画布预算共同决定。' : '此型号或部署未启用 GIF。',
+    },
     dependencies: [
       {
         field: 'outputCompression',
@@ -165,7 +191,7 @@ export function describeOpenAIImageModel(
       },
       {
         field: 'background=transparent',
-        requires: 'outputFormat=png|webp',
+        requires: 'outputFormat=png|webp|svg',
         reason: 'JPEG不能保存透明通道。',
       },
       {
@@ -230,6 +256,9 @@ export function normalizeOpenAIImageOptions(
           'moderation',
           'stream',
           'partialImages',
+          'frameCount',
+          'frameDurationMs',
+          'svg',
         ].includes(key),
     )
   )
@@ -254,6 +283,12 @@ function imageDimensionsFit(model: ImageModelDescriptor, width: number, height: 
     width * height <= model.maxPixels &&
     (!caps.allowedSizes || caps.allowedSizes.includes(`${width}x${height}`))
   );
+}
+function gifDimensionsFit(model: ImageModelDescriptor, width: number, height: number, frames: number) {
+  const max = model.parameterCapabilities!.gif.maxDimension!;
+  return Number.isSafeInteger(width) && Number.isSafeInteger(height) &&
+    width > 0 && height > 0 && width % 16 === 0 && height % 16 === 0 &&
+    width <= max && height <= max && width * height * frames <= model.maxPixels;
 }
 function referenceHeader(reference: ImageReference) {
   if (
@@ -292,6 +327,8 @@ export function validateOpenAIImageInput(
     reject('OPENAI_PROMPT_LIMIT');
   const options = normalizeOpenAIImageOptions(input.imageOptions);
   const caps = model.parameterCapabilities;
+  const svg = options.outputFormat === 'svg';
+  const gif = options.outputFormat === 'gif';
   if (
     !caps.quality.values?.includes(options.quality) ||
     !caps.background.values?.includes(options.background) ||
@@ -323,18 +360,43 @@ export function validateOpenAIImageInput(
     (!Number.isSafeInteger(options.outputCompression) ||
       options.outputCompression < 0 ||
       options.outputCompression > 100 ||
-      options.outputFormat === 'png')
+      !caps.outputCompression.formats?.includes(options.outputFormat))
   )
     reject('OPENAI_COMPRESSION_DEPENDENCY');
-  if (options.background === 'transparent' && options.outputFormat === 'jpeg')
+  if (options.background === 'transparent' && !['png', 'webp', 'svg'].includes(options.outputFormat))
     reject('OPENAI_TRANSPARENCY_DEPENDENCY');
+  if (svg || gif) {
+    if (options.stream || options.partialImages !== undefined) reject('OPENAI_SPECIAL_FORMAT_STREAM');
+    if (svg && (options.n !== 1 || input.reference || input.references?.length || input.mask || input.markup))
+      reject('OPENAI_SVG_GENERATION_ONLY');
+    if (gif && input.mask) reject('OPENAI_GIF_MASK_UNSUPPORTED');
+  }
+  if (svg) {
+    const authors = caps.svg.authors ?? [];
+    const author = options.svg ? openAISvgAuthorSchema.safeParse(options.svg) : undefined;
+    if (authors.length && !author?.success) reject('OPENAI_SVG_AUTHOR_REQUIRED');
+    if (author?.success) {
+      const match = authors.find((value) => value.id === author.data.model);
+      if (!match || (author.data.reasoning && !match.efforts.includes(author.data.reasoning.effort)))
+        reject('OPENAI_SVG_AUTHOR_UNSUPPORTED');
+    } else if (options.svg) reject('OPENAI_SVG_AUTHOR_UNSUPPORTED');
+  } else if (options.svg) reject('OPENAI_SVG_FORMAT_REQUIRED');
+  const frames = options.frameCount ?? gifFrameCount.default;
+  if (gif ? !Number.isInteger(frames) || frames < gifFrameCount.min || frames > gifFrameCount.max :
+      options.frameCount !== undefined || options.frameDurationMs !== undefined)
+    reject('OPENAI_GIF_FRAMES_INVALID');
+  if (options.frameDurationMs !== undefined &&
+      (!Number.isInteger(options.frameDurationMs) || options.frameDurationMs < gifFrameDelay.min ||
+        options.frameDurationMs > gifFrameDelay.max)) reject('OPENAI_GIF_DURATION_INVALID');
   const { width, height } = input;
   if (options.size !== undefined && (options.size !== 'auto' || !caps.size.auto))
     reject('OPENAI_SIZE_NOT_VERIFIED');
-  if (!options.size && !imageDimensionsFit(model, width, height)) reject('OPENAI_SIZE_LIMIT');
+  if (!options.size && !(gif ? gifDimensionsFit(model, width, height, frames) :
+      imageDimensionsFit(model, width, height))) reject('OPENAI_SIZE_LIMIT');
+  const autoPixels = gif ? 512 * 512 : 1_572_864;
   if (
-    (options.size === 'auto' ? 1_572_864 : width * height) *
-      (options.n + (options.partialImages ?? 0)) >
+    (options.size === 'auto' ? autoPixels : width * height) *
+      (gif ? options.n * frames : options.n + (options.partialImages ?? 0)) >
     budgets.maxTotalPixels
   )
     reject('OPENAI_BATCH_PIXEL_LIMIT');
@@ -400,8 +462,11 @@ export function buildOpenAIImageRequest(input: ImageGenerationInput): {
       output_format: options.outputFormat,
       n: options.n,
       moderation: options.moderation ?? 'auto',
-      stream: options.stream ?? false,
+      ...(['svg', 'gif'].includes(options.outputFormat) ? {} : { stream: options.stream ?? false }),
       ...(options.partialImages !== undefined ? { partial_images: options.partialImages } : {}),
+      ...(options.frameCount !== undefined ? { frame_count: options.frameCount } : {}),
+      ...(options.frameDurationMs !== undefined ? { frame_duration_ms: options.frameDurationMs } : {}),
+      ...(options.svg ? { svg: options.svg } : {}),
       ...(options.outputCompression !== undefined
         ? { output_compression: options.outputCompression }
         : {}),
@@ -427,6 +492,17 @@ function decode(value: unknown, requestId: string): Uint8Array {
   if (!bytes.length || bytes.length > OPENAI_MAX_IMAGE_BYTES || bytes.toString('base64') !== value)
     unknown('OPENAI_INVALID_BASE64', requestId);
   return bytes;
+}
+
+function partialFrame(event: Record<string, unknown>, requestId: string) {
+  const index = event.partial_image_index;
+  if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index > 2)
+    unknown('OPENAI_PARTIAL_INDEX_INVALID', requestId);
+  const bytes = decode(event.b64_json, requestId);
+  const header = readImageHeader(bytes.subarray(0, MAX_HEADER_BYTES));
+  if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
+    unknown('OPENAI_PARTIAL_FORMAT_INVALID', requestId);
+  return { index, bytes, mime: ('image/' + header.format) as ImageMime };
 }
 async function validateGuidePixels(input: ImageGenerationInput): Promise<void> {
   const guide = input.mask ?? input.markup;
@@ -459,38 +535,38 @@ export function createOpenAIImageProvider(
     configured,
     models,
     validate,
-    async generate(input) {
+    async generate(input, onPartial) {
       validate(input);
       await validateGuidePixels(input);
       const options = normalizeOpenAIImageOptions(input.imageOptions);
       const descriptor = models.find((model) => model.id === input.model)!;
       const request = buildOpenAIImageRequest(input);
       const responseBytes = Math.ceil(budgets.maxTotalBytes / 3) * 4 + 1_000_000;
-      const { data, requestId } = options.stream
-        ? await postEventStream(
-            request.endpoint,
-            key,
-            request.body,
-            responseBytes,
-            180_000,
-            fetcher,
-          ).then(({ events, requestId }) => {
-            const type =
-              request.endpoint === OPENAI_IMAGE_EDITS_ENDPOINT ? 'image_edit' : 'image_generation';
-            const complete = events.at(-1);
-            if (
-              !complete ||
-              complete.type !== `${type}.completed` ||
-              events.slice(0, -1).some((event) => event.type !== `${type}.partial_image`)
-            )
-              unknown('OPENAI_IMAGE_STREAM_INCOMPLETE', requestId);
-            const data: Record<string, unknown> = {
-              ...complete,
-              data: [{ b64_json: complete.b64_json }],
-            };
-            return { data, requestId };
-          })
-        : await postJson(request.endpoint, key, request.body, responseBytes, 180_000, fetcher);
+      const deadline = options.outputFormat === 'svg' || options.outputFormat === 'gif' ? 220_000 : 180_000;
+      async function streamResult(): Promise<{ data: Record<string, unknown>; requestId: string }> {
+        const type = request.endpoint === OPENAI_IMAGE_EDITS_ENDPOINT ? 'image_edit' : 'image_generation';
+        const seen = new Set<number>();
+        let complete: Record<string, unknown> | undefined;
+        const { requestId } = await postEventStream(
+          request.endpoint, key, request.body, responseBytes, deadline, fetcher,
+          (event, id) => {
+            if (complete) unknown('OPENAI_IMAGE_STREAM_UNEXPECTED_EVENT', id);
+            if (event.type === type + '.completed') complete = event;
+            else if (event.type === type + '.partial_image') {
+              if (seen.size >= (options.partialImages ?? 0))
+                unknown('OPENAI_IMAGE_STREAM_UNEXPECTED_EVENT', id);
+              const frame = partialFrame(event, id);
+              if (seen.has(frame.index)) unknown('OPENAI_PARTIAL_INDEX_INVALID', id);
+              seen.add(frame.index);
+              onPartial?.(frame);
+            } else unknown('OPENAI_IMAGE_STREAM_UNEXPECTED_EVENT', id);
+          },
+        );
+        if (!complete) unknown('OPENAI_IMAGE_STREAM_INCOMPLETE', requestId);
+        return { data: { ...complete, data: [{ b64_json: complete.b64_json }] }, requestId };
+      }
+      const { data, requestId } = options.stream ? await streamResult() :
+        await postJson(request.endpoint, key, request.body, responseBytes, deadline, fetcher);
       if (data.error || !Array.isArray(data.data) || data.data.length !== options.n)
         unknown('OPENAI_OUTPUT_COUNT_MISMATCH', requestId);
       if (data.output_format !== undefined && data.output_format !== options.outputFormat)
@@ -502,13 +578,33 @@ export function createOpenAIImageProvider(
       )
         unknown('OPENAI_OUTPUT_DIMENSIONS_MISMATCH', requestId);
       let totalBytes = 0;
-      const images: Array<{ bytes: Uint8Array; mime: ImageMime }> = [];
+      const images: GeneratedImageOutput[] = [];
       for (const value of data.data) {
         if (!record(value) || value.error) unknown('OPENAI_IMAGE_RESULT_UNKNOWN', requestId);
         // URL-only replies, extra/missing images and malformed bytes never become success.
         const bytes = decode(value.b64_json, requestId);
         totalBytes += bytes.length;
         if (totalBytes > budgets.maxTotalBytes) unknown('OPENAI_BATCH_BYTE_LIMIT', requestId);
+        if (options.outputFormat === 'svg' || options.outputFormat === 'gif') {
+          const [width, height] = typeof data.size === 'string' && /^\d{1,4}x\d{1,4}$/.test(data.size)
+            ? data.size.split('x').map(Number) as [number, number]
+            : options.size ? [0, 0] : [input.width, input.height];
+          if (options.outputFormat === 'svg') {
+            if (!imageDimensionsFit(descriptor, width, height))
+              unknown('OPENAI_OUTPUT_DIMENSIONS_OR_FORMAT_MISMATCH', requestId);
+            let safe: Buffer;
+            try { safe = sanitizeOpenAISvg(bytes, { width, height }); }
+            catch { return unknown('OPENAI_SVG_CONTENT_UNSUPPORTED', requestId); }
+            images.push({ bytes: safe, mime: 'image/svg+xml', width, height });
+          } else {
+            const frames = options.frameCount ?? gifFrameCount.default;
+            if (!gifDimensionsFit(descriptor, width, height, frames) ||
+                width * height * frames * options.n > budgets.maxTotalPixels)
+              unknown('OPENAI_OUTPUT_DIMENSIONS_OR_FORMAT_MISMATCH', requestId);
+            images.push({ bytes, mime: 'image/gif', width, height, frames });
+          }
+          continue;
+        }
         let header;
         try {
           header = readImageHeader(bytes.subarray(0, MAX_HEADER_BYTES));
@@ -569,6 +665,22 @@ export function createOpenAIImageProvider(
           }
           if (Object.keys(counts).length) usage[field] = counts;
         }
+      }
+      if (options.outputFormat === 'svg') {
+        const author = data.svg_usage;
+        if (!record(author) || typeof author.model !== 'string' || !responsesModel(author.model))
+          unknown('OPENAI_SVG_USAGE_UNCONFIRMED', requestId);
+        const base = options.svg?.model;
+        if (base && author.model !== base && responsesModel(author.model)?.baseModel !== base)
+          unknown('OPENAI_SVG_AUTHOR_MISMATCH', requestId);
+        const authorUsage: Record<string, unknown> = { model: author.model };
+        for (const name of ['input_tokens', 'output_tokens', 'reasoning_tokens', 'total_tokens']) {
+          const count = author[name];
+          if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0)
+            unknown('OPENAI_SVG_USAGE_UNCONFIRMED', requestId);
+          authorUsage[name] = count;
+        }
+        usage.svg_author = authorUsage;
       }
       return { ...images[0]!, requestId, images, usage };
     },

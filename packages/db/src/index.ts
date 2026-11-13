@@ -21,6 +21,7 @@ import { schemaV20Sql } from './schema-v20.js';
 import { schemaV21Sql } from './schema-v21.js';
 import { schemaV22Sql } from './schema-v22.js';
 import { schemaV23Sql } from './schema-v23.js';
+import { schemaV24Sql } from './schema-v24.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
@@ -52,6 +53,7 @@ const migrations = [
   { version: 21, sql: schemaV21Sql },
   { version: 22, sql: schemaV22Sql },
   { version: 23, sql: schemaV23Sql },
+  { version: 24, sql: schemaV24Sql },
 ] as const;
 export const REQUIRED_SCHEMA_VERSIONS: readonly number[] = Object.freeze(
   migrations.map(({ version }) => version),

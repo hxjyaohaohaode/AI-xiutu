@@ -390,3 +390,13 @@
     transform: none;
   }
 }
+.ai-result-frame .ai-provider-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.ai-result-frame .ai-result-placeholder[hidden] {
+  display: none;
+}

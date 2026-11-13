@@ -46,8 +46,15 @@ export type ImageCapabilities = {
   inputFidelity: ParameterCapability;
   stream: ParameterCapability;
   partialImages: ParameterCapability;
-  svg: ParameterCapability;
-  gif: ParameterCapability;
+  svg: ParameterCapability & { authors?: readonly { id: string; efforts: readonly string[] }[] };
+  gif: ParameterCapability & {
+    frames?: ParameterCapability;
+    durationMs?: ParameterCapability;
+    minPixels?: number;
+    maxPixels?: number;
+    maxDimension?: number;
+    autoSizes?: readonly string[];
+  };
   dependencies: readonly { field: string; requires: string; reason: string }[];
 };
 export type ImageOptions = {
@@ -62,6 +69,9 @@ export type ImageOptions = {
   moderation?: string;
   stream?: boolean;
   partialImages?: number;
+  frameCount?: number;
+  frameDurationMs?: number;
+  svg?: import('@ai-xiutu/contracts').OpenAISvgAuthor;
 };
 export type AIModel = {
   id: string;
@@ -100,6 +110,7 @@ export type GeneratedImage = {
   index?: number;
   url?: string;
   thumbnailUrl?: string;
+  original?: { format: 'svg' | 'gif'; url: string; frames?: number };
 };
 export type JobOutput =
   | {
