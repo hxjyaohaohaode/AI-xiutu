@@ -180,11 +180,11 @@ async function checkLocalCutout(browser, origin, image, view) {
     const beauty = page
       .getByRole('navigation', { name: '编辑工具', exact: true })
       .getByRole('button', { name: '美颜', exact: true });
-    const detect = page.getByRole('button', { name: '识别照片中的人物', exact: true });
     await page.locator('.canvas-stage[aria-busy="false"] .image-frame canvas').first().waitFor();
-    if (!(await detect.isVisible())) await beauty.click();
+    if ((await beauty.getAttribute('aria-pressed')) !== 'true') await beauty.click();
+    const person = page.locator('.free-panel[aria-hidden="false"] .portrait-person-select');
     try {
-      await detect.click();
+      await person.waitFor({ state: 'attached', timeout: 60000 });
     } catch (error) {
       throw new Error(
         'Portrait controls are unavailable in the ' +

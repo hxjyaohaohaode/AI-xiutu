@@ -1376,6 +1376,9 @@
   .live-assistant-v2:not([data-in-call='true']) .ai-workbench-header .ai-compact-action {
     display: inline-flex;
   }
+  .live-assistant-v2:not([data-in-call='true']):not([data-compose-expanded='true']) .assistant-voice-pill {
+    display: none;
+  }
   .live-assistant-v2:not([data-in-call='true']) > .ai-conversation-body {
     min-height: 64px;
     padding-block: 0;

@@ -123,6 +123,18 @@ async function changeView(page, id, label) {
     await navigation.waitFor({ state: 'hidden' });
   } else await tab.click();
 }
+async function openSavedWork(page, assetId, title) {
+  const card = page.locator(`.asset-library:visible .library-reference-masonry [data-id="${assetId}"]`);
+  await card.locator('.library-masonry-more').click();
+  await page.locator('dialog.library-asset-menu .library-version-links').getByRole('button', {
+    name: title,
+  }).click();
+}
+async function openCollaborationPanel(page) {
+  const status = page.locator('.collaboration-summary');
+  if ((await status.getAttribute('aria-expanded')) !== 'true') await status.click();
+  await page.getByRole('button', { name: '项目协作', exact: true }).click();
+}
 async function navigationClosed(page) {
   const sidebar = page.locator('dialog.sidebar-navigation-modal');
   await sidebar.waitFor({ state: 'hidden' });
@@ -1635,10 +1647,7 @@ try {
       .getByRole('navigation', { name: '项目', exact: true })
       .getByRole('button', { name: projectName, exact: true })
       .click();
-    await page
-      .locator('.library-version-links')
-      .getByRole('button', { name: new RegExp(artworkName) })
-      .click();
+    await openSavedWork(page, assetId, artworkName);
     await page.locator('.collaboration-status[data-state="ready"]').waitFor();
     clients.push({ context, page, actor });
   }
@@ -1659,7 +1668,7 @@ try {
     async () => {
       const page = a.page;
       const initialHead = await readHead();
-      const originalFilename = await page.locator('.canvas-file-info > span').innerText();
+      const originalCanvas = await canvasEvidence(page);
       const canvas = await page.locator('.image-frame canvas').elementHandle();
       assert.ok(canvas);
       const draftWrites = [];
@@ -1689,11 +1698,7 @@ try {
       await page.route(commentsPath, holdComments);
       try {
         await tool(page, '明暗');
-        await page
-          .locator('.free-panel[aria-hidden="false"]')
-          .getByRole('navigation', { name: '当前作品面板', exact: true })
-          .getByRole('button', { name: '协作', exact: true })
-          .click();
+        await openCollaborationPanel(page);
         const collaboration = page.locator('.free-panel[data-panel-id="collaboration"]');
         await collaboration.waitFor();
         assert.equal(await collaboration.getAttribute('data-display-mode'), 'panel');
@@ -1752,15 +1757,11 @@ try {
         await page.locator('.free-panel[data-panel-id="inspector"][aria-hidden="false"]').waitFor();
         await imageReady(page);
         assert.equal(
-          await page.locator('.canvas-file-info > span').innerText(),
-          originalFilename,
+          (await canvasEvidence(page)).evidence.rgbaSha256,
+          originalCanvas.evidence.rgbaSha256,
           'returning from the explicitly expanded page retains the original image',
         );
-        await page
-          .locator('.free-panel[aria-hidden="false"]')
-          .getByRole('navigation', { name: '当前作品面板', exact: true })
-          .getByRole('button', { name: '协作', exact: true })
-          .click();
+        await openCollaborationPanel(page);
         await collaboration.waitFor();
         assert.equal(await task.inputValue(), '这条任务先不提交');
         await task.fill('');
@@ -1998,10 +1999,7 @@ try {
       .getByRole('navigation', { name: '项目', exact: true })
       .getByRole('button', { name: projectName, exact: true })
       .click();
-    await a.page
-      .locator('.library-version-links')
-      .getByRole('button', { name: new RegExp(`^${historyTitle}`) })
-      .click();
+    await openSavedWork(a.page, assetId, historyTitle);
     await imageReady(a.page);
     await a.page.locator('.collaboration-status[data-state="ready"]').waitFor();
 
@@ -2193,10 +2191,7 @@ try {
       .getByRole('navigation', { name: '项目', exact: true })
       .getByRole('button', { name: projectName, exact: true })
       .click();
-    await a.page
-      .locator('.library-version-links')
-      .getByRole('button', { name: new RegExp(`^${sourceTitle}`) })
-      .click();
+    await openSavedWork(a.page, assetId, sourceTitle);
     await imageReady(a.page);
     await a.page.locator('.collaboration-status[data-state="ready"]').waitFor();
 
