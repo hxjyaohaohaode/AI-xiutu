@@ -604,7 +604,7 @@ async function verifyWorkerRecovery({ png, source }) {
       );
     });
     await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
-    const error = page.locator('.canvas-error').getByRole('alert');
+    const error = page.locator('.workspace-canvas-status').getByRole('alert');
     await error.waitFor();
     result.visibleError = await error.innerText();
     assert.match(result.visibleError, /图像处理暂时中断/);
@@ -793,7 +793,7 @@ async function verifyWorkerRecovery({ png, source }) {
       reopened.workerId,
       'the new source owner renders the restored draft',
     );
-    assert.equal(await page.locator('.canvas-error').getByRole('alert').count(), 0);
+    assert.equal(await page.locator('.workspace-canvas-status').getByRole('alert').count(), 0);
     const pixels = Buffer.from(
       await canvas.evaluate((node) => node.toDataURL('image/png').split(',')[1]),
       'base64',
@@ -835,7 +835,7 @@ async function verifyWorkerRecovery({ png, source }) {
           paints: trace?.paints,
           workers: trace?.workers.map(({ instance: _instance, ...record }) => record),
           busy: document.querySelector('.canvas-stage')?.getAttribute('aria-busy'),
-          visibleError: document.querySelector('.canvas-error')?.textContent,
+          visibleError: document.querySelector('.workspace-canvas-status [role="alert"]')?.textContent,
         };
       })
       .catch(() => null);
@@ -1147,7 +1147,7 @@ try {
           points: [...document.querySelectorAll('.curve-graph [data-curve-point]')].map((node) =>
             node.getAttribute('aria-label'),
           ),
-          errors: document.querySelector('.canvas-error')?.textContent,
+          errors: document.querySelector('.workspace-canvas-status [role="alert"]')?.textContent,
         }));
         await page.screenshot({ path: resolve(artifacts, 'failure.png') });
         throw error;
