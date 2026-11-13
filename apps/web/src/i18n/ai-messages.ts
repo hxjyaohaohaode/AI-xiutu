@@ -1101,6 +1101,42 @@ Object.assign(aiEnglish, {
     'Automatic editing stopped. Your candidates are retained. Check the version, editing lease or permissions before continuing. {code}',
 });
 export const openAIEnglish = {
+  已审核的生成中间预览: 'Moderated image preview',
+  'AI 生成的 GIF 动画': 'AI-generated GIF',
+  'SVG 仅支持文字生图。': 'SVG is available for text-to-image generation.',
+  'SVG 作者模型': 'SVG authoring model',
+  'SVG 作者推理强度': 'SVG authoring effort',
+  'SVG 为单张文字生图。结果可下载矢量文件，工作台使用可编辑的 PNG 副本。':
+    'SVG generates one image from text. Download the vector file or edit its PNG copy in the workspace.',
+  'GIF 逐帧审核，按帧数预留服务点，停留时间按 10 毫秒取整。':
+    'GIF frames are reviewed individually. Service points are held per frame, and delays are rounded to 10 ms.',
+  '部分图审核通过后实时展示，每张按当前单张点数预留。':
+    'Partial images appear as soon as they pass review. Each reserves the current per-image point cost.',
+  委派结果: 'Delegation result',
+  同传目标语言: 'Live translation language',
+  显示原语字幕: 'Show source-language captions',
+  近场: 'Near field',
+  远场: 'Far field',
+  降噪强度: 'Noise reduction strength',
+  'GPT-Live 委派模式': 'GPT-Live delegation mode',
+  '应用委派（修图与素材）': 'App delegation (editing and assets)',
+  'OpenAI 原生 Responses': 'OpenAI native Responses',
+  'OpenAI 原生 Decisions': 'OpenAI native Decisions',
+  委派模型提示: 'Delegation prompt',
+  委派服务档位: 'Delegation service tier',
+  '委派输出 Token 上限': 'Delegated output token limit',
+  'Decisions 问题（JSON）': 'Decisions questions (JSON)',
+  应用问题设置: 'Apply question settings',
+  '请检查问题名称、JSON 格式及选项范围。':
+    'Check the question names, JSON format, and allowed options.',
+  '点击应用后，下次通话使用新问题。': 'Apply to use these questions on your next call.',
+  恢复示例问题: 'Restore example questions',
+  '动画的画幅与帧数超出模型像素预算。':
+    'The animation size and frame count exceed the model’s pixel budget.',
+  '此透明背景设置支持 PNG、WebP 或 SVG。':
+    'This transparent background setting supports PNG, WebP, or SVG.',
+  '请选择受支持的 SVG 作者及推理强度。': 'Choose a supported SVG authoring model and effort level.',
+  'GIF 帧数或每帧停留时间超出范围。': 'The GIF frame count or delay is out of range.',
   默认: 'Default',
   使用官方默认: 'Use OpenAI default',
   '默认 standard': 'Default: standard',
@@ -1223,6 +1259,39 @@ export const openAIEnglish = {
 };
 
 export const openAITraditional = {
+  已审核的生成中间预览: '已審核的生成中間預覽',
+  'AI 生成的 GIF 动画': 'AI 生成的 GIF 動畫',
+  'SVG 仅支持文字生图。': 'SVG 僅支援文字生圖。',
+  'SVG 作者模型': 'SVG 作者模型',
+  'SVG 作者推理强度': 'SVG 作者推理強度',
+  'SVG 为单张文字生图。结果可下载矢量文件，工作台使用可编辑的 PNG 副本。':
+    'SVG 為單張文字生圖。結果可下載向量檔，工作台使用可編輯的 PNG 副本。',
+  'GIF 逐帧审核，按帧数预留服务点，停留时间按 10 毫秒取整。':
+    'GIF 逐格審核，依影格數預留服務點，停留時間取整至 10 毫秒。',
+  '部分图审核通过后实时展示，每张按当前单张点数预留。':
+    '部分圖通過審核後即時顯示，每張依目前單張點數預留。',
+  委派结果: '委派結果',
+  同传目标语言: '同步口譯目標語言',
+  显示原语字幕: '顯示原語字幕',
+  近场: '近場',
+  远场: '遠場',
+  降噪强度: '降噪強度',
+  'GPT-Live 委派模式': 'GPT-Live 委派模式',
+  '应用委派（修图与素材）': '應用程式委派（修圖與素材）',
+  'OpenAI 原生 Responses': 'OpenAI 原生 Responses',
+  'OpenAI 原生 Decisions': 'OpenAI 原生 Decisions',
+  委派模型提示: '委派模型提示',
+  委派服务档位: '委派服務層級',
+  '委派输出 Token 上限': '委派輸出 Token 上限',
+  'Decisions 问题（JSON）': 'Decisions 問題（JSON）',
+  应用问题设置: '套用問題設定',
+  '请检查问题名称、JSON 格式及选项范围。': '請檢查問題名稱、JSON 格式及選項範圍。',
+  '点击应用后，下次通话使用新问题。': '套用後，下次通話會使用新問題。',
+  恢复示例问题: '還原範例問題',
+  '动画的画幅与帧数超出模型像素预算。': '動畫畫幅與影格數超出模型的像素預算。',
+  '此透明背景设置支持 PNG、WebP 或 SVG。': '此透明背景設定支援 PNG、WebP 或 SVG。',
+  '请选择受支持的 SVG 作者及推理强度。': '請選擇支援的 SVG 作者模型及推理強度。',
+  'GIF 帧数或每帧停留时间超出范围。': 'GIF 影格數或單格停留時間超出範圍。',
   默认: '預設',
   使用官方默认: '使用官方預設',
   '默认 standard': '預設 standard',
