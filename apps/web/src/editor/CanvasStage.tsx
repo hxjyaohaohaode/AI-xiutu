@@ -2549,16 +2549,6 @@ export function CanvasStage({
                   </button>
                 );
               })}
-            {!comparing && (
-              <CanvasReviewPins
-                review={review}
-                map={(point) => coordinateMap?.toOutput(point) ?? point}
-                zoom={zoom}
-              />
-            )}
-            {collaboration?.snapshot && (
-                return;
-              }
             {bodyRange && geometryReady && !inspectingOriginal && !sampling && !review.placing && !handMode && !space && (
               <BodyStretchGuides
                 range={bodyRange}
