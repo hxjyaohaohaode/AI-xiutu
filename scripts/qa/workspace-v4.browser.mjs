@@ -2249,6 +2249,13 @@ try {
     const localDraft = await recipeDownload(a.page);
     assert.equal(localDraft.adjustments.exposure, -0.8);
     await openCloudHistory(a.page);
+    const retainedHead = await request(a, `/artworks/${sourceArtworkId}`);
+    assert.equal(retainedHead.status(), 200);
+    assert.equal(
+      (await retainedHead.json()).artwork.headVersion,
+      2,
+      'opening history does not retry the conflicted local edit',
+    );
     const history = a.page.locator('.saved-versions');
     const historicalRow = history.locator('.revision-entry').filter({
       has: a.page.locator('.revision-open').filter({ hasText: /V1$/ }),
@@ -2376,7 +2383,8 @@ try {
       );
       await acceptDefaultConfirmations(a.page);
       await openCloudHistory(a.page);
-      await historicalRow.locator('.revision-more > summary').click();
+      const historyActions = historicalRow.locator('.revision-more > summary');
+      if ((await historyActions.getAttribute('aria-expanded')) !== 'true') await historyActions.click();
       await historicalRow.getByRole('button', { name: '从此版本建分支', exact: true }).click();
       const recovered = a.page.getByRole('dialog', { name: '分支已创建', exact: true });
       await recovered.getByRole('button', { name: '打开已创建分支', exact: true }).click();

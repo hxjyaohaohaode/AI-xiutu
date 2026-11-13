@@ -736,8 +736,14 @@ export function useCollaboration(options: Options) {
       queue(options.editor.getRecipe(), label, true);
     },
     commitCurrent(label = '调整照片') {
+      const pending = draft.current;
       options.editor.commitCurrent(label);
-      queue(options.editor.getRecipe(), label, true);
+      const next = options.editor.getRecipe();
+      // Tool changes settle the local preview. They must not resubmit an
+      // unchanged committed draft whose lease or receipt still needs review.
+      if (pending?.committed && same(pending.recipe, next)) return;
+      if (!pending && head.current && same(head.current.revision.recipe, next)) return;
+      queue(next, label, true);
     },
     cancelPreview,
     undo: () => historyMove('undo'),
