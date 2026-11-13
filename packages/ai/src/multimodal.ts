@@ -1079,7 +1079,6 @@ export function createMultimodalService(
     async runOnce(): Promise<boolean> {
       if (!availableOperations.length) return false;
       await storage.initialize();
-      await db.query('DELETE FROM ai_job_image_previews WHERE expires_at<=clock_timestamp()');
       const job = await transaction(db, async (tx) => {
         const selected = (
           await tx.query(

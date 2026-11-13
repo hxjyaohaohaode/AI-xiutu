@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { OPENAI_TRANSLATION_MODEL } from './openai-live.js';
 
 export const OPENAI_SPEECH_IDS = [
   'gpt-4o-mini-tts',
@@ -22,7 +23,7 @@ export const OPENAI_EMBEDDING_DIMENSIONS = {
   'text-embedding-3-large': 3072,
   'text-embedding-ada-002': 1536,
 } as const;
-export const OPENAI_TRANSLATION_ID = 'gpt-realtime-translate';
+export const OPENAI_TRANSLATION_ID = OPENAI_TRANSLATION_MODEL;
 export const OPENAI_SPECIALIST_OPERATIONS = [
   'speak',
   'audio-chat',

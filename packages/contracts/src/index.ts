@@ -15,4 +15,5 @@ export * from './photo-trash.js';
 export * from './openai-transcription.js';
 export * from './openai-image-formats.js';
 export * from './openai-responses-models.js';
+export * from './openai-live.js';
 export * from './openai-specialist.js';

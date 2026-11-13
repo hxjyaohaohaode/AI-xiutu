@@ -19,10 +19,14 @@ import {
   assistantTurnSchema,
   publicPricingSnapshot,
   voiceSessionSchema,
+  OPENAI_DECISIONS_MODEL,
+  responsesModel,
   type AssistantCandidate,
   type AssistantContext,
   type AssistantScope,
   type AssistantSearchEvidence,
+  type LiveDelegationOptions,
+  type LiveTranslationOptions,
 } from '@ai-xiutu/contracts';
 import {
   assistantModelConfigSchema,
@@ -145,6 +149,8 @@ export interface VoiceRow extends PaidRow {
     voiceModel: AssistantModelConfig;
     backendModel: AssistantModelConfig;
     teamArtworkId?: string;
+    delegation?: LiveDelegationOptions;
+    translation?: LiveTranslationOptions;
   };
   connection_hash: string;
 }
@@ -627,7 +633,8 @@ export function createAssistantService(
         if (current?.state !== 'connecting')
           throw new HttpError(409, 'VOICE_STATE_CHANGED', '通话准备状态已改变');
         await model(tx, row.model_id, 'realtime-voice');
-        await model(tx, row.backend_model_id, 'assistant-turn');
+        if (!row.config.translation && row.config.delegation?.type !== 'decisions')
+          await model(tx, row.backend_model_id, 'assistant-turn');
       });
     },
     async failVoiceConnection(id: string) {
@@ -1285,8 +1292,28 @@ export function createAssistantService(
       } catch {
         throw new HttpError(400, 'VOICE_PROFILE_UNKNOWN', '此语音模型尚无经过核验的协议适配器');
       }
-      if (!(profile.voices as readonly string[]).includes(body.voice))
+      if (profile.protocol !== 'translation' && !(profile.voices as readonly string[]).includes(body.voice))
         throw new HttpError(400, 'VOICE_NOT_ALLOWED', '此音色不适用于选中的语音模型');
+      const native = body.delegation?.type === 'responses' || body.delegation?.type === 'decisions';
+      if ((native || body.translation) && teamArtworkId)
+        throw new HttpError(400, 'VOICE_TEAM_MODEL_UNSUPPORTED', '此模式使用个人麦克风入口');
+      if ((native || body.translation) &&
+        (body.context || body.scope.referenceAssetIds.length || body.scope.usePersonalMemory ||
+          body.scope.executionGrantId || body.scope.creativeBrief || body.scope.publicSearch))
+        throw new HttpError(400, 'VOICE_NATIVE_SCOPE_UNSUPPORTED', '此模式仅处理本轮输入，不能附带作品、记忆或自动执行授权');
+      if (body.translation && (body.scope.allowWebSearch || body.scope.spaceIds.length))
+        throw new HttpError(400, 'VOICE_TRANSLATION_SCOPE_UNSUPPORTED', '同传仅处理当前麦克风');
+      const backendModelId = body.translation ? body.modelId :
+        body.delegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL : body.backendModelId!;
+      if (body.delegation?.type === 'responses') {
+        const profile = responsesModel(backendModelId);
+        const selected = body.delegation;
+        if (!profile?.streaming ||
+          (selected.maxOutputTokens !== undefined && selected.maxOutputTokens > profile.maxOutputTokens) ||
+          (selected.serviceTier && selected.serviceTier !== 'default' && selected.serviceTier !== 'auto' &&
+            !profile.tiers.includes(selected.serviceTier)))
+          throw new HttpError(400, 'LIVE_RESPONSES_PROFILE_MISMATCH', '委派模型、输出上限或服务档位不可用');
+      }
       const requestHash = hash(JSON.stringify(teamArtworkId ? { ...body, teamArtworkId } : body));
       const context = await currentContext(actorId, projectId, body.context);
       await validateScope(db, actorId, body.scope);
@@ -1295,9 +1322,12 @@ export function createAssistantService(
         reviewedVoice.live?.prompt,
         reviewedVoice.live?.opening,
         reviewedVoice.realtime?.prompt,
+        body.delegation?.type === 'responses' ? body.delegation.prompt : undefined,
+        body.delegation?.type === 'decisions' ? JSON.stringify(body.delegation.questions) : undefined,
       ].filter((value): value is string => !!value);
       if (promptInputs.length) await moderateText(textModerator, JSON.stringify(promptInputs));
-      await model(db, body.backendModelId, 'assistant-turn');
+      if (!body.translation && body.delegation?.type !== 'decisions')
+        await model(db, backendModelId, 'assistant-turn');
       const ticket = opaqueToken();
       const result = await transaction(db, async (tx) => {
         await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`assistant:${actorId}`]);
@@ -1324,12 +1354,20 @@ export function createAssistantService(
         )
           throw new HttpError(409, 'VOICE_ALREADY_ACTIVE', '请先结束现有通话');
         // Sorted model locks avoid a backend/voice configuration cycle.
-        for (const modelId of [...new Set([body.modelId, body.backendModelId])].sort())
+        for (const modelId of [...new Set([body.modelId, backendModelId])].sort())
           await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
         const voiceConfig = await model(tx, body.modelId, 'realtime-voice');
         if (JSON.stringify(voiceConfig) !== JSON.stringify(reviewedVoice))
           throw new HttpError(409, 'ASSISTANT_MODEL_CHANGED', '语音配置已变化，请重新确认');
-        const backendConfig = await model(tx, body.backendModelId, 'assistant-turn');
+        const backendConfig = body.translation || body.delegation?.type === 'decisions'
+          ? voiceConfig : await model(tx, backendModelId, 'assistant-turn');
+        if (body.delegation?.type === 'responses' &&
+          (backendConfig.responses?.temperature !== undefined || backendConfig.responses?.topP !== undefined))
+          throw new HttpError(400, 'LIVE_RESPONSES_SAMPLING_UNSUPPORTED', '原生委派接口未公开采样字段');
+        if (body.delegation?.type === 'responses' &&
+          ((body.delegation.maxOutputTokens ?? backendConfig.maxOutputTokens) > backendConfig.maxOutputTokens ||
+            (body.scope.allowWebSearch && !backendConfig.webSearch)))
+          throw new HttpError(400, 'LIVE_RESPONSES_BUDGET_EXCEEDED', '委派参数超出运营设置');
         if (
           body.scope.publicSearch &&
           (!body.scope.allowWebSearch ||
@@ -1348,7 +1386,7 @@ export function createAssistantService(
             actorId,
             projectId,
             true,
-            body.backendModelId,
+            backendModelId,
           );
         if (body.scope.executionGrantId)
           await claimAssistantGrant(tx, {
@@ -1372,6 +1410,8 @@ export function createAssistantService(
           voice: body.voice,
           voiceModel: voiceConfig,
           backendModel: backendConfig,
+          ...(body.delegation ? { delegation: body.delegation } : {}),
+          ...(body.translation ? { translation: body.translation } : {}),
           ...(teamArtworkId ? { teamArtworkId } : {}),
         };
         const row = (
@@ -1381,7 +1421,7 @@ export function createAssistantService(
               projectId,
               actorId,
               body.modelId,
-              body.backendModelId,
+              backendModelId,
               body.idempotencyKey,
               requestHash,
               hold.id,

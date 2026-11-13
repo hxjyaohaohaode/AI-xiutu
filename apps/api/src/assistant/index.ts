@@ -176,6 +176,7 @@ export function registerAssistant(
             unitCost: model.unitCost,
             maxSeconds: model.maxSeconds,
             maxDelegations: model.maxDelegations,
+            maxOutputTokens: model.maxOutputTokens,
             imageInput: model.imageInput,
             webSearch: model.webSearch,
             webImageSearch: model.webSearch && model.webImageSearch === true,

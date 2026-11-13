@@ -38,4 +38,5 @@ CREATE TABLE IF NOT EXISTS ai_job_image_previews (
   bytes bytea NOT NULL CHECK (octet_length(bytes) BETWEEN 16 AND 1600000),
   expires_at timestamptz NOT NULL
 );
+CREATE INDEX IF NOT EXISTS ai_job_image_previews_expiry ON ai_job_image_previews(expires_at);
 `;

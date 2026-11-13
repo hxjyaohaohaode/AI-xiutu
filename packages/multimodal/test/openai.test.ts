@@ -368,7 +368,7 @@ test('OpenAI JPEG and WebP compression is transmitted and decoded as the request
 });
 test('OpenAI image streams require an authenticated terminal image before any result is returned', async () => {
   const model = 'gpt-image-2.6-flare';
-  const partial = { type: 'image_generation.partial_image', b64_json: png.toString('base64') };
+  const partial = { type: 'image_generation.partial_image', partial_image_index: 0, b64_json: png.toString('base64') };
   const completed = {
     type: 'image_generation.completed',
     b64_json: png.toString('base64'),

@@ -1156,3 +1156,30 @@
     transition: none;
   }
 }
+.voice-provider-options {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 24rem;
+  margin-inline: auto;
+  text-align: start;
+}
+
+.voice-provider-options label {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+
+.voice-provider-options .voice-provider-check {
+  display: flex;
+  align-items: center;
+}
+
+.voice-provider-options select,
+.voice-provider-options textarea,
+.voice-provider-options input[type='number'] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}

@@ -24,6 +24,7 @@ export class EditorVoiceClient {
   constructor(
     private onEvent: (event: VoiceServerEvent) => void,
     private onFailure: (message: string) => void,
+    private readonly translation = false,
   ) {}
   get microphoneStream() {
     return this.stream;
@@ -191,7 +192,7 @@ export class EditorVoiceClient {
     this.send({ type: 'mute', muted });
   }
   interrupt() {
-    this.outputPaused = true;
+    this.outputPaused = !this.translation;
     this.blockPendingAudio();
     const heard =
       this.audio && audiblePlayback(this.audio.currentTime, this.playback.values(), this.completed);

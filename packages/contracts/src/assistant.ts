@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { liveDelegationSchema, liveTranslationSchema, OPENAI_TRANSLATION_MODEL } from './openai-live.js';
 import { creativeBriefSchema } from './creative.js';
 import type { AssistantWorkspace } from './assistant-ui.js';
 import type { MemorySuggestion } from './memory.js';
@@ -128,13 +129,16 @@ export const voiceSessionSchema = z
       'gpt-realtime-2025-08-28',
       'gpt-realtime-mini',
       'gpt-realtime-mini-2025-12-15',
+      OPENAI_TRANSLATION_MODEL,
     ]),
-    backendModelId: z.string().min(1).max(128),
+    backendModelId: z.string().min(1).max(128).optional(),
     voice: z
       .string()
       .regex(/^[a-z][a-z0-9_-]{0,63}$/)
       .default('marin'),
     context: assistantContextSchema.optional(),
+    delegation: liveDelegationSchema.optional(),
+    translation: liveTranslationSchema.optional(),
     scope: assistantScopeSchema.default({
       spaceIds: [],
       referenceAssetIds: [],
@@ -142,7 +146,11 @@ export const voiceSessionSchema = z
       usePersonalMemory: false,
     }),
   })
-  .strict();
+  .strict()
+  .refine((body) => body.modelId === OPENAI_TRANSLATION_MODEL
+    ? Boolean(body.translation && !body.delegation && !body.backendModelId && !body.context)
+    : Boolean(body.backendModelId && !body.translation &&
+      (body.modelId === 'gpt-live-1' || !body.delegation)), 'Voice settings must match the selected model');
 export const voiceClientEventSchema = z.discriminatedUnion('type', [
   z
     .object({
@@ -301,6 +309,7 @@ export type VoiceServerEvent =
       reason?: 'version' | 'busy' | 'unavailable';
     }
   | { type: 'tool'; name: string; state: 'running' | 'completed' | 'failed' }
+  | { type: 'delegated-result'; kind: 'responses' | 'decisions'; text: string }
   | {
       type: 'assistant-result';
       canvas?: Pick<AssistantContext, 'artworkId' | 'assetId' | 'expectedVersion'>;
