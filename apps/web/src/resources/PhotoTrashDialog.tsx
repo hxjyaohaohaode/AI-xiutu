@@ -130,8 +130,7 @@ export function PhotoTrashDialog({
         `/photo-trash/${row.photo.kind}/${row.photo.id}/restore`,
         jsonRequest('POST', { token: row.photo.token }),
       );
-      if (!active.current) return;
-      setCloud((page) => ({ ...page, items: page.items.filter((item) => item.token !== row.id) }));
+      if (active.current) setCloud((page) => ({ ...page, items: page.items.filter((item) => item.token !== row.id) }));
       onCloudRestored(row.photo);
     } catch (error) {
       if (!active.current) return;
@@ -162,8 +161,7 @@ export function PhotoTrashDialog({
       } else {
         await api('/photo-trash/' + row.photo.kind + '/' + row.photo.id + '?token=' + row.photo.token,
           jsonRequest('DELETE'));
-        if (!active.current) return;
-        setCloud((page) => ({ ...page, items: page.items.filter((item) => item.token !== row.id) }));
+        if (active.current) setCloud((page) => ({ ...page, items: page.items.filter((item) => item.token !== row.id) }));
         onCloudPurged?.();
       }
     } catch (error) {

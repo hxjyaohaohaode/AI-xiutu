@@ -3835,8 +3835,11 @@ export function App({
         {renderedDialog === 'photoTrash' && (
           <PhotoTrashDialog key={localPhotoOwner} owner={localPhotoOwner} actorId={session.user?.id ?? null}
             refreshToken={refreshToken} onClose={closeDialog} onLocalRestore={restoreLocalPhoto}
-            onCloudPurged={() => setRefreshToken((value) => value + 1)}
+            onCloudPurged={() => {
+              if (session.user?.id === sessionRef.current.user?.id) setRefreshToken((value) => value + 1);
+            }}
             onCloudRestored={(photo) => {
+              if (session.user?.id !== sessionRef.current.user?.id) return;
               markPhotoWithdrawn(photo.kind, photo.id, false);
               setRefreshToken((value) => value + 1);
               notify(t('已恢复到原项目。'), 'success');
