@@ -56,7 +56,7 @@ const { LocalPrivateStorage } = await import('../../apps/api/src/storage.ts');
 const { createArtworkBranch } = await import('../../apps/api/src/revision-commands.ts');
 const { hashPassword } = await import('../../apps/api/src/core.ts');
 const { createPersonalSpace } = await import('../../apps/api/src/auth.ts');
-const { createServer } = await import('vite');
+const { createServer, preview } = await import('vite');
 const db = createDatabase(databaseUrl);
 const config = loadConfig({
   DATABASE_URL: databaseUrl,
@@ -792,12 +792,22 @@ try {
   });
   await app.listen({ host: '127.0.0.1', port: 0 });
   process.env.PORT = String(app.server.address().port);
-  vite = await createServer({
-    cacheDir: resolve(artifacts, 'vite-cache'),
-    configFile: resolve(root, 'apps/web/vite.config.ts'),
-    server: { host: '127.0.0.1', port: webPort, strictPort: true },
-  });
-  await vite.listen();
+  const configFile = resolve(root, 'apps/web/vite.config.ts');
+  const built = process.env.PREVIEW_BUILT_DIST;
+  if (built) {
+    vite = await preview({
+      configFile,
+      build: { outDir: resolve(root, built) },
+      preview: { host: '127.0.0.1', port: webPort, strictPort: true },
+    });
+  } else {
+    vite = await createServer({
+      cacheDir: resolve(artifacts, 'vite-cache'),
+      configFile,
+      server: { host: '127.0.0.1', port: webPort, strictPort: true },
+    });
+    await vite.listen();
+  }
   const width = 600,
     height = 400,
     pixels = Buffer.alloc(width * height * 4);
