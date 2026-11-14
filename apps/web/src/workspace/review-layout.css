@@ -37,7 +37,6 @@
   .studio-workspace .library-scope-name { display: flex; flex-direction: column; gap: 2px; }
   .studio-workspace .library-hub .library-context-tabs > button[data-library-tab] > span { display: inline; }
   .studio-workspace .library-hub .library-context-tabs > button { padding-inline: 6px; }
-  .studio-workspace .library-hub .library-context-tabs > button[aria-haspopup='dialog'] > span { display: inline; }
   .studio-workspace .library-hub .library-context-tabs > .library-original-action { min-width: 31px; order: 1; }
   .studio-workspace .library-scope-heading .library-secondary-action > span { display: none; }
   .studio-workspace .library-scope-heading .library-secondary-action { min-width: 34px; }
