@@ -577,18 +577,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setTuningByModel((old) => ({ ...old, [modelId]: value }));
   }
   function chooseTextModel(id: string) {
+    if (id !== modelId && activeGrant.current?.mode === 'suggest') {
+      activeGrant.current = null;
+      setGrant(null);
+    }
     setModelId(id);
     setInvalidSchemaModel(null);
   }
   function chooseComposerModel(id: string) {
     chooseTextModel(id);
-    const supported = Boolean(models.find((item) => item.id === id)?.responses);
-    setModelOptionsOpen(supported);
-    requestAnimationFrame(() => {
-      if (supported)
-        composerInput.current?.closest('form')?.querySelector<HTMLElement>('.assistant-turn-options')?.focus({ preventScroll: true });
-      else composerInput.current?.focus({ preventScroll: true });
-    });
+    setModelOptionsOpen(false);
+    requestAnimationFrame(() => composerInput.current?.focus({ preventScroll: true }));
   }
   const submissionBlocked = !submissionReady || !!pendingSubmission;
   const voiceTuning = voiceTuningByModel[voiceId];
@@ -743,7 +742,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           setCatalog(null);
           setCatalogError('login');
         } else {
-          setCatalogError((current) => current === 'login' ? current : 'unavailable');
+          setCatalogError('unavailable');
         }
       } finally {
         refreshing = false;
@@ -1138,10 +1137,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
       : {}),
     usePersonalMemory: memory,
     creativeBrief: creative.brief,
-    ...(grant ? { executionGrantId: grant.id } : {}),
   };
+  const publicSearchInput = useRef<HTMLInputElement>(null);
+  function openPublicSearch() {
+    setMode('text');
+    setAllowWebSearch(true);
+    setSharedRangeOpen(true);
+    setOverlay('settings');
+    requestAnimationFrame(() => publicSearchInput.current?.focus());
+  }
   async function authorize() {
-    if (!project || !modelId) throw new Error('请先选择项目和思考模型');
+    if (!project || !selected) throw new Error('请先选择项目和思考模型');
     const scopeKey = requestScope;
     const result = await api<{ grant: AssistantGrant }>(
       `/projects/${project.id}/assistant-grants`,
@@ -1154,7 +1160,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
           creative.mode === 'suggest'
             ? ['assistant-turn', 'realtime-voice']
             : ['assistant-turn', 'realtime-voice', 'edit', 'generate-image'],
-        modelIds: [...new Set([modelId, voiceId, ...props.imageModelIds].filter(Boolean))],
+        modelIds: [...new Set([
+          selected.id,
+          ...(selectedVoice && catalog?.voiceReady ? [selectedVoice.id] : []),
+          ...(creative.mode === 'auto' ? props.imageModelIds : []),
+        ])],
       }),
     );
     if (!alive.current || assistantScopeKey(editorState(current.current)) !== scopeKey) return null;
@@ -1163,9 +1173,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
     return result.grant;
   }
   async function requestScopeWithGrant() {
+    if (creative.mode === 'confirm') return scope;
     let currentGrant = activeGrant.current;
     if (
       !currentGrant ||
+      currentGrant.mode !== creative.mode ||
       currentGrant.revokedAt ||
       new Date(currentGrant.expiresAt).getTime() <= Date.now()
     ) {
@@ -1645,7 +1657,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       !project ||
       !prompt.trim() ||
       (!inCall && (!tuningValid || quote === null)) ||
-      !modelId
+      !selected
     )
       return;
     const attachment = mode === 'text' ? props.visualAttachment : null;
@@ -2217,6 +2229,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     (inCall || (tuningValid && quote !== null)) &&
     (mode !== 'text' || !props.visualAttachment || selected.imageInput) &&
     (!inCall || callState === 'active');
+  const needsSearchQuery =
+    mode === 'text' && allowWebSearch && !!selected?.webSearch && !publicQuery.trim() && !inCall;
   const hasVoiceRecovery =
     !inCall && (!!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !!voiceRecoveryError);
   // The matching live observer already exposes progress and stop. Its checkpoint
@@ -2696,6 +2710,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </header>
             <div className="voice-model-content">
               <ModelChoice label={t('语音模型')} ariaLabel={t('语音模型')} value={voiceId}
+                disabled={!!grant}
                 placeholder={t('暂无语音模型')} onChange={setVoiceId}
                 options={voices.map((item) => ({ value: item.id, label: item.label,
                   description: t('{v0} 服务点 · 最长 {v1} 秒', { v0: item.unitCost, v1: item.maxSeconds }) }))} />
@@ -3052,12 +3067,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
             maxOutputTokens={selected.maxOutputTokens ?? 2048}
             label={selected.label}
             value={activeTuning}
-            disabled={catalogSelectionLocked || submissionBlocked || !!grant}
+            disabled={catalogSelectionLocked || submissionBlocked}
             onChange={updateTurnOptions}
             onSchemaValid={(valid) => setInvalidSchemaModel(valid ? null : modelId)}
             onClose={() => setModelOptionsOpen(false)}
           />}
-          <PromptBar className="assistant-reference-prompt" width={1200} inputRef={composerInput} sendOnEnter={false}
+          <PromptBar className="assistant-reference-prompt" width={1200} inputRef={composerInput}
             placeholder={inCall ? t('补充通话要求…') : t('问点什么，或告诉我想怎么修图…')}
             value={prompt} onValueChange={setPrompt} maxLength={4000}
             inlineModelConfiguration
@@ -3078,7 +3093,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               { key: 'history', name: '/' + t('会话记录'), action: () => setOverlay('history') },
             ]}
             disabled={!isLoggedIn || !!pendingSubmission || !submissionReady}
-            modelDisabled={busy || inCall || !!grant} sendDisabled={!canSend}
+            modelDisabled={busy || inCall || grant?.mode === 'auto'} sendDisabled={!canSend || needsSearchQuery}
             busy={!!activeTurn} stopDisabled={!!activeTurn?.stopping}
             onSend={() => { setModelOptionsOpen(false); void submit(); }} onStop={() => void stopActiveTurn()}
             labels={{ input: t('向智能体描述修改需求'), attach: t('共享画面与参考素材'),
@@ -3105,17 +3120,28 @@ export function LiveAssistant(props: LiveAssistantProps) {
               ]}
             modelTools={selected?.responses && <IconButton className="assistant-parameter-trigger"
                 label={t('本轮模型参数')} aria-expanded={modelOptionsOpen}
-                disabled={catalogSelectionLocked || submissionBlocked || !!grant}
+                disabled={catalogSelectionLocked || submissionBlocked}
                 onClick={() => setModelOptionsOpen((open) => !open)}>
                 <SlidersHorizontal size={17} />
               </IconButton>}
-            tools={
+            tools={<>
+              {selected?.webSearch && !inCall && <IconButton
+                className="prompt-bar__tool"
+                label={t('联网搜索')}
+                aria-pressed={allowWebSearch}
+                disabled={busy || submissionBlocked}
+                onClick={openPublicSearch}
+              ><MagnifyingGlass size={17} /></IconButton>}
               <VoicePill className="assistant-voice-pill" size={34} reactive="external"
               background={inCall ? 'var(--accent-soft)' : 'transparent'} accentColor="var(--accent-ink)" iconColor="var(--muted)"
               externalDisplay={inCall} externalActive={callState === 'active' && !muted}
               externalStream={client.current?.microphoneStream} elapsed={elapsed}
               slideToCancel={false} disabled={!isLoggedIn || busy} ariaLabel={t(inCall ? '返回实时通话' : '打开实时语音')}
-              onAction={(trigger) => showVoice(trigger)} />} />
+              onAction={(trigger) => showVoice(trigger)} />
+            </>} />
+          {needsSearchQuery && <button type="button" className="text-button" onClick={openPublicSearch}>
+            {t('请先填写公开检索查询词')}
+          </button>}
         </form>
         {selected && (
           <div className="ai-composer-meta">
@@ -3169,7 +3195,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               ariaLabel={t('助手模型')}
               value={modelId}
               onChange={chooseTextModel}
-              disabled={inCall || busy || submissionBlocked || !!grant}
+              disabled={inCall || busy || submissionBlocked || grant?.mode === 'auto'}
               placeholder={t('暂无可用模型')}
               options={models.map((item) => ({
                 value: item.id,
@@ -3272,6 +3298,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   <label>
                     {t('可公开的查询词')}
                     <input
+                      ref={publicSearchInput}
                       aria-label={t('公开检索查询词')}
                       value={publicQuery}
                       maxLength={240}

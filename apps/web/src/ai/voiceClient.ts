@@ -11,6 +11,8 @@ export class EditorVoiceClient {
   private audio: AudioContext | null = null;
   private capture: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
+  private microphoneTimer: ReturnType<typeof setTimeout> | undefined;
+  private cancelMicrophone: (() => void) | null = null;
   private playback = new Map<AudioBufferSourceNode, PlaybackSpan>();
   private completed = new Map<string, number>();
   private nextAudioTime = 0;
@@ -37,7 +39,7 @@ export class EditorVoiceClient {
       !window.AudioWorkletNode
     )
       throw new Error('实时通话需要 HTTPS、麦克风权限和支持 AudioWorklet 的浏览器。');
-    this.stream = await navigator.mediaDevices.getUserMedia({
+    const request = navigator.mediaDevices.getUserMedia({
       audio: {
         channelCount: 1,
         echoCancellation: true,
@@ -45,6 +47,23 @@ export class EditorVoiceClient {
         autoGainControl: true,
       },
       video: false,
+    });
+    this.stream = await new Promise<MediaStream>((resolve, reject) => {
+      let cancelled = false;
+      const cancel = (message: string) => {
+        cancelled = true;
+        reject(new Error(message));
+      };
+      this.cancelMicrophone = () => cancel('通话已取消');
+      this.microphoneTimer = setTimeout(() =>
+        cancel('等待麦克风授权超时。请在浏览器中允许麦克风后再通话。'), 20_000);
+      void request.then((stream) => {
+        if (cancelled) stream.getTracks().forEach((track) => track.stop());
+        else resolve(stream);
+      }, reject);
+    }).finally(() => {
+      clearTimeout(this.microphoneTimer);
+      this.cancelMicrophone = null;
     });
     if (this.disposed) {
       this.stream.getTracks().forEach((track) => track.stop());
@@ -235,6 +254,7 @@ export class EditorVoiceClient {
     if (this.disposed) return;
     this.disposed = true;
     this.ready = false;
+    this.cancelMicrophone?.();
     clearInterval(this.heartbeat);
     clearTimeout(this.disconnectTimer);
     this.stream?.getTracks().forEach((track) => track.stop());

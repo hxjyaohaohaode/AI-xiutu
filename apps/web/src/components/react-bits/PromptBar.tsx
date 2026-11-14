@@ -822,6 +822,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
           }}
           className="prompt-bar__input"
           rows={1}
+          enterKeyHint={sendOnEnter ? 'send' : 'enter'}
           value={draft}
           placeholder={listening ? labels.listening ?? 'Listening…' : placeholder}
           aria-label={labels.input ?? 'Prompt'}

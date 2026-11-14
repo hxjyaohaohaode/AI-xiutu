@@ -641,7 +641,7 @@ try {
       assert.equal(await inputOwner.evaluate((node) => node.isConnected), true);
       const taskInput = page.getByLabel('本轮创作要求', { exact: true });
       await taskInput.fill(taskDraft);
-      await page.getByRole('button', { name: '任务设置', exact: true }).click();
+      await page.getByRole('button', { name: '生图参数', exact: true }).click();
       const settings = page.getByRole('region', { name: '模型与参数', exact: true });
       await settings.waitFor();
       await settings.getByRole('combobox', { name: '生图模型', exact: true }).waitFor();
@@ -1935,7 +1935,7 @@ try {
           await picker.waitFor({ state: 'hidden' });
         };
         await selectTask('生图');
-        await page.getByRole('button', { name: '任务设置', exact: true }).click();
+        await page.getByRole('button', { name: '生图参数', exact: true }).click();
         const settings = page.getByRole('region', { name: '模型与参数', exact: true });
         const model = settings.getByRole('combobox', { name: '生图模型', exact: true });
         await model.waitFor();
@@ -1946,7 +1946,7 @@ try {
         );
         await settings.getByRole('button', { name: '展开面板', exact: true }).click();
         await settings.waitFor({ state: 'hidden' });
-        await page.getByRole('button', { name: '任务设置', exact: true }).click();
+        await page.getByRole('button', { name: '生图参数', exact: true }).click();
         await settings.waitFor();
         await settings.locator('.ai-model-empty').scrollIntoViewIfNeeded();
         const taskSettingsGeometry = await settings.evaluate((region) => {

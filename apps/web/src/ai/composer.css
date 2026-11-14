@@ -964,7 +964,7 @@
   gap: 5px;
   padding: 0 14px 16px;
 }
-.ai-task-picker > button {
+.ai-task-picker button {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -977,18 +977,31 @@
   color: var(--ink);
   text-align: left;
 }
-.ai-task-picker > button[aria-pressed='true'] {
+.ai-task-picker button[aria-pressed='true'] {
   background: var(--accent-soft);
 }
-.ai-task-picker > button:hover:not(:disabled) {
+.ai-task-picker button:hover:not(:disabled) {
   background: var(--surface-hover);
 }
-.ai-task-picker > button > svg {
+.ai-task-picker button > svg {
   flex: 0 0 auto;
 }
 .ai-task-picker strong,
 .ai-task-picker small {
   display: block;
+}
+.ai-other-tasks {
+  border-top: 1px solid var(--line);
+  margin-block-start: 4px;
+}
+.ai-other-tasks > summary {
+  min-height: 44px;
+  align-content: center;
+  padding-inline: 12px;
+  cursor: pointer;
+}
+.ai-other-tasks button {
+  width: 100%;
 }
 .ai-task-picker strong {
   font-size: 13px;

@@ -72,7 +72,7 @@ const initial = (): Settings => ({
   unitCost: 1,
   maxSeconds: 180,
   maxDelegations: 6,
-  maxOutputTokens: 2048,
+  maxOutputTokens: 8192,
   contextWindowTokens: 32768,
   visualTokenReserve: 4096,
   imageInput: false,
@@ -486,7 +486,9 @@ export function AssistantOpsPanel() {
                   disabled={!!selected || busy}
                   value={voice ? 'realtime-voice' : 'assistant-turn'}
                   onValueChange={(value) => {
-                    setSettings({ ...initial(), operations: [value] });
+                    setSettings({ ...initial(), operations: [value],
+                      ...(value === 'realtime-voice' ? { maxOutputTokens: 2048 } : {}),
+                    });
                     setModelId('');
                     setHash(null);
                   }}

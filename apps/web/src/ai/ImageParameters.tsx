@@ -84,7 +84,9 @@ export function ImageParameters({
     c &&
     (c.background.supported ||
       c.outputFormat.supported ||
-      c.complexity.supported ||
+      c.moderation?.supported ||
+      c.stream.supported ||
+      (hasReference && c.inputFidelity.supported) ||
       (c.outputCompression.supported &&
         c.outputCompression.formats?.includes(options.outputFormat ?? 'png')));
   if (!model) return <p className="ai-model-empty">{copy.noModel}</p>;
@@ -264,6 +266,7 @@ export function ImageParameters({
         </p>
       )}
       {renderField('quality', '质量')}
+      {renderField('complexity', '复杂度')}
       {c?.n.supported && (c.n.max ?? 1) > 1 && (
         <label className="ai-numeric-setting">
           <span>
@@ -287,7 +290,6 @@ export function ImageParameters({
         <Disclosure title={copy.more} role="ai-options" className="image-advanced-options">
           {renderField('background', '背景')}
           {renderField('outputFormat', '供应商编码')}
-          {renderField('complexity', '复杂度')}
           {svg && (
             <div className="parameter-row">
               {authors.length > 0 && (

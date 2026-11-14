@@ -22,7 +22,7 @@ import './account/account-page.css';
 import { isAuthSession } from './account/auth-model';
 import { accountPageCopy } from './account/page-copy';
 import { t, useLocale } from './i18n';
-import { api } from './lib/api';
+import { api, withRequestDeadline } from './lib/api';
 import { brandLogoUrl } from './lib/brand';
 import { ThemeContext } from './components/ThemeSwitch';
 import { useStudioTheme } from './workspace/useStudioTheme';
@@ -182,10 +182,9 @@ export function SiteShell() {
   useEffect(() => {
     if (!checkingEntrySession) return;
     const controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]);
-    api<unknown>('/session', { signal })
+    withRequestDeadline(controller.signal, 5000, (signal) => api<unknown>('/session', { signal }))
       .then((session) => {
-        if (!signal.aborted && location.hash === '' && isAuthSession(session) && session.user)
+        if (!controller.signal.aborted && location.hash === '' && isAuthSession(session) && session.user)
           navigate('studio', true);
       })
       .catch(() => {})

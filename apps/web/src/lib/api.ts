@@ -46,12 +46,38 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
-/** A deadline for model discovery only. This never retries a paid mutation. */
+export async function withRequestDeadline<T>(
+  signal: AbortSignal | undefined,
+  timeout: number,
+  read: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  if (signal?.aborted) throw new DOMException('Request cancelled', 'AbortError');
+  signal?.addEventListener('abort', cancel, { once: true });
+  let expired = false;
+  const timer = setTimeout(() => {
+    expired = true;
+    cancel();
+  }, timeout);
+  try {
+    return await read(controller.signal);
+  } catch (error) {
+    if (expired && !signal?.aborted)
+      throw new ApiError('REQUEST_TIMEOUT', '云端响应超时，请重试。', 408);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', cancel);
+  }
+}
+
+/** Model discovery may retry; paid requests never use this path. */
 export async function readModelCatalog<T>(path: string, signal: AbortSignal): Promise<T> {
   async function read(timeout: number) {
-    const value = await api<T & { models?: unknown }>(path, {
-      cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
-    });
+    const value = await withRequestDeadline(signal, timeout, (signal) =>
+      api<T & { models?: unknown }>(path, { cache: 'no-store', signal }),
+    );
     if (!Array.isArray(value?.models))
       throw new ApiError('MODEL_CATALOG_UNAVAILABLE', '暂时无法读取模型列表，请稍后重试。', 503);
     return value;
@@ -59,9 +85,9 @@ export async function readModelCatalog<T>(path: string, signal: AbortSignal): Pr
   try {
     return await read(8_000);
   } catch (error) {
-    signal.throwIfAborted();
+    if (signal.aborted) throw error;
     const transient = error instanceof SyntaxError ||
-      (error instanceof ApiError && [0, 502, 503, 504].includes(error.status));
+      (error instanceof ApiError && [0, 408, 502, 503, 504].includes(error.status));
     if (!transient) throw error;
     return read(10_000);
   }

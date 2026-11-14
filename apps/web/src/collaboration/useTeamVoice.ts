@@ -4,7 +4,7 @@ import {
   type TeamVoiceControl,
   type TeamVoiceEvent,
 } from '@ai-xiutu/contracts';
-import { api, errorMessage, jsonRequest } from '../lib/api';
+import { api, errorMessage, jsonRequest, withRequestDeadline } from '../lib/api';
 import { voiceErrorMessage } from '../ai/voice-error';
 import { appendCaption, type CaptionState } from '../ai/VoiceCaptions';
 import {
@@ -466,9 +466,11 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
         currentActor.current !== actorId
       )
         return;
-      const result = await api<{ ticket: string; path: string }>(
-        '/artworks/' + artworkId + '/team-voice/join',
-        { ...jsonRequest('POST', {}), signal: AbortSignal.timeout(10_000) },
+      const result = await withRequestDeadline(undefined, 10_000, (signal) =>
+        api<{ ticket: string; path: string }>('/artworks/' + artworkId + '/team-voice/join', {
+          ...jsonRequest('POST', {}),
+          signal,
+        }),
       );
       if (
         transport.current !== connection ||

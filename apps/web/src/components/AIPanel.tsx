@@ -63,6 +63,7 @@ import { PanelSettings } from '../ai/PanelSettings';
 import { PanelSettingsPage } from '../ai/PanelSettingsPage';
 import { ModelChoice } from '../ai/ModelChoice';
 import { VoiceCapture } from './VoiceCapture';
+import { MotionDetails } from '../motion/Presence';
 import {
   prepareGenerationDraft,
   type GenerationDraftInput,
@@ -141,12 +142,13 @@ const tasks = [
     hint: '录音先在本机，确认后识别',
     chips: [],
   },
-  { id: 'speak' as const, label: specialistTaskLabels.speak, icon: <SpeakerHigh size={18} />, placeholder: '输入要朗读的文字…', button: '生成朗读', hint: '生成可下载的 AI 朗读音频', chips: [] },
+  { id: 'speak' as const, label: '文字转语音', icon: <SpeakerHigh size={18} />, placeholder: '输入要朗读的文字…', button: '生成朗读', hint: '生成可下载的 AI 朗读音频', chips: [] },
   { id: 'audio-chat' as const, label: specialistTaskLabels['audio-chat'], icon: <Waveform size={18} />, placeholder: '输入问题，可附上录音…', button: '提交音频问答', hint: '选择文字或语音回答', chips: [] },
   { id: 'web-search' as const, label: specialistTaskLabels['web-search'], icon: <MagnifyingGlass size={18} />, placeholder: '输入要公开搜索的问题…', button: '发起联网搜索', hint: '将输入的问题用于公开搜索', chips: [] },
   { id: 'embed' as const, label: specialistTaskLabels.embed, icon: <Hash size={18} />, placeholder: '输入要转换成向量的文字…', button: '生成向量', hint: '可复制浮点数组或 Base64 向量', chips: [] },
   { id: 'translate-audio' as const, label: specialistTaskLabels['translate-audio'], icon: <Translate size={18} />, placeholder: '', button: '确认翻译语音', hint: '确认后发送录音并返回译文与译音', chips: [] },
 ];
+const primaryTasks: readonly AIOperation[] = ['generate-image', 'speak', 'transcribe'];
 interface AIPanelDraft {
   prompt: string;
   operation: AIOperation;
@@ -1251,6 +1253,34 @@ export function AIPanel({
         : t('当前未开通'),
     })),
   ];
+  const availableTasks = tasks.filter((item) =>
+    primaryTasks.includes(item.id) || operation === item.id || modelResponse?.operationStatus?.[item.id]?.available === true ||
+    modelResponse?.models.some((model) => model.enabled && model.runtimeOperations?.includes(item.id)),
+  );
+  const otherTasks = availableTasks.filter((item) => !primaryTasks.includes(item.id) && item.id !== 'embed');
+  function taskOption(item: (typeof tasks)[number]) {
+    return (
+      <button
+        key={item.id}
+        type="button"
+        aria-pressed={!assistantOpen && operation === item.id}
+        disabled={inputLocked || preparingDraft || assistantLocked}
+        onClick={() => {
+          if (item.id === 'generate-image' && visualAttachment && !referenceFile)
+            useVisualReference(visualAttachment);
+          setAssistantOpen(false);
+          changeOperation(item.id);
+          setOverlay(null);
+        }}
+      >
+        {item.icon}
+        <span>
+          <strong>{t(item.label)}</strong>
+          <small>{t(item.hint)}</small>
+        </span>
+      </button>
+    );
+  }
   return (
     <AIVisibilityContext.Provider value={visible}>
       <aside
@@ -1285,7 +1315,8 @@ export function AIPanel({
             onCancelPreview={onCancelPreview}
             imageModelIds={(modelResponse?.models ?? [])
               .filter(
-                (model) => model.enabled !== false && model.operations?.includes('generate-image'),
+                (model) => model.enabled !== false && !model.shutdownDate &&
+                  model.runtimeAvailable && model.runtimeOperations?.includes('generate-image'),
               )
               .map((model) => model.id)}
             onBeforeArtworkWrite={onBeforeArtworkWrite}
@@ -1314,9 +1345,15 @@ export function AIPanel({
                 <IconButton label={t('创作记录')} onClick={() => setOverlay('history')}>
                   <ClockCounterClockwise size={18} />
                 </IconButton>
-                <IconButton label={t('任务设置')} onClick={() => setOverlay('settings')}>
-                  <GearSix size={18} />
-                </IconButton>
+                {operation === 'generate-image' ? (
+                  <button type="button" className="text-button" onClick={() => setOverlay('settings')}>
+                    <GearSix size={18} />{t('生图参数')}
+                  </button>
+                ) : (
+                  <IconButton label={t('任务设置')} onClick={() => setOverlay('settings')}>
+                    <GearSix size={18} />
+                  </IconButton>
+                )}
                 {!mobilePage && (
                   <IconButton className="ai-panel-close" label={t('收起 AI 面板')} onClick={onClose}>
                     <X size={18} />
@@ -1655,28 +1692,13 @@ export function AIPanel({
                 <small>{t('文字交流、看图建议与实时通话')}</small>
               </span>
             </button>
-            {tasks.filter((item) => !Object.hasOwn(specialistTaskLabels, item.id) ||
-              modelResponse?.models.some((model) => model.enabled && model.runtimeOperations?.includes(item.id))).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                aria-pressed={!assistantOpen && operation === item.id}
-                disabled={inputLocked || preparingDraft || assistantLocked}
-                onClick={() => {
-                  if (item.id === 'generate-image' && visualAttachment && !referenceFile)
-                    useVisualReference(visualAttachment);
-                  setAssistantOpen(false);
-                  changeOperation(item.id);
-                  setOverlay(null);
-                }}
-              >
-                {item.icon}
-                <span>
-                  <strong>{t(item.label)}</strong>
-                  <small>{t(item.hint)}</small>
-                </span>
-              </button>
-            ))}
+            {availableTasks.filter((item) => primaryTasks.includes(item.id)).map(taskOption)}
+            {otherTasks.length > 0 && (
+              <MotionDetails className="ai-other-tasks">
+                <summary>{t('更多任务')}</summary>
+                <div>{otherTasks.map(taskOption)}</div>
+              </MotionDetails>
+            )}
           </div>
         </Modal>
         <PanelSettingsPage

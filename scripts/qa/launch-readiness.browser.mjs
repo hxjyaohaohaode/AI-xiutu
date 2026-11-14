@@ -107,6 +107,7 @@ try {
   const composerModels = desktop.getByRole('listbox', { name: '选择模型', exact: true });
   assert.equal(await composerModels.getByRole('option', { name: /gpt-5-mini/ }).count(), 0);
   await composerModels.getByRole('option', { name: /gpt-5\.4-mini/ }).click();
+  await desktop.getByRole('button', { name: '本轮模型参数', exact: true }).click();
   await desktop.getByRole('region', { name: '本轮模型参数', exact: true }).waitFor();
   await desktop.getByLabel('最多输出 Token').fill('512');
   await desktop.getByLabel('采样温度（0–2）').fill('0.25');
@@ -116,10 +117,13 @@ try {
   await take(desktop, 'desktop-assistant-options');
   await desktop.getByRole('button', { name: '完成参数设置' }).click();
   console.log('Assistant composer and quote ready');
-  await desktop.getByLabel('向智能体描述修改需求').fill('没有手动建项目，直接对话。');
+  const input = desktop.getByLabel('向智能体描述修改需求');
+  await input.fill('没有手动建项目，直接对话。');
+  await input.press('Shift+Enter');
+  assert.match(await input.inputValue(), /\n$/);
   const submit = desktop.waitForResponse((response) => response.request().method() === 'POST' &&
     new URL(response.url()).pathname.endsWith('/assistant-turns'));
-  await desktop.getByRole('button', { name: '发送协作请求', exact: true }).click();
+  await input.press('Enter');
   const accepted = await submit;
   const receipt = await accepted.json();
   assert.equal(accepted.status(), 202, JSON.stringify(receipt));
@@ -137,13 +141,14 @@ try {
   assert.equal(await secondEntry.inputValue(), '另一设备正在输入的草稿');
   await secondDevice.getByRole('button', { name: '选择助手模型与执行方式', exact: true }).click();
   await secondDevice.getByRole('listbox', { name: '选择模型', exact: true }).getByRole('option', { name: /gpt-5\.4-mini/ }).click();
+  await secondDevice.getByRole('button', { name: '本轮模型参数', exact: true }).click();
   await secondDevice.getByRole('region', { name: '本轮模型参数', exact: true }).waitFor();
   assert.equal(await secondDevice.evaluate(() => document.documentElement.scrollWidth), 390);
   await take(secondDevice, 'phone-assistant-options');
   assert.equal(requests.at(-1).max_output_tokens, 512);
   assert.equal(requests.at(-1).temperature, 0.25);
   assert.equal(requests.at(-1).service_tier, 'flex');
-  result.cases.push('select model to reveal parameters inline; server quote; live conversation sync without replacing the other draft');
+  result.cases.push('inline model parameters; Shift+Enter newline and Enter submit; server quote; live conversation sync without replacing the other draft');
   const accountPreferences = secondDevice.request;
   const current = await accountPreferences.get(origin + '/v1/me/assistant-preferences');
   assert.equal(current.status(), 200);
