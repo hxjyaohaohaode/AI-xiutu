@@ -2137,14 +2137,20 @@ try {
     await candidate.getByRole('button', { name: '添加到项目并编辑', exact: true }).click();
     const fork = page.getByRole('dialog', { name: '添加为项目作品', exact: true });
     await fork.getByLabel('新作品名称', { exact: true }).fill('Phone generated edit');
-    const forkOpened = page.waitForResponse((response) => {
-      const request = response.request();
-      const pathname = new URL(request.url()).pathname;
-      return request.method() === 'GET' && /^\/v1\/artworks\/[^/]+$/.test(pathname) &&
-        !pathname.endsWith('/' + baseline.artwork.id);
-    });
-    await fork.getByRole('button', { name: '确认', exact: true }).click();
-    const forked = await (await forkOpened).json();
+    const [decision, opened] = await Promise.all([
+      page.waitForResponse((response) =>
+        response.request().method() === 'POST' &&
+        new URL(response.url()).pathname === '/v1/ai-jobs/' + jobId + '/decisions'),
+      page.waitForResponse((response) => {
+        const pathname = new URL(response.url()).pathname;
+        return response.request().method() === 'GET' && /^\/v1\/artworks\/[^/]+$/.test(pathname) &&
+          !pathname.endsWith('/' + baseline.artwork.id);
+      }),
+      fork.getByRole('button', { name: '保存并编辑', exact: true }).click(),
+    ]);
+    assert.equal(decision.status(), 201);
+    const forked = await opened.json();
+    assert.equal(forked.artwork.id, (await decision.json()).artwork.id);
     assert.equal(forked.artwork.title, 'Phone generated edit');
     assert.equal(forked.artwork.assetId, generatedId);
     await chat.waitFor({ state: 'hidden' });
