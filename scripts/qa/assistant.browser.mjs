@@ -482,7 +482,7 @@ try {
         keyCode: 229,
       });
       await input.dispatchEvent('compositionend', { data: '中' });
-      await input.press('Enter');
+      await input.press('Shift+Enter');
       assert.equal(await input.inputValue(), prompt + '\n');
       const memory = await details('偏好与要求');
       await memory.getByLabel('名称', { exact: true }).fill('尚未确认的偏好草稿');
@@ -506,7 +506,7 @@ try {
       await input.fill('');
       return {
         simulatedCompositionEvents: true,
-        enterAddsNewline: true,
+        shiftEnterAddsNewline: true,
         settingsDraftPreserved: true,
         addedAdmissions: 0,
         addedDispatches: 0,
@@ -775,7 +775,7 @@ try {
   );
   await testCase('suggest-mode-immutable-and-no-forgotten-memory', async () => {
     const panel = await details('执行方式');
-    await panel.getByRole('button', { name: '停止授权', exact: true }).click();
+    assert.equal(await panel.getByRole('button', { name: '停止授权', exact: true }).count(), 0);
     await choose(panel, 'AI 可以做到哪一步', '只建议');
     await details('执行方式', false);
     await newConversation();
@@ -1853,17 +1853,22 @@ try {
         const before = { admissions: turnAdmissions, dispatches };
         const settings = await openSettings();
         const model = settings.getByRole('combobox', { name: '助手模型', exact: true });
+        assert.equal(await model.isEnabled(), true, 'preview-confirm calls leave the model selectable');
+        const execution = await details('执行方式');
+        await choose(execution, 'AI 可以做到哪一步', '预算内自动执行');
+        await execution
+          .getByRole('button', { name: '授权当前项目，30 分钟内有效', exact: true })
+          .click();
+        const revoke = execution.getByRole('button', { name: '停止授权', exact: true });
+        await revoke.waitFor();
         assert.equal(
           await model.isDisabled(),
           true,
-          'the existing execution authorization keeps its model frozen',
+          'an explicit automatic execution authorization keeps its model frozen',
         );
         await page.screenshot({
           path: resolve(artifacts, 'assistant-settings-locked-390x844.png'),
         });
-        const execution = await details('执行方式');
-        const revoke = execution.getByRole('button', { name: '停止授权', exact: true });
-        await revoke.waitFor();
         const revoked = page.waitForResponse(
           (response) =>
             response.request().method() === 'DELETE' &&
@@ -1874,6 +1879,7 @@ try {
         assert.equal(revokeResponse.status(), 200);
         assert.deepEqual(await revokeResponse.json(), { ok: true });
         await until(() => model.isEnabled(), 'revoking the authorization unlocks its model');
+        await choose(execution, 'AI 可以做到哪一步', '预览确认');
         await model.click();
         const models = settings.getByRole('listbox', { name: '助手模型', exact: true });
         await models.waitFor();

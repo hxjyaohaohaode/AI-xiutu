@@ -2,7 +2,7 @@ name: Tencent Cloud release
 
 on:
   workflow_run:
-    workflows: [Baseline checks, Frontend system redesign review]
+    workflows: [Baseline checks, Frontend system redesign review, AI interaction checks, Account lifecycle checks]
     types: [completed]
     branches: [main]
   workflow_dispatch:
@@ -35,7 +35,7 @@ jobs:
     env:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
-      - name: Require both checks from the same main push
+      - name: Require all four checks from the same main push
         id: checked
         env:
           GH_TOKEN: ${{ github.token }}
@@ -48,7 +48,7 @@ jobs:
             echo "A newer main commit is available."
             exit 0
           fi
-          for workflow in checks.yml frontend-system-redesign.yml; do
+          for workflow in checks.yml frontend-system-redesign.yml assistant-checks.yml account-checks.yml; do
             result=$(gh api "$api/actions/workflows/$workflow/runs?branch=main&event=push&head_sha=$RELEASE_SHA&per_page=5" \
               | jq -r --arg sha "$RELEASE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")][0].conclusion // "pending"')
             if [[ "$result" != success ]]; then

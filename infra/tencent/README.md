@@ -1,6 +1,6 @@
 # 腾讯云轻量实例自动更新
 
-GitHub Actions 在同一次 `main` 推送的 Baseline checks 和 Frontend system redesign review 都成功后，才为该提交构建 Linux x86_64 的 API/Worker 和 Web 镜像。两个镜像属于同一个完整 SHA，并通过该 SHA 的 `cloud-<sha>` 预发行附件提供。预发行不替换面向用户的正式发布。实例定时检查当前 `main`，下载并校验 GitHub 给出的 SHA-256 摘要，不需要 GitHub 用户令牌、远程构建或向 GitHub 提供服务器密钥。
+GitHub Actions 在同一次 `main` 推送的 Baseline checks、Frontend system redesign review、AI interaction checks 和 Account lifecycle checks 都成功后，才为该提交构建 Linux x86_64 的 API/Worker 和 Web 镜像。两个镜像属于同一个完整 SHA，并通过该 SHA 的 `cloud-<sha>` 预发行附件提供。预发行不替换面向用户的正式发布。实例定时检查当前 `main`，复核四套检查结果，下载并校验 GitHub 给出的 SHA-256 摘要，不需要 GitHub 用户令牌、远程构建或向 GitHub 提供服务器密钥。
 
 此流程适用于现有 `/home/ubuntu/xiutu-pilot` 安装。现场的 `compose.pilot.yaml` 中，API、Worker、迁移镜像使用 `xiutu-pilot-server:${XIUTU_IMAGE_REF:?Set XIUTU_IMAGE_REF}`，Web 镜像使用 `xiutu-pilot-web:${XIUTU_IMAGE_REF:?Set XIUTU_IMAGE_REF}`。手动运行 Compose 时，需从 `RELEASE` 读取并传入当前镜像标签。应用数据、发布记录、Caddy、HTTPS 和短信配置继续使用原 Compose 项目及卷。分享入口的随机值留在实例 `state/friend-link` 私有文件；不得写入源码、发布记录或公共日志。
 

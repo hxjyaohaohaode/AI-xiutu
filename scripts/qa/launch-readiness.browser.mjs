@@ -103,6 +103,15 @@ try {
   await secondDevice.locator('[data-dock-tool="ai"]:visible').click();
   const secondEntry = secondDevice.getByLabel('向智能体描述修改需求');
   await secondEntry.fill('另一设备正在输入的草稿');
+  await secondDevice.getByRole('button', { name: '选择助手模型与执行方式', exact: true }).waitFor();
+  const recoveredCatalogs = Promise.all(['/v1/assistant/models', '/v1/models'].map((path) =>
+    secondDevice.waitForResponse((response) => new URL(response.url()).pathname === path && response.ok()),
+  ));
+  await secondDevice.context().setOffline(true);
+  await secondDevice.context().setOffline(false);
+  await recoveredCatalogs;
+  assert.equal(await secondEntry.inputValue(), '另一设备正在输入的草稿');
+  result.cases.push('mobile model catalogs refresh when the connection comes back; unsent draft survives');
   await desktop.getByRole('button', { name: '选择助手模型与执行方式', exact: true }).click();
   const composerModels = desktop.getByRole('listbox', { name: '选择模型', exact: true });
   assert.equal(await composerModels.getByRole('option', { name: /gpt-5-mini/ }).count(), 0);

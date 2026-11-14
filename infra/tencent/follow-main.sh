@@ -90,7 +90,7 @@ metadata=$(jq -er --arg tag "cloud-$head" --arg asset "$asset" '
 ' "$release_file")
 read -r digest asset_size <<<"$metadata"
 [[ "$asset_size" =~ ^[0-9]{1,10}$ ]] || exit 1
-for check in checks.yml frontend-system-redesign.yml; do
+for check in checks.yml frontend-system-redesign.yml assistant-checks.yml account-checks.yml; do
   result=$(github_api "actions/workflows/$check/runs?branch=main&event=push&head_sha=$head&per_page=5" |
     jq -r --arg sha "$head" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")][0].conclusion // "pending"')
   if [[ "$result" != success ]]; then

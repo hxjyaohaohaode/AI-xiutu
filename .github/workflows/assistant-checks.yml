@@ -3,12 +3,6 @@ name: AI interaction checks
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'scripts/qa/assistant.browser.mjs'
-      - 'scripts/qa/team-voice.browser.mjs'
-      - 'apps/api/test/collaboration-fixture.ts'
-      - '.github/workflows/assistant-checks.yml'
   pull_request:
     branches: [main]
     paths:

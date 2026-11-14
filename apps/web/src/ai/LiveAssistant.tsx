@@ -750,13 +750,19 @@ export function LiveAssistant(props: LiveAssistantProps) {
     }
     void refreshCatalog();
     const refresh = () => void refreshCatalog();
+    const reconnect = () => {
+      lastRead = -Infinity;
+      refresh();
+    };
     const interval = window.setInterval(refresh, 60_000);
     window.addEventListener('focus', refresh);
+    window.addEventListener('online', reconnect);
     document.addEventListener('visibilitychange', refresh);
     return () => {
       controller.abort();
       window.clearInterval(interval);
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('online', reconnect);
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [actorId, isLoggedIn, props.visible, catalogAttempt]);

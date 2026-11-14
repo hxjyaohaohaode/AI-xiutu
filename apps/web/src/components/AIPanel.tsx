@@ -658,13 +658,19 @@ export function AIPanel({
     }
     void refreshModels();
     const refreshModelsOnFocus = () => void refreshModels();
+    const reconnect = () => {
+      lastRead = -Infinity;
+      refreshModelsOnFocus();
+    };
     const interval = window.setInterval(refreshModelsOnFocus, 60_000);
     window.addEventListener('focus', refreshModelsOnFocus);
+    window.addEventListener('online', reconnect);
     document.addEventListener('visibilitychange', refreshModelsOnFocus);
     return () => {
       controller.abort();
       window.clearInterval(interval);
       window.removeEventListener('focus', refreshModelsOnFocus);
+      window.removeEventListener('online', reconnect);
       document.removeEventListener('visibilitychange', refreshModelsOnFocus);
     };
   }, [isLoggedIn, visible, catalogAttempt]);

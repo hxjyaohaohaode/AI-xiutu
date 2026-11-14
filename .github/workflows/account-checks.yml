@@ -3,17 +3,6 @@ name: Account lifecycle checks
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'apps/api/src/**'
-      - 'packages/**'
-      - 'scripts/web-account-smoke.mjs'
-      - 'scripts/qa/site-entry.browser.mjs'
-      - 'scripts/qa/about-experience.browser.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.nvmrc'
-      - '.github/workflows/account-checks.yml'
   pull_request:
     branches: [main]
     paths:
