@@ -337,3 +337,28 @@ test(
     }
   },
 );
+
+test('operations writes return their saved version and audit pages have stable boundaries', { skip: !database }, async () => {
+  const f = await collaborationFixture(database!);
+  const config = '/v1/ops/config';
+  try {
+    const first = (await f.call('GET', config, undefined, 'operator')).json();
+    const payload = { quota: { freeUnits: first.quota.freeUnits }, reason: 'Saved revision evidence' };
+    const saved = await f.call('PATCH', config, { ...payload, expectedRevision: first.revision }, 'operator');
+    assert.equal(saved.statusCode, 200, saved.body);
+    assert.notEqual(saved.json().revision, first.revision);
+    const reread = (await f.call('GET', config, undefined, 'operator')).json();
+    assert.equal(reread.revision, saved.json().revision);
+    assert.equal((await f.call('PATCH', config, { ...payload, expectedRevision: first.revision }, 'operator')).statusCode, 409);
+    const audit = '/v1/ops/audit?limit=2';
+    await f.db.query("INSERT INTO audit_entries(actor_id,action,target_type) SELECT $1,'ops.pagination.fixture','test' FROM generate_series(1,4)", [f.actors.operator.id]);
+    const page = (await f.call('GET', audit, undefined, 'operator')).json();
+    assert.equal(page.entries.length, 2);
+    assert.equal(page.nextCursor, String(page.entries[1].id));
+    const older = (await f.call('GET', audit + '&before=' + page.nextCursor, undefined, 'operator')).json();
+    assert.equal(older.entries.length, 2);
+    assert.ok(older.entries.every((entry: { id: string }) => BigInt(entry.id) < BigInt(page.nextCursor)));
+    assert.equal((await f.call('GET', audit + '&before=9223372036854775808', undefined, 'operator')).statusCode, 400);
+    assert.equal((await f.call('GET', audit)).statusCode, 403);
+  } finally { await f.close(); }
+});

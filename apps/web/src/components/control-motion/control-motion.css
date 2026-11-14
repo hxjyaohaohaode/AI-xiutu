@@ -156,3 +156,19 @@
     transition: none;
   }
 }
+
+.squish-switch.setting-switch {
+  display: flex;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 42px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--ui-divider);
+  border-radius: 6px;
+}
+.squish-switch.setting-switch:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: -2px;
+}

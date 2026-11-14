@@ -3,7 +3,7 @@ import { ChoiceSelect } from './ChoiceSelect';
 import { SquishSwitch } from './control-motion';
 import { useEffect, useRef, useState } from 'react';
 import { Plus, ArrowClockwise } from '@phosphor-icons/react';
-import { api, jsonRequest, errorMessage, formatDate } from '../lib/api';
+import { api, ApiError, jsonRequest, errorMessage, formatDate, settingsErrorMessage } from '../lib/api';
 import { InlineError, Busy } from './Ui';
 import { Disclosure } from './Controls';
 import { FeatureSkeleton } from './DeferredFeature';
@@ -89,6 +89,10 @@ export function AssistantOpsPanel() {
     [ready, setReady] = useState(false),
     [voiceReady, setVoiceReady] = useState(false),
     [catalogLoaded, setCatalogLoaded] = useState(false),
+    [catalogLoading, setCatalogLoading] = useState(true),
+    [catalogError, setCatalogError] = useState<string | null>(null),
+    [catalogQuery, setCatalogQuery] = useState(''),
+    [catalogPage, setCatalogPage] = useState(0),
     [selected, setSelected] = useState(''),
     [modelId, setModelId] = useState(''),
     [settings, setSettingsState] = useState<Settings>(initial),
@@ -127,6 +131,8 @@ export function AssistantOpsPanel() {
   const [recordsLoading, setRecordsLoading] = useState(true),
     [recordsLoaded, setRecordsLoaded] = useState(false),
     [readError, setReadError] = useState<string | null>(null);
+  const catalogController = useRef<AbortController | null>(null);
+  const editorForm = useRef<HTMLFormElement>(null);
   const loadId = useRef(0);
   const loadController = useRef<AbortController | null>(null);
   const inventoryController = useRef<AbortController | null>(null);
@@ -139,6 +145,7 @@ export function AssistantOpsPanel() {
     mutation.mount();
     return () => {
       inventoryController.current?.abort();
+      catalogController.current?.abort();
       mutation.unmount();
     };
   }, [mutation]);
@@ -160,9 +167,42 @@ export function AssistantOpsPanel() {
     }
   }
   function setSettings(next: Settings) {
-    if (!mutation.busy) setSettingsState(next);
+    if (mutation.busy) return;
+    setSettingsState(next);
+    setSaved(false);
   }
-  async function load() {
+  async function loadCatalog() {
+    catalogController.current?.abort();
+    const controller = new AbortController();
+    catalogController.current = controller;
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const catalog = await api<{
+        models: Model[];
+        profiles: Profile[];
+        responsesProfiles?: ResponseProfile[];
+        transcriptionModels?: string[];
+        ready: boolean;
+        voiceReady: boolean;
+      }>('/ops/assistant-models', { signal: controller.signal });
+      if (controller.signal.aborted || !mutation.mounted) return;
+      setModels(catalog.models);
+      setProfiles(catalog.profiles);
+      setResponsesProfiles(catalog.responsesProfiles ?? []);
+      setTranscriptionModels(catalog.transcriptionModels ?? []);
+      setReady(catalog.ready);
+      setVoiceReady(catalog.voiceReady);
+      setCatalogLoaded(true);
+    } catch (failure) {
+      if (!controller.signal.aborted) setCatalogError(errorMessage(failure));
+    } finally {
+      if (!controller.signal.aborted) setCatalogLoading(false);
+    }
+  }
+  useEffect(() => { void loadCatalog(); }, []);
+
+  async function loadRecords() {
     if (!mutation.mounted) return;
     const request = ++loadId.current;
     loadController.current?.abort();
@@ -178,37 +218,18 @@ export function AssistantOpsPanel() {
     setRecordsLoading(true);
     setRecordsLoaded(false);
     setReadError(null);
-    setError(null);
     const query = new URLSearchParams({ kind: recordKind });
     if (recordFilter) query.set('recordId', recordFilter);
     if (cursor) query.set('cursor', cursor);
     try {
-      const [catalog, records] = await Promise.all([
-        api<{
-          models: Model[];
-          profiles: Profile[];
-          responsesProfiles?: ResponseProfile[];
-          transcriptionModels?: string[];
-          ready: boolean;
-          voiceReady: boolean;
-        }>('/ops/assistant-models', { signal: controller.signal }),
-        api<{ turns: Unknown[]; voices: Unknown[]; nextCursor: string | null }>(
-          `/ops/assistant-reconciliation?${query}`,
-          { signal: controller.signal },
-        ),
-      ]);
+      const records = await api<{ turns: Unknown[]; voices: Unknown[]; nextCursor: string | null }>(
+        '/ops/assistant-reconciliation?' + query,
+        { signal: controller.signal },
+      );
       if (!isCurrent()) return;
-      setModels(catalog.models);
-      setProfiles(catalog.profiles);
-      setResponsesProfiles(catalog.responsesProfiles ?? []);
-      setTranscriptionModels(catalog.transcriptionModels ?? []);
-      setReady(catalog.ready);
-      setVoiceReady(catalog.voiceReady);
-      setCatalogLoaded(true);
       setUnknown(records);
       setNextCursor(records.nextCursor);
       setRecordsLoaded(true);
-      return catalog;
     } catch (err) {
       if (isCurrent()) {
         setReadError(errorMessage(err));
@@ -220,7 +241,7 @@ export function AssistantOpsPanel() {
     }
   }
   useEffect(() => {
-    void load().catch(() => {});
+    void loadRecords().catch(() => {});
     return () => {
       loadId.current++;
       loadController.current?.abort();
@@ -230,11 +251,16 @@ export function AssistantOpsPanel() {
     if (mutation.busy) return;
     setSelected(id);
     setSaved(false);
+    setError(null);
     const item = models.find((m) => m.id === id);
     setModelId(item?.id ?? '');
     setSettings(item ? structuredClone(item.config) : initial());
     setHash(item?.hash ?? null);
   }
+  useEffect(() => {
+    if (selected) editorForm.current?.scrollIntoView({ block: 'nearest' });
+  }, [selected]);
+
   async function save() {
     if (mutation.busy) return;
     if (!modelId.trim()) {
@@ -244,16 +270,11 @@ export function AssistantOpsPanel() {
     const draft = currentDraft.current;
     await mutation.run(
       { modelId: draft.modelId, settings: draft.settings, hash: draft.hash },
-      async (snapshot, current) => {
-        await api(
-          `/ops/assistant-models/${encodeURIComponent(snapshot.modelId)}`,
+      async (snapshot) => {
+        const { model } = await api<{ model: Model }>(
+          '/ops/assistant-models/' + encodeURIComponent(snapshot.modelId.trim()),
           jsonRequest('PUT', { config: snapshot.settings, expectedHash: snapshot.hash }),
         );
-        if (!current()) return;
-        const catalog = await load();
-        if (!current() || !catalog) return;
-        const model = catalog.models.find((item) => item.id === snapshot.modelId);
-        if (!model) throw new Error(t('配置已提交，但无法确认保存后的模型。请重新读取。'));
         return model;
       },
       {
@@ -276,9 +297,14 @@ export function AssistantOpsPanel() {
           setModelId(model.id);
           setSettingsState(structuredClone(model.config));
           setHash(model.hash);
+          setModels((items) => [...items.filter((item) => item.id !== model.id), model]
+            .sort((left, right) => left.id.localeCompare(right.id)));
           setSaved(true);
         },
-        error: (error) => setError(errorMessage(error)),
+        error: (error) => {
+          setError(settingsErrorMessage(error));
+          if (error instanceof ApiError && error.code === 'MODEL_CONFIG_CHANGED') void loadCatalog();
+        },
         settled: () => setBusy(false),
       },
     );
@@ -300,7 +326,7 @@ export function AssistantOpsPanel() {
         setResolution(null);
         setReason('');
         setEvidence('');
-        await load();
+        await loadRecords();
         return true;
       },
       {
@@ -310,16 +336,21 @@ export function AssistantOpsPanel() {
           setError(null);
         },
         value() {},
-        error: (error) => setError(errorMessage(error)),
+        error: (error) => setError(settingsErrorMessage(error)),
         settled: () => setBusy(false),
       },
     );
   }
+  const query = catalogQuery.trim().toLowerCase();
+  const matches = models.filter((model) =>
+    model.id.toLowerCase().includes(query) || model.config.label?.toLowerCase().includes(query));
+  const lastPage = Math.max(0, Math.ceil(matches.length / 8) - 1);
+  const page = Math.min(catalogPage, lastPage);
   return (
     <section
       className="assistant-ops"
       aria-label={t('实时语音与智能体运营配置')}
-      data-catalog-state={catalogLoaded ? 'ready' : recordsLoading ? 'loading' : 'error'}
+      data-catalog-state={catalogLoaded ? 'ready' : catalogLoading ? 'loading' : 'error'}
       data-record-state={recordsLoading ? 'loading' : recordsLoaded ? 'ready' : 'error'}
     >
       <header className="section-heading">
@@ -328,16 +359,16 @@ export function AssistantOpsPanel() {
         </div>
         <button
           className="text-button"
-          disabled={busy || recordsLoading}
+          disabled={busy || catalogLoading}
           onClick={() => {
-            if (!mutation.busy) void load().catch(() => {});
+            if (!mutation.busy) void loadCatalog();
           }}
         >
           <ArrowClockwise size={17} />
-          {readError ? t('重新读取') : t('刷新')}
+          {catalogError ? t('重新读取') : t('刷新')}
         </button>
       </header>
-      <InlineError message={error ?? readError} />
+      <InlineError message={catalogError} />
       {catalogLoaded ? (
         <>
           <div className="ops-readiness" role="status">
@@ -403,13 +434,19 @@ export function AssistantOpsPanel() {
             )}
           </Disclosure>
           <div className="assistant-ops-layout">
-            <div className="assistant-model-list">
-              <button className="text-button" disabled={busy} onClick={() => select('')}>
-                <Plus size={16} />
-                {t('配置模型')}
-              </button>
-              {models.length === 0 && <p className="control-note">{t('当前没有模型目录项。')}</p>}
-              {models.map((model) => (
+            <div className="assistant-model-list ops-compact-models">
+              <div className="ops-catalog-tools">
+                <input type="search" aria-label={t('筛选模型 ID')} placeholder={t('搜索模型名称或 ID')}
+                  value={catalogQuery} onChange={(event) => {
+                    setCatalogQuery(event.target.value); setCatalogPage(0);
+                  }} />
+                <button className="button button-secondary" disabled={busy} onClick={() => select('')}>
+                  <Plus size={16} />
+                  {t('配置模型')}
+                </button>
+              </div>
+              {!matches.length && <p className="control-note">{t('没有符合条件的模型。')}</p>}
+              {matches.slice(page * 8, (page + 1) * 8).map((model) => (
                 <button
                   key={model.id}
                   disabled={busy}
@@ -418,19 +455,30 @@ export function AssistantOpsPanel() {
                 >
                   <span>
                     {model.config.label || model.id}
-                    <small>{model.id}</small>
+                    {model.config.label && model.config.label !== model.id && <small>{model.id}</small>}
                   </span>
                   <small>{model.config.enabled ? t('已启用') : t('已停用')}</small>
                 </button>
               ))}
+              {lastPage > 0 && (
+                <div className="ops-page-nav">
+                  <button type="button" className="text-button" disabled={page === 0} onClick={() => setCatalogPage(page - 1)}>{t('上一页')}</button>
+                  <span>{t('第 {page} 页', { page: page + 1 })}</span>
+                  <button type="button" className="text-button" disabled={page >= lastPage} onClick={() => setCatalogPage(page + 1)}>{t('下一页')}</button>
+                </div>
+              )}
             </div>
             <form
-              className="assistant-model-form"
+              ref={editorForm}
+              className="assistant-model-form ops-model-editor"
               onSubmit={(e) => {
                 e.preventDefault();
                 void save();
               }}
             >
+              <h3 className="ops-editor-title">{settings.label || modelId || t('配置模型')}</h3>
+              <InlineError message={resolution ? null : error} />
+              <div className="ops-model-form-grid">
               <label>
                 {t('用途')}
                 <ChoiceSelect
@@ -514,7 +562,7 @@ export function AssistantOpsPanel() {
                 />
               </label>
               <SquishSwitch
-                className="ops-switch"
+                className="setting-switch ops-wide-field"
                 label={t('启用此模型')}
                 disabled={busy}
                 checked={settings.enabled}
@@ -541,7 +589,7 @@ export function AssistantOpsPanel() {
                       type="number"
                       min={30}
                       max={600}
-                      step={10}
+                      step={1}
                       value={settings.maxSeconds}
                       onChange={(e) =>
                         setSettings({ ...settings, maxSeconds: Number(e.target.value) })
@@ -566,21 +614,21 @@ export function AssistantOpsPanel() {
               ) : (
                 <>
                   <SquishSwitch
-                    className="ops-switch"
+                    className="setting-switch ops-wide-field"
                     label={t('图像输入')}
                     disabled={busy}
                     checked={settings.imageInput}
                     onCheckedChange={(imageInput) => setSettings({ ...settings, imageInput })}
                   />
                   <SquishSwitch
-                    className="ops-switch"
+                    className="setting-switch ops-wide-field"
                     label={t('公开网络检索')}
                     disabled={busy}
                     checked={settings.webSearch}
                     onCheckedChange={(webSearch) => setSettings({ ...settings, webSearch })}
                   />
                   <SquishSwitch
-                    className="ops-switch"
+                    className="setting-switch ops-wide-field"
                     label={t('公开图片检索')}
                     checked={settings.webImageSearch === true}
                     disabled={busy || !settings.webSearch}
@@ -699,7 +747,7 @@ export function AssistantOpsPanel() {
                     type="number"
                     min={256}
                     max={outputBudgetMax}
-                    step={256}
+                    step={1}
                     value={settings.maxOutputTokens}
                     onChange={(event) =>
                       setSettings({ ...settings, maxOutputTokens: Number(event.target.value) })
@@ -739,17 +787,28 @@ export function AssistantOpsPanel() {
                   />
                 </label>
               )}
-              <button className="button button-primary" disabled={busy || !modelId}>
-                {busy ? <Busy /> : saved ? t('已保存配置') : t('保存配置')}
-              </button>
+              </div>
+              <div className="ops-model-save">
+                {saved && <span role="status">{t('已保存配置')}</span>}
+                <button className="button button-primary" disabled={busy || !modelId}>
+                  {busy ? <Busy /> : t('保存配置')}
+                </button>
+              </div>
             </form>
           </div>
         </>
-      ) : recordsLoading ? (
+      ) : catalogLoading ? (
         <FeatureSkeleton profile="panel" label={t('读取模型目录')} compact />
       ) : null}
       <section className="assistant-reconcile">
-        <h3>{t('待核验的会话')}</h3>
+        <div className="section-heading">
+          <h3>{t('待核验的会话')}</h3>
+          <button type="button" className="text-button" disabled={busy || recordsLoading}
+            onClick={() => void loadRecords().catch(() => {})}>
+            <ArrowClockwise size={16} /> {t('重新读取')}
+          </button>
+        </div>
+        <InlineError message={readError ?? (resolution ? error : null)} />
         <p className="control-note">
           {t('超时不等于未计费。先核对供应商回执和使用量，再选择结算或释放；系统不会自动重发。')}
         </p>
@@ -838,8 +897,8 @@ export function AssistantOpsPanel() {
             </table>
           </div>
         )}
-        {recordsLoaded && !recordsLoading && (
-          <nav aria-label={t('待核验会话分页')}>
+        {recordsLoaded && !recordsLoading && (previous.length > 0 || nextCursor) && (
+          <nav className="ops-page-nav" aria-label={t('待核验会话分页')}>
             <button
               disabled={!previous.length || busy || recordsLoading}
               onClick={() => {

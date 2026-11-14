@@ -74,6 +74,16 @@ export const jsonRequest = (method: string, body?: unknown): RequestInit => ({
 export const errorMessage = (error: unknown) =>
   error instanceof Error ? error.message : '操作没有完成，请重试。';
 
+export function settingsErrorMessage(error: unknown) {
+  if (error instanceof ApiError && error.code === 'VALIDATION_ERROR') {
+    const { fields } = (error.details ?? {}) as { fields?: { path: string; message: string }[] };
+    if (fields?.length) return fields.slice(0, 3).map(({ path, message }) =>
+      path ? path.replace(/^config\\./, '') + ' · ' + message : message,
+    ).join(' / ');
+  }
+  return errorMessage(error);
+}
+
 export function downloadBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');

@@ -5,6 +5,7 @@ import { formatNumber, t, useLocale } from '../i18n';
 import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import type { SupportSettings, SupportTier } from '../lib/types';
 import { InlineError } from './Ui';
+import { SquishSwitch } from './control-motion';
 import './support-ops.css';
 
 type Draft = { id: number; amount: string; points: string };
@@ -160,10 +161,8 @@ export function SupportOps({ onGrant }: { onGrant: () => void }) {
         </form>
         <form className="surface ops-section support-ops-form" onSubmit={save}>
           <h3>{t('金额与兑换点数')}</h3>
-          <label className="support-ops-enable check-control">
-            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)}
-              disabled={busy || conflict} /> {t('个人中心显示微信赞赏')}
-          </label>
+          <SquishSwitch className="setting-switch" checked={enabled} onCheckedChange={setEnabled}
+            disabled={busy || conflict} label={t('个人中心显示微信赞赏')} />
           <p>{t('已发放的点数不会因改价变动。微信到账后，由运营核对并发放。')}</p>
           <div className="support-ops-tiers">
             <div className="support-ops-tier-labels" aria-hidden>

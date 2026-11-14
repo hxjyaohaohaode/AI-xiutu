@@ -1,3 +1,4 @@
+import { SquishSwitch } from '../components/control-motion';
 import { LockKey, Trash } from '@phosphor-icons/react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { t, useLocale } from '../i18n';
@@ -157,15 +158,11 @@ export function MemoryEditor({
         canClose={canClose}
       >
         <form className="stack-form" onSubmit={(e) => void save(e)} data-motion="resource-memory">
-          <label className="switch-row">
-            <span>{t('加入我的长期素材')}</span>
-            <input
-              type="checkbox"
-              checked={remembered}
+          <SquishSwitch className="setting-switch" label={t('加入我的长期素材')}
+checked={remembered}
               disabled={busy}
-              onChange={(e) => setRemembered(e.target.checked)}
+              onCheckedChange={(checked) => setRemembered(checked)}
             />
-          </label>
           <label>
             {t('便于查找的名称')}
             <input

@@ -126,6 +126,10 @@ export const modelDto = (p: Record<string, any>) => ({
 });
 export async function publicSettings(db: Database) {
   const row = (await db.query('SELECT * FROM app_config WHERE id=true')).rows[0]!;
+  return settingsDto(row);
+}
+
+function settingsDto(row: Record<string, any>) {
   return {
     brand: { ...row.brand, logoUrl: row.brand.logoAssetId ? '/v1/public-logo' : null },
     registrationMode: row.registration_mode,
@@ -335,9 +339,14 @@ export function registerOperations(
     });
     return { user };
   });
+  async function readOpsConfig() {
+    const row = (await db.query('SELECT *,updated_at::text AS revision FROM app_config WHERE id=true'))
+      .rows[0]!;
+    return { ...settingsDto(row), revision: row.revision as string };
+  }
   app.get('/v1/ops/config', async (req) => {
     requireOperator(req);
-    return publicSettings(db);
+    return readOpsConfig();
   });
   app.patch('/v1/ops/config', async (req) => {
     const actor = requireOperator(req);
@@ -348,6 +357,7 @@ export function registerOperations(
           .strict()
           .optional(),
         registrationMode: z.enum(['open', 'invite']).optional(),
+        expectedRevision: z.string().min(16).max(64).optional(),
         quota: z
           .object({ freeUnits: z.number().int().min(0).max(100000) })
           .strict()
@@ -356,10 +366,12 @@ export function registerOperations(
       })
       .strict()
       .parse(req.body);
-    await transaction(db, async (tx) => {
-      const current = (await tx.query('SELECT * FROM app_config WHERE id=true FOR UPDATE'))
+    return transaction(db, async (tx) => {
+      const current = (await tx.query('SELECT *,updated_at::text AS revision FROM app_config WHERE id=true FOR UPDATE'))
         .rows[0]!;
-      if (body.brand?.logoAssetId) {
+      if (body.expectedRevision !== undefined && body.expectedRevision !== current.revision)
+        throw new HttpError(409, 'SITE_CONFIG_CHANGED', '站点设置已更新，请刷新后重新编辑');
+      if (body.brand?.logoAssetId && body.brand.logoAssetId !== current.brand?.logoAssetId) {
         const asset = (
           await tx.query('SELECT project_id FROM assets WHERE id=$1 AND deleted_at IS NULL', [
             body.brand.logoAssetId,
@@ -368,22 +380,22 @@ export function registerOperations(
         if (!asset) throw new HttpError(400, 'LOGO_NOT_FOUND', 'Logo图片不存在');
         await projectAccess(tx, asset.project_id, actor.id, 'admin');
       }
-      await tx.query(
-        'UPDATE app_config SET brand=$1,registration_mode=$2,free_units=$3,quota_policy_version=quota_policy_version+$4,updated_at=clock_timestamp() WHERE id=true',
+      const saved = (await tx.query(
+        'UPDATE app_config SET brand=$1,registration_mode=$2,free_units=$3,quota_policy_version=quota_policy_version+$4,updated_at=clock_timestamp() WHERE id=true RETURNING *,updated_at::text AS revision',
         [
           JSON.stringify(body.brand ?? current.brand),
           body.registrationMode ?? current.registration_mode,
           body.quota?.freeUnits ?? current.free_units,
           body.quota && body.quota.freeUnits !== current.free_units ? 1 : 0,
         ],
-      );
+      )).rows[0]!;
       await audit(tx, actor.id, 'operator.config', 'config', 'main', {
-        changed: Object.keys(body).filter((k) => k !== 'reason'),
+        changed: Object.keys(body).filter((k) => k !== 'reason' && k !== 'expectedRevision'),
         reason: body.reason,
         freeUnits: body.quota?.freeUnits,
       });
+      return { ...settingsDto(saved), revision: saved.revision as string };
     });
-    return publicSettings(db);
   });
   app.get('/v1/plans', async (req) => {
     requireUser(req);
@@ -562,13 +574,17 @@ export function registerOperations(
   });
   app.get('/v1/ops/audit', async (req) => {
     requireOperator(req);
-    return {
-      entries: (
-        await db.query(
-          'SELECT id,actor_id AS "actorId",action,target_type AS "targetType",target_id AS "targetId",detail,created_at AS "createdAt" FROM audit_entries ORDER BY id DESC LIMIT 200',
-        )
-      ).rows,
-    };
+    const { before, limit } = z.object({
+      before: z.string().regex(/^[1-9][0-9]{0,18}$/)
+        .refine((value) => BigInt(value) <= 9_223_372_036_854_775_807n).optional(),
+      limit: z.coerce.number().int().min(1).max(50).default(10),
+    }).strict().parse(req.query);
+    const { rows } = await db.query(
+      'SELECT id,actor_id AS "actorId",action,target_type AS "targetType",target_id AS "targetId",detail,created_at AS "createdAt" FROM audit_entries WHERE ($1::bigint IS NULL OR id<$1) ORDER BY id DESC LIMIT $2',
+      [before ?? null, limit + 1],
+    );
+    const entries = rows.slice(0, limit);
+    return { entries, nextCursor: rows.length > limit ? String(entries.at(-1)!.id) : null };
   });
   app.post('/v1/ops/registration-invites', async (req, reply) => {
     const actor = requireOperator(req);

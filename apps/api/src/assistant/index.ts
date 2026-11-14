@@ -1,4 +1,4 @@
-import { openAIShutdownDate } from '@ai-xiutu/contracts';
+import { openAIModelShutdown, openAIShutdownDate } from '@ai-xiutu/contracts';
 import { responseDefaults, responsePricing } from '@ai-xiutu/assistant/models';
 import { z } from 'zod';
 import { join } from 'node:path';
@@ -665,15 +665,13 @@ export function registerAssistant(
       !VOICE_MODELS.some((voice) => voice.id === modelId)
     )
       throw new HttpError(400, 'VOICE_PROFILE_UNKNOWN', '语音模型尚无经过核验的协议适配器');
-    if (settings.enabled && openAIShutdownDate(modelId))
-      throw new HttpError(400, 'OPENAI_MODEL_DEPRECATED', '该模型已公告退役，请改选可用型号');
     const incompatible = modelProfileError(modelId, settings, service.allowTestModel);
     if (incompatible && settings.enabled) {
       if (incompatible === 'RESPONSES_PROFILE_UNKNOWN')
         throw new HttpError(400, incompatible, '请选择已核验的 OpenAI 文本模型');
       throw new HttpError(400, incompatible, '模型用途、推理档位或 Token 上限与协议档案不符');
     }
-    await transaction(db, async (tx) => {
+    const stored = await transaction(db, async (tx) => {
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
         `assistant-model:${modelId}`,
       ]);
@@ -684,6 +682,9 @@ export function registerAssistant(
       ).rows[0];
       if ((existing ? hash(JSON.stringify(existing.config)) : null) !== envelope.expectedHash)
         throw new HttpError(409, 'MODEL_CONFIG_CHANGED', '模型配置已更新，请重新读取后再保存');
+      if (settings.enabled && openAIShutdownDate(modelId) &&
+          (!existing?.config?.enabled || openAIModelShutdown(modelId)))
+        throw new HttpError(400, 'OPENAI_MODEL_DEPRECATED', '该模型已公告退役，请改选可用型号');
       const otherOps = (existing?.config?.operations ?? []).filter(
         (op: string) => !['assistant-turn', 'realtime-voice'].includes(op),
       );
@@ -693,17 +694,18 @@ export function registerAssistant(
           'MODEL_CONFIGURATION_SHARED',
           '此模型已有其他任务配置，请通过统一配置迁移，避免覆盖现有能力',
         );
-      await tx.query(
-        'INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config,updated_at=clock_timestamp()',
+      const row = (await tx.query(
+        'INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config,updated_at=clock_timestamp() RETURNING config',
         [modelId, JSON.stringify(settings)],
-      );
+      )).rows[0]!;
       await audit(tx, operator.id, 'assistant.model_configured', 'model', modelId, {
         operations: settings.operations,
         unitCost: settings.unitCost,
         enabled: settings.enabled,
       });
+      return row.config;
     });
-    return { ok: true };
+    return { ok: true, model: { id: modelId, config: stored, hash: hash(JSON.stringify(stored)) } };
   });
   app.get('/v1/ops/assistant-reconciliation', async (req) => {
     const user = requireOperator(req),

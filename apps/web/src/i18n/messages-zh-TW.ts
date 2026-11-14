@@ -14,6 +14,14 @@ import { openAITraditional } from './ai-messages';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  "搜索模型名称或 ID": "搜尋模型名稱或 ID",
+  "没有符合条件的模型。": "沒有符合條件的模型。",
+  "第 {page} 页": "第 {page} 頁",
+  "操作审计分页": "操作稽核分頁",
+  "管理赞赏码": "管理讚賞碼",
+  "请填写操作原因，至少 3 个字符。": "請填寫至少 3 個字元的操作原因。",
+  "请至少选择一项任务用途及适用的质量。": "請至少選擇一項任務用途及適用的品質。",
+  "请选择要编辑的模型。": "請選擇要編輯的模型。",
   "账号管理员": "帳號管理員",
   "已注销": "已註銷",
   "授予运营权限": "授予營運權限",

@@ -1,3 +1,4 @@
+import { SquishSwitch } from '../components/control-motion';
 import { t } from '../i18n';
 import { studioText } from '../workspace/studio-copy';
 import { editorFlowText } from './flow-copy';
@@ -851,25 +852,21 @@ function LegacyToolInspector({
                     </Section>
                     <Section title={t('颗粒')} suffix={t('确定性纹理')}>
                       {advanced(['effects.grain.amount', 'effects.grain.size'])}
-                      <label className="switch-row">
-                        <span>{t('彩色颗粒')}</span>
-                        <input
-                          type="checkbox"
-                          checked={v2.effects.grain.colored}
-                          onChange={(event) =>
+                      <SquishSwitch className="setting-switch" label={t('彩色颗粒')}
+checked={v2.effects.grain.colored}
+                          onCheckedChange={(checked) =>
                             editor.commit(
                               {
                                 ...v2,
                                 effects: {
                                   ...v2.effects,
-                                  grain: { ...v2.effects.grain, colored: event.target.checked },
+                                  grain: { ...v2.effects.grain, colored: checked },
                                 },
                               },
                               t('切换颗粒色彩'),
                             )
                           }
                         />
-                      </label>
                       <button
                         className="text-button"
                         onClick={() =>
@@ -1026,22 +1023,18 @@ function LegacyToolInspector({
                 ) : (
                   <>
                     {!region && (
-                      <label className="switch-row">
-                        <span>{t('启用原配方径向选区')}</span>
-                        <input
-                          type="checkbox"
-                          checked={recipe.local.enabled}
-                          onChange={(event) =>
+                      <SquishSwitch className="setting-switch" label={t('启用原配方径向选区')}
+checked={recipe.local.enabled}
+                          onCheckedChange={(checked) =>
                             editor.commit(
                               {
                                 ...recipe,
-                                local: { ...recipe.local, enabled: event.target.checked },
+                                local: { ...recipe.local, enabled: checked },
                               },
                               t('切换原径向选区'),
                             )
                           }
                         />
-                      </label>
                     )}
                     {region && (
                       <div className="region-actions">
@@ -1319,16 +1312,12 @@ function LegacyToolInspector({
                               ),
                             ),
                           )}
-                          <label className="switch-row">
-                            <span>{t('平滑渐变')}</span>
-                            <input
-                              type="checkbox"
-                              checked={mask.smooth}
-                              onChange={(event) =>
-                                changeMask({ ...mask, smooth: event.target.checked }, true)
+                          <SquishSwitch className="setting-switch" label={t('平滑渐变')}
+checked={mask.smooth}
+                              onCheckedChange={(checked) =>
+                                changeMask({ ...mask, smooth: checked }, true)
                               }
                             />
-                          </label>
                         </>
                       )}
                       {mask.type === 'polygon' && (
