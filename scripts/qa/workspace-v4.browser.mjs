@@ -985,8 +985,8 @@ try {
         assert.equal(await panel.getAttribute('data-attached'), 'true');
         assert.equal(await panel.locator('.panel-resize-edge, .panel-layout-trigger').count(), 0);
         assert.equal(normal.panel.width, size.width);
-        assert.equal(normal.panel.height, size.height <= 500 ? 128 : 178);
-        const rail = await panel.locator('.parameter-shelf-options').boundingBox();
+        assert.equal(normal.panel.height, size.height <= 500 ? 152 : 192);
+        const rail = await panel.locator('.parameter-shelf-options:visible').boundingBox();
         assert.ok(rail && rail.y + rail.height <= normal.scroll.bottom + 1,
           'the active control and its parameter choices fit without vertical scrolling');
         await leaveMobileTool(page);

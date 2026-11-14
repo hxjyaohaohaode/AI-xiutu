@@ -252,7 +252,7 @@ try {
   const photo = phone.locator('.image-frame:visible');
   const photoBefore = await photo.boundingBox();
   const compact = await portraitPanel.boundingBox();
-  assert.equal(compact.height, 178);
+  assert.equal(compact.height, 192);
   assert.equal(await phone.locator('.floating-tool-dock:visible').count(), 0);
   assert.equal(await phone.locator('.floating-topbar').isVisible(), false);
   await portraitPanel.getByRole('button', { name: '展开全部工具选项', exact: true }).click();

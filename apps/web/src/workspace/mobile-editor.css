@@ -767,11 +767,18 @@
 
 @media (orientation: landscape) and (max-height: 500px) {
   .studio-workspace .free-panel[data-panel-id='inspector'][data-fixed-inspector] .refined-inspector .inspector-scroll {
-    padding-block-end: 2px;
+    padding-block: 2px;
+    gap: 2px;
   }
   .studio-workspace .free-panel[data-fixed-inspector] .rubber-segment.inspector-family-tabs > button {
-    min-height: 27px;
-    padding-block: 2px;
+    min-height: 33px;
+    padding-block: 0;
+  }
+  .studio-workspace .free-panel[data-fixed-inspector] .inspector-tool-content:is([data-tool-family='light'], [data-tool-family='color'], [data-tool-family='detail']) {
+    margin-block-start: 0;
+  }
+  .studio-workspace .free-panel[data-fixed-inspector] .parameter-shelf .parameter-shelf-current {
+    padding-block: 0;
   }
   .studio-workspace .free-panel[data-fixed-inspector] .refined-curve .curve-graph {
     flex-basis: 42px;
@@ -785,9 +792,9 @@
   }
   .studio-workspace .free-panel[data-panel-id='inspector'][data-fixed-inspector] .parameter-shelf .parameter-shelf-options,
   .studio-workspace .free-panel[data-panel-id='inspector'][data-fixed-inspector] .parameter-shelf .parameter-shelf-options > button {
-    min-height: 35px;
-    height: 35px;
-    max-height: 35px;
+    min-height: 36px;
+    height: 36px;
+    max-height: 36px;
   }
   .studio-workspace .free-panel[data-panel-id='inspector'][data-fixed-inspector] .parameter-shelf {
     gap: 1px;

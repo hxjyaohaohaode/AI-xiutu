@@ -34,15 +34,15 @@ test('the fixed phone inspector and canvas agree about the measured dock clearan
     workspaceHeight: 596, toolShelfHeight: 56,
   };
   assert.deepEqual(phoneInspectorLayout(narrow), {
-    rect: { x: 0, y: 362, width: 320, height: 178 },
-    insets: { left: 0, right: 0, bottom: 234 },
+    rect: { x: 0, y: 348, width: 320, height: 192 },
+    insets: { left: 0, right: 0, bottom: 248 },
   });
   const landscape: Viewport = {
     width: 844, height: 390, bucket: 'tablet', workspaceHeight: 334, toolShelfHeight: 44,
   };
   assert.deepEqual(phoneInspectorLayout(landscape), {
-    rect: { x: 0, y: 150, width: 844, height: 128 },
-    insets: { left: 0, right: 0, bottom: 184 },
+    rect: { x: 0, y: 126, width: 844, height: 152 },
+    insets: { left: 0, right: 0, bottom: 208 },
   });
   for (const view of [narrow, landscape]) {
     const base = phoneInspectorLayout(view, { hideDock: true });

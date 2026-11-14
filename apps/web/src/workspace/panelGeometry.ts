@@ -61,7 +61,7 @@ export function phoneInspectorLayout(
     : Math.max(48, finite(view.toolShelfHeight ?? 44, 44) + 12);
   const landscape = view.width > view.height && view.height <= 500;
   const available = Math.max(0, body.height - bottom);
-  const compact = Math.min(available, landscape ? 128 : 178);
+  const compact = Math.min(available, landscape ? 152 : 192);
   const height = expanded
     ? Math.min(available, Math.max(compact, Math.min(420, Math.round(available * 0.58))))
     : compact;

@@ -400,13 +400,21 @@ const PromptBar: React.FC<PromptBarProps> = ({
     }
     sizeInput();
     let width = el.clientWidth;
+    let resizeFrame = 0;
     const observer = new ResizeObserver(() => {
-      if (width === el.clientWidth) return;
-      width = el.clientWidth;
-      sizeInput();
+      if (width === el.clientWidth || resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        if (width === el.clientWidth) return;
+        width = el.clientWidth;
+        sizeInput();
+      });
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(resizeFrame);
+    };
   }, [draft, maxRows, hideInput]);
 
   useEffect(

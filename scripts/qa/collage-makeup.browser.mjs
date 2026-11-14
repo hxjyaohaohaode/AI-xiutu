@@ -568,20 +568,20 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
   await palette.scrollIntoViewIfNeeded();
   await until(async () => {
     const color = await palette.boundingBox();
-    const dock = await page.locator(':is(.studio-reference-dock, .floating-tool-dock):visible').boundingBox();
+    const footer = await page.locator('.mobile-inspector-actions:visible').boundingBox();
     const swatch = await shades.getByRole('button').first().evaluate(node => {
       const { x, y, width, height } = node.getBoundingClientRect();
       return node.contains(document.elementFromPoint(x + width / 2, y + height / 2));
     });
     return (
       color &&
-      dock &&
+      footer &&
       swatch &&
-      color.y + color.height <= dock.y + 1 &&
+      color.y + color.height <= footer.y + 1 &&
       color.x >= 0 &&
       color.x + color.width <= 320
     );
-  }, 'narrow phone can scroll the palette into view above the tool dock');
+  }, 'narrow phone can scroll the palette into view above the active tool footer');
   await capture(page, 'interactions/mobile-automatic-makeup-narrow.png');
   const setLanguage = async (locale) => {
     await page.evaluate((locale) => {

@@ -745,7 +745,7 @@ async function referenceControlReview() {
     assert.equal((await canvasPixels(page)).pixelSha256,beforeTouch.pixelSha256);
     touchEvidence={method:'Chromium touchscreen events and actual touchscreen tap',changedPixels:true,oneUndoRestoredPixels:true,physicalDevice:false};
     const before=await panel.boundingBox();
-    assert.equal(before.height,178);
+    assert.equal(before.height,192);
     assert.equal(await panel.locator('.panel-layout-trigger, .panel-resize-edge').count(),0);
     const rail=panel.locator('.parameter-shelf-options');
     const railBox=await rail.boundingBox();
@@ -768,7 +768,7 @@ async function referenceControlReview() {
     await settle(page);
     const after=await panel.boundingBox();
     assert.equal(after.height,before.height);
-    heights.push({target:178,before:before.height,after:after.height});
+    heights.push({target:192,before:before.height,after:after.height});
     await layout(page,'fixed phone adjustment panel after touch scrolling');
     await capture(page,'interactions/fixed-phone-panel.png');
   } catch(error) {await failureEvidence(phone.page);throw error;}
@@ -1261,8 +1261,10 @@ async function mobileEditingFlow() {
     await screenshot.waitFor();
     const back = chat.getByRole('button', { name: '返回编辑器', exact: true });
     await back.click();
+    await tool(page, 'crop');
     await actions.waitFor();
     assert.deepEqual(await aspect(), [height, width]);
+    await leaveMobileTool(page);
     await ai.click();
     await screenshot.waitFor();
     await chat.getByRole('button', { name: '移除附件', exact: true }).click();

@@ -1941,7 +1941,7 @@ try {
         const taskSettingsGeometry = await task.evaluate((region) => {
           const elements = {
             parameters: region.querySelector('.ai-task-composer .assistant-parameter-trigger'),
-            back: region.querySelector('.ai-workbench-header [data-ai-return]'),
+            back: region.querySelector(':scope > .ai-workbench-header [data-ai-return]'),
           };
           return Object.fromEntries(
             Object.entries(elements).map(([name, node]) => {
