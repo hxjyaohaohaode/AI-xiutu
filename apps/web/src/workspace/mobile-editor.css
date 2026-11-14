@@ -229,6 +229,12 @@
   color: var(--accent-ink);
   background: var(--accent-soft);
 }
+@media (max-width: 359px) {
+  .studio-workspace[data-immersive-editor] .canvas-stage.content-first.has-image .canvas-view-controls {
+    inset-inline: 2px;
+    padding-inline: 0;
+  }
+}
 .studio-workspace .free-panel[data-fixed-inspector] .panel-content {
   border-radius: 0;
 }

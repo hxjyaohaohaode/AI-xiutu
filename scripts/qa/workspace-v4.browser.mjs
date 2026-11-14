@@ -608,7 +608,7 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
       toolbar.overflow <= 1,
     'the canvas toolbar and its contents must fit the phone width',
   );
-  assert.equal(toolbar.buttons.length, 6, 'the phone keeps the five canvas actions and editing history in one row');
+  assert.equal(toolbar.buttons.length, 7, 'the phone keeps the hand tool and existing canvas actions in one row');
   for (const button of toolbar.buttons) {
     inside(button, toolbar, `${button.label} fits fully within the canvas toolbar`);
     assert.ok(
@@ -638,8 +638,8 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
   const tools = page.locator('.canvas-secondary-controls[data-open="true"]');
   assert.equal(
     await tools.locator('button:visible').count(),
-    7,
-    'the six view controls and collage remain available',
+    6,
+    'the remaining canvas actions and collage stay available in the menu',
   );
   await page.keyboard.press('Escape');
   await tools.waitFor({ state: 'hidden' });

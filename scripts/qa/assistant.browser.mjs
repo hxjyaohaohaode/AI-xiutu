@@ -2130,6 +2130,9 @@ try {
 
     await page.locator('[data-action="close-collage"]:visible').click();
     await page.locator('[data-dock-tool="ai"]:visible').click();
+    await chat.getByRole('button', { name: '切换 AI 任务', exact: true }).click();
+    await tasks.getByRole('button', { name: /^生图/ }).click();
+    await tasks.waitFor({ state: 'hidden' });
     const candidate = chat.locator('.ai-turn').filter({ hasText: '独立图像候选验收' });
     await candidate.getByRole('button', { name: '添加到项目并编辑', exact: true }).click();
     const fork = page.getByRole('dialog', { name: '添加为项目作品', exact: true });
