@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a verified AI-xiutu main release
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=12min
+RandomizedDelaySec=1min
+Unit=xiutu-follow-main.service
+
+[Install]
+WantedBy=timers.target

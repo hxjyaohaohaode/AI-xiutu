@@ -1,0 +1,111 @@
+name: Tencent Cloud release
+
+on:
+  workflow_run:
+    workflows: [Baseline checks, Frontend system redesign review]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '27 * * * *'
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: cloud-release-${{ github.event.workflow_run.head_sha || github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.repository == 'hxjyaohaohaode/AI-xiutu' &&
+      ((github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') &&
+       github.ref == 'refs/heads/main' ||
+       github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+    env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - name: Require both checks from the same main push
+        id: checked
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          api="repos/$GITHUB_REPOSITORY"
+          head=$(gh api "$api/git/ref/heads/main" --jq .object.sha)
+          if [[ "$head" != "$RELEASE_SHA" ]]; then
+            echo "A newer main commit is available."
+            exit 0
+          fi
+          for workflow in checks.yml frontend-system-redesign.yml; do
+            result=$(gh api "$api/actions/workflows/$workflow/runs?branch=main&event=push&head_sha=$RELEASE_SHA&per_page=5" \
+              | jq -r --arg sha "$RELEASE_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")][0].conclusion // "pending"')
+            if [[ "$result" != success ]]; then
+              echo "$workflow: $result; waiting for a verified main."
+              exit 0
+            fi
+          done
+          if [[ $(gh release view "cloud-$RELEASE_SHA" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft 2>/dev/null || true) == false ]]; then
+            echo "Release already published."
+            exit 0
+          fi
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        if: steps.checked.outputs.ready == 'true'
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+          persist-credentials: false
+      - name: Build revision-labelled Linux images
+        if: steps.checked.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" == "$(git rev-parse HEAD)" ]]
+          compose_hash=$(sha256sum compose.yaml | cut -d ' ' -f 1)
+          for target in server web; do
+            docker build --platform linux/amd64 --file infra/Dockerfile --target "$target" \
+              --label "org.opencontainers.image.revision=$RELEASE_SHA" \
+              --label "io.ai-xiutu.compose-sha256=$compose_hash" \
+              --tag "xiutu-pilot-$target:$RELEASE_SHA" .
+          done
+          docker image save "xiutu-pilot-server:$RELEASE_SHA" "xiutu-pilot-web:$RELEASE_SHA" \
+            | gzip -1 > xiutu-linux-amd64.tar.gz
+          test "$(stat -c '%s' xiutu-linux-amd64.tar.gz)" -lt 2000000000
+      - name: Publish the complete bundle
+        if: steps.checked.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          api="repos/$GITHUB_REPOSITORY"
+          tag="cloud-$RELEASE_SHA"
+          check_head() {
+            [[ $(gh api "$api/git/ref/heads/main" --jq .object.sha) == "$RELEASE_SHA" ]]
+          }
+          if ! check_head; then
+            echo "Main moved while preparing the release; no release published."
+            exit 0
+          fi
+          if ! gh release view "$tag" --json isDraft > /dev/null 2>&1; then
+            gh release create "$tag" --target "$RELEASE_SHA" --title "Tencent Cloud ${RELEASE_SHA:0:12}" \
+              --notes "Automated Linux images for the checked main commit $RELEASE_SHA." \
+              --draft --prerelease --latest=false
+          fi
+          test "$(gh release view "$tag" --json isDraft --jq .isDraft)" = true
+          gh release upload "$tag" xiutu-linux-amd64.tar.gz --clobber
+          if ! check_head; then
+            echo "Main moved during upload; the bundle remains a draft."
+            exit 0
+          fi
+          gh release edit "$tag" --draft=false --prerelease --latest=false
