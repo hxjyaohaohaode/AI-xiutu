@@ -457,6 +457,24 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
     'makeup stroke changes the render',
   );
   const painted = await canvasPixels(page);
+  const touch = await page.context().newCDPSession(page);
+  try {
+    const center = await canvas.boundingBox();
+    const x = center.x + center.width / 2;
+    const y = center.y + center.height * 0.4;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x - 30, y, id: 1 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x - 30, y, id: 1 }, { x: x + 30, y, id: 2 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - 62, y, id: 1 }, { x: x + 62, y, id: 2 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await until(async () => (await canvas.boundingBox()).width > center.width * 1.6,
+      'two live touches navigate in the active makeup brush');
+    const fitted = page.getByRole('button', { name: '点击完整显示图片', exact: true });
+    await fitted.click();
+    await until(async () => (await canvasPixels(page)).pixelSha256 === painted.pixelSha256,
+      'the two-finger gesture does not commit a stray makeup stroke');
+  } finally {
+    await touch.detach();
+  }
   await page.locator('.free-panel[aria-hidden="false"] .inspector-scroll').evaluate((node) => {
     node.scrollTop = 0;
   });
@@ -606,10 +624,7 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
               '.makeup-brush-rail',
               '.automatic-makeup .makeup-brush-rail > button[aria-pressed="true"]',
             ],
-            [
-              ':is(.dock-tool-scroll, .studio-reference-dock)',
-              '[data-dock-tool="beauty"][aria-pressed="true"]',
-            ],
+            ['.free-panel[data-fixed-inspector]', '.mobile-inspector-actions > button:first-child'],
           ].every(([owner, selector]) => {
             const item = document.querySelector(selector);
             const clip = item?.closest(owner)?.getBoundingClientRect();

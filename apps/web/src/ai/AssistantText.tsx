@@ -105,7 +105,7 @@ export function CopyMessage({ text }: { text: string }) {
         ? { action: '複製回覆', done: '已複製', failed: '請選取文字後複製。' }
         : { action: '复制回复', done: '已复制', failed: '请选中文字后复制。' };
   return (
-    <div className="assistant-message-actions">
+    <>
       <button
         type="button"
         aria-label={copied ? copy.done : copy.action}
@@ -123,6 +123,6 @@ export function CopyMessage({ text }: { text: string }) {
         <span>{copied ? copy.done : copy.action}</span>
       </button>
       {failed && <span role="status">{copy.failed}</span>}
-    </div>
+    </>
   );
 }

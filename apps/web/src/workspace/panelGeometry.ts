@@ -50,24 +50,24 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
   };
 }
 
-/** The phone inspector is an attached tool shelf. Stored panel geometry applies to desktop. */
-export function phoneInspectorLayout(view: Viewport, contentHeight?: number): { rect: PanelRectangle; insets: CanvasInsets } {
+/** Expanding the shelf covers the photo without changing its fitted rectangle. */
+export function phoneInspectorLayout(
+  view: Viewport,
+  { expanded = false, hideDock = false }: { expanded?: boolean; hideDock?: boolean } = {},
+): { rect: PanelRectangle; insets: CanvasInsets } {
   const body = workspaceSize(view);
-  const bottom = view.bucket === 'phone'
+  const bottom = hideDock ? 0 : view.bucket === 'phone'
     ? panelBottomOffset(view)
     : Math.max(48, finite(view.toolShelfHeight ?? 44, 44) + 12);
   const landscape = view.width > view.height && view.height <= 500;
-  const baseHeight = landscape ? 104 : 146;
-  // Canvas padding and on-image controls also need room. A crowded tool can
-  // scroll its secondary controls without shrinking the actual photo to a dot.
-  const canvasReserve = contentHeight === undefined || body.height < 240
-    ? 0
-    : Math.min(Math.floor(body.height * (landscape ? 0.5 : 0.52)), landscape ? 174 : 250);
-  const maxHeight = Math.max(0, body.height - bottom - canvasReserve);
-  const height = Math.min(Math.max(baseHeight, contentHeight ?? 0), maxHeight);
+  const available = Math.max(0, body.height - bottom);
+  const compact = Math.min(available, landscape ? 128 : 178);
+  const height = expanded
+    ? Math.min(available, Math.max(compact, Math.min(420, Math.round(available * 0.58))))
+    : compact;
   return {
     rect: { x: 0, y: Math.max(0, body.height - bottom - height), width: body.width, height },
-    insets: { left: 0, right: 0, bottom: height + bottom },
+    insets: { left: 0, right: 0, bottom: compact + bottom },
   };
 }
 

@@ -17,6 +17,7 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { reviewCollage, reviewMakeup } from './collage-makeup.browser.mjs';
+import { leaveMobileTool, showEditorTopbar } from './studio-navigation.mjs';
 import {
   REPOSITORY, LOCALES, SCREEN_NAMES, ABOUT_SECTIONS, SCENARIOS,
   PHOTO_SOURCES, PUBLISH_IMAGE_PATHS, MANIFEST_PATH,
@@ -569,6 +570,16 @@ async function tool(page, id) {
   const root = ['color', 'curves', 'detail'].includes(id) ? 'light'
     : ['paint', 'liquify'].includes(id) ? 'repair' : id;
   const button = page.locator(id === 'history' ? '[data-action="open-history"]' : '[data-dock-tool="' + root + '"]');
+  if (id !== 'history' && !(await button.isVisible())) {
+    const current = page.locator('.free-panel[data-fixed-inspector][aria-hidden="false"]').first();
+    const sameTool = current.locator('.inspector-family-tabs:visible [data-segment-value="' + id + '"]');
+    if (await sameTool.isVisible()) {
+      if ((await sameTool.getAttribute('aria-pressed')) !== 'true') await sameTool.click();
+      return settle(page);
+    }
+    if (await current.locator('[data-tool-family="' + id + '"]:visible').count()) return;
+    await leaveMobileTool(page);
+  }
   if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
   const panel = page.locator('.free-panel[aria-hidden="false"]').first();
   await panel.waitFor();
@@ -596,6 +607,7 @@ async function changeView(page, id) {
     await assistantReturn.click();
     await assistantReturn.waitFor({ state: 'hidden' });
   }
+  await showEditorTopbar(page);
   assert.ok(viewIds.includes(id));
   const compact = page.locator('.mobile-view-trigger');
   if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
@@ -733,7 +745,7 @@ async function referenceControlReview() {
     assert.equal((await canvasPixels(page)).pixelSha256,beforeTouch.pixelSha256);
     touchEvidence={method:'Chromium touchscreen events and actual touchscreen tap',changedPixels:true,oneUndoRestoredPixels:true,physicalDevice:false};
     const before=await panel.boundingBox();
-    assert.equal(before.height,146);
+    assert.equal(before.height,178);
     assert.equal(await panel.locator('.panel-layout-trigger, .panel-resize-edge').count(),0);
     const rail=panel.locator('.parameter-shelf-options');
     const railBox=await rail.boundingBox();
@@ -750,13 +762,13 @@ async function referenceControlReview() {
     await finalParameter.click();
     assert.equal(await finalParameter.getAttribute('aria-pressed'),'true');
     assert.equal((await panel.boundingBox()).height,before.height);
-    await page.locator('[data-dock-tool="light"]').click();
+    await leaveMobileTool(page);
     await panel.waitFor({state:'hidden'});
     await tool(page,'light');
     await settle(page);
     const after=await panel.boundingBox();
     assert.equal(after.height,before.height);
-    heights.push({target:146,before:before.height,after:after.height});
+    heights.push({target:178,before:before.height,after:after.height});
     await layout(page,'fixed phone adjustment panel after touch scrolling');
     await capture(page,'interactions/fixed-phone-panel.png');
   } catch(error) {await failureEvidence(phone.page);throw error;}
@@ -765,6 +777,7 @@ async function referenceControlReview() {
 }
 
 async function actualDownload(page, expectedSource, label) {
+  await showEditorTopbar(page);
   const trigger = page.locator('.workspace-top-actions .top-export');
   const triggerHandle = await trigger.elementHandle();
   await trigger.click();
@@ -1193,9 +1206,9 @@ async function mobileEditingFlow() {
     await layout(page, 'phone fixed crop and orientation');
     await dimensions.scrollIntoViewIfNeeded();
     const cropReadout = await dimensions.boundingBox();
-    const dock = await page.locator(':is(.studio-reference-dock, .floating-tool-dock):visible').boundingBox();
-    assert.ok(cropReadout && dock && cropReadout.y + cropReadout.height <= dock.y + 1,
-      'the crop size readout is fully visible above the phone tool dock');
+    const footer = await page.locator('.mobile-inspector-actions:visible').boundingBox();
+    assert.ok(cropReadout && footer && cropReadout.y + cropReadout.height <= footer.y + 1,
+      'the crop size readout is fully visible above the tool actions');
     await capture(page, 'interactions/mobile-crop-390.png');
     await presets.getByRole('button', { name: '自由', exact: true }).click();
     assert.deepEqual(await aspect(), [width, height], 'free crop unlocks the same framing');
@@ -1222,27 +1235,26 @@ async function mobileEditingFlow() {
       if (request.method() === 'POST' && new URL(request.url()).pathname.endsWith('/assistant-turns'))
         turnWrites++;
     });
-    const viewport = await page.locator('.workspace').boundingBox();
+    await leaveMobileTool(page);
     const ai = page.locator('[data-dock-tool="ai"]');
     await ai.click();
     const chat = page.locator('[data-panel-id="ai"][data-display-mode="page"][aria-hidden="false"]');
-    const screenshot = chat.getByRole('img', { name: '编辑界面截图', exact: true });
+    const screenshot = chat.getByRole('img', { name: '照片预览', exact: true });
     await screenshot.waitFor();
     const captured = await screenshot.evaluate(async (image) => {
       await image.decode();
       return { width: image.naturalWidth, height: image.naturalHeight };
     });
-    assert.ok(Math.abs(captured.width / captured.height - viewport.width / viewport.height) < 0.005);
+    assert.ok(Math.abs(captured.width / captured.height - height / width) < 0.006);
     const snapshot = Buffer.from((await screenshot.getAttribute('src')).split(',')[1], 'base64');
-    const photoRegion = await sharp(snapshot).extract({
-      left: Math.round(captured.width * .25), top: Math.round(captured.height * .22),
-      width: Math.round(captured.width * .5), height: Math.round(captured.height * .25),
-    }).toBuffer();
-    assert.ok((await sharp(photoRegion).stats()).channels[0].stdev > 12,
-      'the attached editor screenshot shows the actual public photograph');
+    const expected = resolve(artifacts, 'downloads/mobile-crop-rotated.png');
+    const sample = (value) => sharp(value).resize(48, 28, { fit: 'fill' }).removeAlpha().raw().toBuffer();
+    const [actualPixels, expectedPixels] = await Promise.all([sample(snapshot), sample(expected)]);
+    const averageError = actualPixels.reduce((sum, byte, index) => sum + Math.abs(byte - expectedPixels[index]), 0) / actualPixels.length;
+    assert.ok(averageError < 8, `the attachment contains the edited photograph across the full frame (error=${averageError})`);
     await writeFile(resolve(artifacts, 'interactions/mobile-editor-attachment.jpg'), snapshot);
     assert.equal(await page.locator('.workspace-view-transition').getAttribute('inert'), '');
-    await layout(page, 'full-screen phone assistant with a real editor screenshot');
+    await layout(page, 'full-screen phone assistant with the frozen edited photo');
     await capture(page, 'interactions/mobile-ai-390.png');
     const sourceTrigger = chat.getByRole('button', { name: '共享画面与参考素材', exact: true });
     assert.equal(await sourceTrigger.isDisabled(), true, 'A visitor can retain the attachment and cannot share project sources');

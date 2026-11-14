@@ -338,6 +338,7 @@ export function CanvasStage({
   group,
   toolOverlayRef,
   portraitWarp,
+  touchEditor = false,
   onImport,
   onAI,
   onCollage,
@@ -360,6 +361,7 @@ export function CanvasStage({
   group: ToolGroup;
   toolOverlayRef?: (element: HTMLDivElement | null) => void;
   portraitWarp?: boolean;
+  touchEditor?: boolean;
   onImport: (files?: File[]) => void;
   onAI: () => void;
   onCollage: () => void;
@@ -431,15 +433,20 @@ export function CanvasStage({
   const panGesture = useRef<{ pointer: number; x: number; y: number; start: typeof pan } | null>(
     null,
   );
-  const pointerPositions = useRef(new Map<number, Point>());
-  const pinch = useRef<{ distance: number; camera: typeof camera; center: Point } | null>(null);
+  const touchPositions = useRef(new Map<number, Point>());
+  const pinch = useRef<{ distance: number; camera: typeof camera; center: Point; ids: [number, number] } | null>(null);
+  const cameraFrame = useRef(0);
+  const pendingCamera = useRef<typeof camera | null>(null);
   const wheelAction = useRef<(event: WheelEvent) => void>(() => {});
   const lastFaceFocus = useRef<typeof editor.portrait.faceFocus>(null);
   const brushFootprint = useRef<SVGPathElement>(null);
   const gestureTrail = useRef<SVGPathElement>(null);
   const warpTrail = useRef<Point[]>([]);
   const gestureFrame = useRef(0);
-  useEffect(() => () => cancelAnimationFrame(gestureFrame.current), []);
+  useEffect(() => () => {
+    cancelAnimationFrame(gestureFrame.current);
+    cancelAnimationFrame(cameraFrame.current);
+  }, []);
   const recipe = editor.recipe,
     source = editor.originalPreview,
     dimensions = editor.dimensions;
@@ -700,8 +707,9 @@ export function CanvasStage({
     setInspected(null);
     editGesture.current = null;
     pointerOwnership.current.reset();
-    pointerPositions.current.clear();
+    touchPositions.current.clear();
     pinch.current = null;
+    stopCameraMotion();
   }, [editor.file]);
   useEffect(() => {
     setInspected(null);
@@ -775,7 +783,8 @@ export function CanvasStage({
       pointerOwnership.current.reset();
       panGesture.current = null;
       pinch.current = null;
-      pointerPositions.current.clear();
+      touchPositions.current.clear();
+      stopCameraMotion();
       if (editGesture.current) {
         if (ownsEdit(editGesture.current))
           editor.preview(
@@ -792,8 +801,12 @@ export function CanvasStage({
     // A lost capture can deliver the eventual release outside the viewport.
     // The viewport handles its own releases before bubbling can be stopped.
     const outsideRelease = (event: globalThis.PointerEvent) => {
-      if (!(event.target instanceof Node) || !viewport.current?.contains(event.target))
+      if (!(event.target instanceof Node) || !viewport.current?.contains(event.target)) {
         pointerOwnership.current.up(event.pointerId);
+        touchPositions.current.delete(event.pointerId);
+        if (pinch.current?.ids.includes(event.pointerId)) pinch.current = null;
+        if (panGesture.current?.pointer === event.pointerId) panGesture.current = null;
+      }
     };
     window.addEventListener('pointerup', outsideRelease);
     window.addEventListener('pointercancel', outsideRelease);
@@ -824,7 +837,6 @@ export function CanvasStage({
     cancelAnimationFrame(gestureFrame.current);
     gestureFrame.current = 0;
     gestureTrail.current?.removeAttribute('d');
-    setHandMode(false);
     setSelectionManipulating(false);
     setProjectiveFrame(null);
     setNotice(null);
@@ -839,7 +851,23 @@ export function CanvasStage({
     protecting,
   ]);
   function fit() {
+    stopCameraMotion();
     setCamera(fittedCamera);
+  }
+  function stopCameraMotion() {
+    cancelAnimationFrame(cameraFrame.current);
+    cameraFrame.current = 0;
+    pendingCamera.current = null;
+  }
+  function queueCamera(next: typeof camera) {
+    pendingCamera.current = next;
+    if (cameraFrame.current) return;
+    cameraFrame.current = requestAnimationFrame(() => {
+      cameraFrame.current = 0;
+      const value = pendingCamera.current;
+      pendingCamera.current = null;
+      if (value) setCamera(value);
+    });
   }
   function boundedPan(value: typeof pan, z = zoom) {
     // Keep enough of the image on screen to grab it again, including at Fit.
@@ -872,6 +900,17 @@ export function CanvasStage({
         zoom,
       ),
     };
+  }
+  function releaseCanvasContact(event: PointerEvent<HTMLDivElement>) {
+    const blocked = pointerOwnership.current.up(event.pointerId);
+    touchPositions.current.delete(event.pointerId);
+    if (pinch.current?.ids.includes(event.pointerId)) pinch.current = null;
+    if (panGesture.current?.pointer === event.pointerId) panGesture.current = null;
+    if (!blocked) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.currentTarget.hasPointerCapture(event.pointerId))
+      event.currentTarget.releasePointerCapture(event.pointerId);
   }
   useEffect(() => {
     const request = editor.portrait.faceFocus;
@@ -2217,13 +2256,20 @@ export function CanvasStage({
         }}
         onPointerDownCapture={(event) => {
           if (event.button !== 0 && event.button !== 1) return;
+          const target = event.target as Element;
+          if (target.closest('.canvas-tool-overlay, .compare-reveal-input, .canvas-review-pin')) return;
           const state = editGesture.current;
-          const decision = pointerOwnership.current.down(event.pointerId, state?.pointer ?? null);
+          const touches = touchPositions.current;
+          const isTouch = event.pointerType === 'touch';
+          if (isTouch) touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          const decision = pointerOwnership.current.down(
+            event.pointerId, state?.pointer ?? null, !!image && isTouch && touches.size === 2,
+          );
           if (decision === 'allow') return;
           event.preventDefault();
           event.stopPropagation();
           suppressClick.current = true;
-          if (decision === 'cancel-edit' && state) {
+          if ((decision === 'cancel-edit' || decision === 'navigate') && state) {
             // Invalidate first: releasing capture may synchronously run a lost-capture handler.
             editGesture.current = null;
             gestureTrail.current?.removeAttribute('d');
@@ -2235,127 +2281,95 @@ export function CanvasStage({
               editor.getRecipe(),
             );
             if (rollback) editor.preview(rollback, state.quality);
-            pointerPositions.current.clear();
-            panGesture.current = null;
-            pinch.current = null;
-            setNotice(
-              t('检测到第二触点，本笔已取消。松开全部触点后再继续；移动画面可先选择抓手。'),
-            );
-            // Route both releases back to the viewport while keeping the whole
-            // gesture suppressed. Neither pointer becomes a navigation gesture.
-            if (frame.current?.hasPointerCapture(state.pointer))
-              frame.current.releasePointerCapture(state.pointer);
-            try {
-              event.currentTarget.setPointerCapture(state.pointer);
-            } catch {
-              // The original pointer may already have been released by the UA.
-              pointerOwnership.current.up(state.pointer);
-            }
+            setNotice(null);
           }
-          if (pointerOwnership.current.blocked) {
+          if (decision === 'navigate') {
+            const [[first, a], [second, b]] = [...touches.entries()] as [[number, Point], [number, Point]];
+            pinch.current = {
+              distance: Math.hypot(a.x - b.x, a.y - b.y),
+              camera: pendingCamera.current ?? camera,
+              center: viewportPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
+              ids: [first, second],
+            };
+          }
+          panGesture.current = null;
+          for (const id of pinch.current?.ids ?? [state?.pointer, event.pointerId]) {
+            if (id === undefined) continue;
             try {
-              event.currentTarget.setPointerCapture(event.pointerId);
+              event.currentTarget.setPointerCapture(id);
             } catch {
-              pointerOwnership.current.up(event.pointerId);
+              // A cancelled contact will be released by the browser's pointer-cancel event.
             }
           }
         }}
         onPointerMoveCapture={(event) => {
+          const gesture = pinch.current;
+          if (gesture?.ids.includes(event.pointerId)) {
+            const touches = touchPositions.current;
+            touches.set(event.pointerId, { x: event.clientX, y: event.clientY });
+            const a = touches.get(gesture.ids[0]), b = touches.get(gesture.ids[1]);
+            if (a && b) queueCamera(zoomedCamera(
+              gesture.camera,
+              gesture.camera.zoom * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, gesture.distance),
+              gesture.center,
+              viewportPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
+            ));
+          } else if (touchPositions.current.has(event.pointerId)) {
+            touchPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+          }
+          if (pointerOwnership.current.blocked) {
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+          }
           const cursor = toSource(event.clientX, event.clientY, false, 'strict');
           collaboration?.setCursor(cursor);
-          if (!pointerOwnership.current.blocked) return;
-          event.preventDefault();
-          event.stopPropagation();
         }}
         onPointerLeave={() => collaboration?.setCursor(null)}
-        onPointerUpCapture={(event) => {
-          if (!pointerOwnership.current.up(event.pointerId)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (event.currentTarget.hasPointerCapture(event.pointerId))
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-        onPointerCancelCapture={(event) => {
-          if (!pointerOwnership.current.up(event.pointerId)) return;
-          event.preventDefault();
-          event.stopPropagation();
-          if (event.currentTarget.hasPointerCapture(event.pointerId))
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
+        onPointerUpCapture={releaseCanvasContact}
+        onPointerCancelCapture={releaseCanvasContact}
         onPointerDown={(event) => {
           if (event.button !== 0 && event.button !== 1) return;
           if (
             !image ||
-              (event.target as Element).closest('.compare-reveal-input, .body-stretch-handle') ||
+              (event.target as Element).closest('.canvas-tool-overlay, .compare-reveal-input, .body-stretch-handle, .canvas-review-pin') ||
             review.placing ||
+            sampling ||
             editGesture.current ||
-            (editingSelection && !handMode && !space) ||
+            (event.pointerType !== 'touch' && editingSelection && !handMode && !space) ||
             (group === 'composite' && event.button === 0 && !handMode && !space &&
               event.pointerType !== 'touch' && (event.target as Element).closest('.image-frame')) ||
-            (group === 'crop' && !space && !handMode)
+            (event.pointerType !== 'touch' && group === 'crop' && !space && !handMode)
           )
             return;
-          pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-          if (pointerPositions.current.size === 2) {
-            const [a, b] = [...pointerPositions.current.values()] as [Point, Point];
-            pinch.current = {
-              distance: Math.hypot(a.x - b.x, a.y - b.y),
-              camera,
-              center: viewportPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
-            };
-            panGesture.current = null;
-          } else if (zoom > 1 || space || handMode || event.button === 1)
-            panGesture.current = {
-              pointer: event.pointerId,
-              x: event.clientX,
-              y: event.clientY,
-              start: pan,
-            };
-          else if (event.pointerType !== 'touch') return;
+          if (!(zoom > 1 || space || handMode || event.button === 1 || event.pointerType === 'touch')) return;
+          panGesture.current = { pointer: event.pointerId, x: event.clientX, y: event.clientY, start: (pendingCamera.current ?? camera).pan };
           if (event.button === 1) event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
+          if (event.pointerType !== 'touch') event.currentTarget.setPointerCapture(event.pointerId);
         }}
         onPointerMove={(event) => {
-          if (pointerPositions.current.has(event.pointerId))
-            pointerPositions.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-          const twoFingers = pinch.current;
-          if (twoFingers && pointerPositions.current.size === 2) {
-            const [a, b] = [...pointerPositions.current.values()] as [Point, Point];
-            const distance = Math.hypot(a.x - b.x, a.y - b.y);
-            setCamera(
-              zoomedCamera(
-                twoFingers.camera,
-                (twoFingers.camera.zoom * distance) / Math.max(1, twoFingers.distance),
-                twoFingers.center,
-                viewportPoint((a.x + b.x) / 2, (a.y + b.y) / 2),
-              ),
-            );
-            return;
-          }
           const current = panGesture.current;
-          if (current?.pointer === event.pointerId)
-            setCamera((view) => ({
+          if (current?.pointer === event.pointerId) {
+            const dx = event.clientX - current.x, dy = event.clientY - current.y;
+            if (event.pointerType === 'touch' && Math.hypot(dx, dy) < 5) return;
+            if (event.pointerType === 'touch') {
+              suppressClick.current = true;
+              if (!event.currentTarget.hasPointerCapture(event.pointerId))
+                event.currentTarget.setPointerCapture(event.pointerId);
+            }
+            const view = pendingCamera.current ?? camera;
+            queueCamera({
               ...view,
               pan: boundedPan(
-                {
-                  x: current.start.x + event.clientX - current.x,
-                  y: current.start.y + event.clientY - current.y,
-                },
+                { x: current.start.x + dx, y: current.start.y + dy },
                 view.zoom,
               ),
-            }));
+            });
+          }
         }}
         onPointerUp={(event) => {
-          pointerPositions.current.delete(event.pointerId);
-          pinch.current = null;
-          panGesture.current = null;
           if (event.currentTarget.hasPointerCapture(event.pointerId))
             event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-        onPointerCancel={(event) => {
-          pointerPositions.current.delete(event.pointerId);
-          pinch.current = null;
-          panGesture.current = null;
         }}
       >
         {!editor.file ? (
@@ -2380,6 +2394,7 @@ export function CanvasStage({
               transform: frameTransform,
             }}
             onPointerDown={(event) => {
+              if (pointerOwnership.current.canStart(event.pointerId)) suppressClick.current = false;
               if (inspectingOriginal || review.placing || handMode || space || sampling || event.button !== 0) return;
               updateBrushFootprint(event);
               if (
@@ -2957,6 +2972,12 @@ export function CanvasStage({
             <IconButton label={t('重做本次编辑')} disabled={!editor.canRedo} onClick={editor.redo}>
               <ArrowClockwise size={17} />
             </IconButton>
+            {touchEditor && (
+              <IconButton className="canvas-hand-direct" label={t('拖动画面模式')}
+                aria-pressed={handMode} onClick={() => setHandMode((value) => !value)}>
+                <Hand size={18} />
+              </IconButton>
+            )}
             <button
               type="button"
               className={`compare-press ${comparing ? 'active' : ''}`}
@@ -3056,7 +3077,7 @@ export function CanvasStage({
               >
                 1:1
               </button>
-              <button
+              {!touchEditor && <button
                 className={`canvas-hand-mode ${handMode ? 'active' : ''}`}
                 aria-label={t('拖动画面模式')}
                 aria-pressed={handMode}
@@ -3066,7 +3087,7 @@ export function CanvasStage({
                 }}
               >
                 <Hand size={18} />
-              </button>
+              </button>}
               <button
                 type="button"
                 className="canvas-touch-action"

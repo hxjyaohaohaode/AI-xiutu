@@ -18,6 +18,7 @@ type ToolDockProps = {
   aiOpen: boolean;
   compact: boolean;
   theme: 'light' | 'dark';
+  hidden?: boolean;
   onTool: (group: ToolGroup) => void;
   onAI: () => void;
 };
@@ -86,6 +87,7 @@ function TouchToolDock({
   group,
   inspectorOpen,
   aiOpen,
+  hidden,
   onTool,
   onAI,
 }: ToolDockProps) {
@@ -228,6 +230,8 @@ function TouchToolDock({
     <nav
       ref={dock}
       className="floating-tool-dock"
+      hidden={hidden}
+      inert={hidden}
       aria-label={t('编辑工具')}
       data-motion="tool-dock"
       data-compact="true"

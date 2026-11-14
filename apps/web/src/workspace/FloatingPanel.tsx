@@ -92,6 +92,8 @@ export function FloatingPanel({
   covered = false,
   motionState = 'enter',
   fixedRectangle,
+  fixedExpanded,
+  fixedFooter,
   showBackInHeader = true,
   displayMode = 'panel',
   identity,
@@ -114,6 +116,8 @@ export function FloatingPanel({
   covered?: boolean;
   motionState?: MotionPhase;
   fixedRectangle?: PanelRectangle;
+  fixedExpanded?: boolean;
+  fixedFooter?: ReactNode;
   showBackInHeader?: boolean;
   displayMode?: 'panel' | 'page';
   identity?: string;
@@ -455,7 +459,8 @@ export function FloatingPanel({
       data-panel-width={rect.width < 300 ? 'narrow' : rect.width >= 640 ? 'wide' : 'regular'}
       data-attached={attached && !page ? 'true' : undefined}
       data-fixed-inspector={fixed || undefined}
-      data-composition={fixed ? 'reflow' : value.composition}
+      data-fixed-expanded={fixed && fixedExpanded || undefined}
+      data-composition={fixed ? fixedExpanded ? 'overlay' : 'reflow' : value.composition}
       data-device={viewport.bucket}
       data-panel-id={identity ?? panelKey}
       data-display-mode={displayMode}
@@ -789,6 +794,7 @@ export function FloatingPanel({
           {children}
         </PanelChromeContext.Provider>
       </div>
+      {fixed && fixedFooter}
       {!page &&
         !fixed &&
         !collapsed &&

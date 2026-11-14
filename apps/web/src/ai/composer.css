@@ -1038,6 +1038,29 @@
 .ai-history-row[aria-pressed='true'] {
   background: var(--accent-soft);
 }
+.assistant-history-list {
+  display: grid;
+  gap: 5px;
+  max-block-size: min(54dvh, 480px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.assistant-history-list .ai-history-row {
+  width: 100%;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 3px;
+}
+.assistant-history-list .ai-history-row[aria-current='true'] {
+  background: var(--accent-soft);
+}
+.assistant-history-list .ai-history-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
 :is(.ai-options-dialog, .ai-settings-page) .image-parameters {
   display: grid;
   gap: 12px;

@@ -560,8 +560,20 @@
   border: 1px solid var(--line);
   box-shadow: var(--shadow-md);
 }
-.assistant-reference-prompt .prompt-bar__menu[data-kind='model'] { inline-size: min(260px, 100%); }
 .assistant-reference-prompt .prompt-bar__row-name { min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-bar__row-label { display: grid; flex: 1 1 auto; min-width: 0; }
+.assistant-reference-prompt .prompt-bar__menu[data-kind='model'] { inline-size: min(320px, 100%); }
+.assistant-reference-prompt .prompt-bar__menu[data-kind='model'] .prompt-bar__row {
+  height: auto;
+  min-height: 44px;
+  padding-block: 5px;
+}
+.prompt-bar__menu[data-kind='model'] .prompt-bar__row-desc {
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .assistant-reference-prompt .prompt-bar__bar { min-width: 0; }
 .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__pick, .prompt-bar__send) {
   height: 34px;

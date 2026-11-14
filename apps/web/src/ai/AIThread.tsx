@@ -1,4 +1,4 @@
-import { getLocale, t } from '../i18n';
+import { t } from '../i18n';
 import { useContext, useEffect, useState } from 'react';
 import {
   ArrowBendDownRight,
@@ -9,7 +9,6 @@ import {
   Copy,
   FloppyDisk,
   PencilSimple,
-  SpeakerHigh,
 } from '@phosphor-icons/react';
 import { formatDate } from '../lib/api';
 import type { Artwork, Project } from '../lib/types';
@@ -23,32 +22,7 @@ import { QueuedCancellation } from './QueuedCancellation';
 import { AIVisibilityContext } from './AIVisibility';
 import { AssistantText } from './AssistantText';
 import { StatusMark } from '../components/StatusMark';
-
-export function SpeakButton({ text }: { text: string }) {
-  const supported = 'speechSynthesis' in window;
-  useEffect(
-    () => () => {
-      if (supported) window.speechSynthesis.cancel();
-    },
-    [supported],
-  );
-  if (!supported) return null;
-  return (
-    <button
-      type="button"
-      className="text-button"
-      onClick={() => {
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = getLocale();
-        window.speechSynthesis.speak(utterance);
-      }}
-    >
-      <SpeakerHigh size={16} />
-      {t('朗读')}
-    </button>
-  );
-}
+import { SpeakButton } from './SpeakButton';
 function TextResult({
   output,
   controller,
@@ -141,7 +115,7 @@ function TextResult({
           <Copy size={16} />
           {t('复制')}
         </button>
-        <SpeakButton text={body} />
+        <SpeakButton text={body} active={visible} />
         <button
           className="text-button"
           disabled={locked || saved || !canEdit}
@@ -369,7 +343,7 @@ function GeneratedImagePreview({
           type="button"
           className="ai-image-open"
           onClick={() => onOpen(image.artworkId)}
-          aria-label={t('打开生成候选 ') + (index + 1)}
+                  aria-label={t('编辑生成图片 {v0}', { v0: index + 1 })}
         >
           <img
             key={attempt}
@@ -540,7 +514,7 @@ function CompletedResult({
                 )}
                 <button className="text-button" onClick={() => onOpen(image.artworkId)}>
                   <ArrowSquareOut size={16} />
-                  {t('打开候选')}
+                  {t('打开并编辑')}
                 </button>
                 <button className="text-button" onClick={() => onContinue(job, image)}>
                   <ArrowBendDownRight size={16} />

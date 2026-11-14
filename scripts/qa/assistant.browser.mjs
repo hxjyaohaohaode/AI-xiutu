@@ -12,6 +12,7 @@ import { transaction, adjustUnits, reserveUnits, markUnknownHold } from '@ai-xiu
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
 import { migrateRecipeToV4 } from '@ai-xiutu/editor';
 import { runUsagePresentationChecks } from './usage-presentation.browser.mjs';
+import { leaveMobileTool } from './studio-navigation.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Run only in isolated non-production CI.');
@@ -558,6 +559,7 @@ try {
       await history.focus();
       await history.press('Enter');
       await page.locator('.detailed-history-list').waitFor();
+      await leaveMobileTool(page);
       await assistantTab.focus();
       await assistantTab.press('Enter');
       await input.waitFor();
@@ -641,13 +643,10 @@ try {
       assert.equal(await inputOwner.evaluate((node) => node.isConnected), true);
       const taskInput = page.getByLabel('本轮创作要求', { exact: true });
       await taskInput.fill(taskDraft);
-      await page.getByRole('button', { name: '生图参数', exact: true }).click();
-      const settings = page.getByRole('region', { name: '模型与参数', exact: true });
-      await settings.waitFor();
-      await settings.getByRole('combobox', { name: '生图模型', exact: true }).waitFor();
-      assert.equal(await page.getByRole('dialog', { name: '模型与参数', exact: true }).count(), 0);
-      await settings.getByRole('button', { name: '返回对话', exact: true }).click();
-      await settings.waitFor({ state: 'hidden' });
+      const parameters = page.locator('form[data-ai-composer]:visible')
+        .getByRole('button', { name: '生图参数', exact: true });
+      await parameters.waitFor();
+      assert.equal(await parameters.isDisabled(), true, 'parameters stay disabled with no image model');
       assert.equal(await taskInput.inputValue(), taskDraft);
       await selectTask('AI 助手');
       await input.waitFor();
@@ -869,25 +868,20 @@ try {
       .locator('.live-assistant > .ai-workbench-header')
       .getByRole('button', { name: '会话记录', exact: true })
       .click();
-    const select = history.getByRole('combobox', { name: '会话记录', exact: true });
     const before = dispatches;
-    await select.click();
-    const options = history.getByRole('listbox', { name: '会话记录', exact: true });
-    // Mounting the popover and loading saved conversations are separate async steps.
-    await options.waitFor({ state: 'visible' });
+    const options = history.locator('.assistant-history-list');
+    await options.waitFor();
     const { active, other } = await until(
       () =>
-        options.getByRole('option').evaluateAll((nodes) => {
-          // The first option starts a new conversation. Existing records load on opening.
-          const saved = nodes.slice(1);
-          const label = (node) => node?.querySelector('.choice-option-label')?.textContent?.trim();
-          const active = label(saved.find((node) => node.getAttribute('aria-selected') === 'true'));
-          const other = label(saved.find((node) => node.getAttribute('aria-selected') !== 'true'));
+        options.getByRole('button').evaluateAll((nodes) => {
+          const label = (node) => node?.querySelector('span')?.textContent?.trim();
+          const active = label(nodes.find((node) => node.getAttribute('aria-current') === 'true'));
+          const other = label(nodes.find((node) => node.getAttribute('aria-current') !== 'true'));
           return active && other ? { active, other } : null;
         }),
       'active and alternate conversations are loaded in history',
     );
-    await choose(history, '会话记录', other);
+    await options.getByText(other, { exact: true }).click();
     await history.waitFor({ state: 'hidden' });
     await until(
       async () => (await page.locator('.assistant-messages').innerText()).length > 0,
@@ -900,7 +894,7 @@ try {
       .locator('.live-assistant > .ai-workbench-header')
       .getByRole('button', { name: '会话记录', exact: true })
       .click();
-    await choose(history, '会话记录', active);
+    await options.getByText(active, { exact: true }).click();
     await history.waitFor({ state: 'hidden' });
     await until(
       async () =>
@@ -1941,25 +1935,13 @@ try {
           await picker.waitFor({ state: 'hidden' });
         };
         await selectTask('生图');
-        await page.getByRole('button', { name: '生图参数', exact: true }).click();
-        const settings = page.getByRole('region', { name: '模型与参数', exact: true });
-        const model = settings.getByRole('combobox', { name: '生图模型', exact: true });
-        await model.waitFor();
-        assert.equal(
-          await model.isDisabled(),
-          true,
-          'the actual empty model catalog stays disabled',
-        );
-        await settings.getByRole('button', { name: '展开面板', exact: true }).click();
-        await settings.waitFor({ state: 'hidden' });
-        await page.getByRole('button', { name: '生图参数', exact: true }).click();
-        await settings.waitFor();
-        await settings.locator('.ai-model-empty').scrollIntoViewIfNeeded();
-        const taskSettingsGeometry = await settings.evaluate((region) => {
+        const task = page.locator('.ai-workbench:visible');
+        await task.getByText('暂无适用模型', { exact: true }).waitFor();
+        assert.equal(await task.getByRole('button', { name: '生图参数', exact: true }).isDisabled(), true);
+        const taskSettingsGeometry = await task.evaluate((region) => {
           const elements = {
-            model: region.querySelector('[role="combobox"]'),
-            empty: region.querySelector('.ai-model-empty'),
-            back: region.querySelector('.ai-settings-page-header button'),
+            parameters: region.querySelector('.ai-task-composer .assistant-parameter-trigger'),
+            back: region.querySelector('.ai-workbench-header [data-ai-return]'),
           };
           return Object.fromEntries(
             Object.entries(elements).map(([name, node]) => {
@@ -1974,7 +1956,7 @@ try {
                       y: box.y,
                       right: box.right,
                       bottom: box.bottom,
-                      text: node.textContent.trim(),
+                      label: node.getAttribute('aria-label'),
                       centerExposed: !!hit && node.contains(hit),
                     }
                   : null,
@@ -1985,22 +1967,19 @@ try {
         for (const [name, control] of Object.entries(taskSettingsGeometry)) {
           assert.ok(
             control?.centerExposed &&
-              control.text &&
+              control.label &&
               control.x >= 0 &&
               control.right <= viewport.width + 1 &&
               control.y >= 0 &&
               control.bottom <= viewport.height + 1,
-            `${name} is readable in the expanded task settings`,
+            `${name} is accessible in the 320px task workspace`,
           );
         }
         await page.screenshot({ path: resolve(artifacts, 'task-settings-320x568.png') });
-        await settings.getByRole('button', { name: '恢复面板', exact: true }).click();
-        await settings.waitFor({ state: 'hidden' });
         await selectTask('AI 助手');
         assert.equal(turnAdmissions, before.admissions);
         assert.equal(dispatches, before.dispatches);
         geometry.taskSettings = {
-          expandedThroughUI: true,
           emptyCatalog: true,
           ...taskSettingsGeometry,
         };
@@ -2008,7 +1987,7 @@ try {
       return geometry;
     });
   }
-  await testCase('phone-sends-frozen-editor-attachment-and-replaces-and-restores-a-source', async () => {
+  await testCase('phone-sends-frozen-photo-pixels-and-replaces-and-restores-a-source', async () => {
     const baseline = await head();
     const generatedId = randomUUID();
     const jobId = randomUUID();
@@ -2039,11 +2018,11 @@ try {
     const before = turnAdmissions;
     await openProject(page);
     const chat = page.locator('[data-panel-id="ai"][data-display-mode="page"][aria-hidden="false"]');
-    const image = chat.getByRole('img', { name: '编辑界面截图', exact: true });
+    const image = chat.getByRole('img', { name: '照片预览', exact: true });
     await image.waitFor();
     const frozenImage = await image.getAttribute('src');
     assert.ok(frozenImage?.startsWith('data:image/jpeg;base64,'));
-    const prompt = '请根据截图给出一条构图建议。';
+    const prompt = '请根据照片给出一条构图建议。';
     const input = chat.getByLabel('向智能体描述修改需求');
     await input.fill(prompt);
     await chat.getByRole('button', { name: '返回编辑器', exact: true }).click();
@@ -2060,7 +2039,7 @@ try {
     const accepted = await receipt;
     assert.equal(accepted.status(), 202);
     const visualAttachment = accepted.request().postDataJSON().visualAttachment;
-    assert.equal(visualAttachment.kind, 'editor');
+    assert.equal(visualAttachment.kind, 'photo');
     assert.equal(sha(visualAttachment.imageDataUrl), sha(frozenImage));
     await finished();
     await image.waitFor({ state: 'hidden' });
@@ -2146,8 +2125,30 @@ try {
     assert.deepEqual({ turnAdmissions, dispatches }, generationCounts);
     assert.equal((await head()).artwork.headVersion, restored.artwork.headVersion);
     await page.screenshot({ path: resolve(artifacts, 'phone-collage-ai-return.png') });
-    return { screenshotSent: true, replacedVersion: replaced.artwork.headVersion,
-      restoredVersion: restored.artwork.headVersion, privateFixture: true, collageCandidateRoundTrip: true };
+
+    await page.locator('[data-action="close-collage"]:visible').click();
+    await page.locator('[data-dock-tool="ai"]:visible').click();
+    const candidate = chat.locator('.ai-turn').filter({ hasText: '独立图像候选验收' });
+    await candidate.getByRole('button', { name: '添加到项目并编辑', exact: true }).click();
+    const fork = page.getByRole('dialog', { name: '添加为项目作品', exact: true });
+    await fork.getByLabel('新作品名称', { exact: true }).fill('Phone generated edit');
+    const forkOpened = page.waitForResponse((response) => {
+      const request = response.request();
+      const pathname = new URL(request.url()).pathname;
+      return request.method() === 'GET' && /^\/v1\/artworks\/[^/]+$/.test(pathname) &&
+        !pathname.endsWith('/' + baseline.artwork.id);
+    });
+    await fork.getByRole('button', { name: '确认', exact: true }).click();
+    const forked = await (await forkOpened).json();
+    assert.equal(forked.artwork.title, 'Phone generated edit');
+    assert.equal(forked.artwork.assetId, generatedId);
+    await chat.waitFor({ state: 'hidden' });
+    await until(() => page.locator('.image-frame canvas[aria-label]:visible').isVisible(), 'generated project artwork opens in the editor');
+    assert.equal((await head()).artwork.headVersion, restored.artwork.headVersion);
+    assert.deepEqual({ turnAdmissions, dispatches }, generationCounts);
+    return { frozenPhotoSent: true, replacedVersion: replaced.artwork.headVersion,
+      restoredVersion: restored.artwork.headVersion, privateFixture: true, collageCandidateRoundTrip: true,
+      forkedArtworkOpened: true };
   });
   await testCase('operator-paginates-all-unknown-jobs-without-private-content', async () => {
     await transaction(fixture.db, async (tx) => {

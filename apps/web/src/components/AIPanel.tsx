@@ -9,7 +9,7 @@ import { SpecialistOptions, specialistDefaults, specialistTaskLabels } from '../
 import { ModelReadStatus } from '../ai/ModelReadStatus';
 import { t } from '../i18n';
 import '../ai/interaction-surfaces.css';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import {
   Sparkle,
   X,
@@ -73,6 +73,7 @@ import { AIThread, type CollageResultActions } from '../ai/AIThread';
 import type { OnResultApplied } from '../ai/ResultActions';
 import { recipeDifferences, additionalRecipeChanges } from '../ai/recipeDiff';
 import { ImageParameters } from '../ai/ImageParameters';
+import { describeModel } from '../ai/model-guidance';
 import { LiveAssistant, type CaptureCurrentImage } from '../ai/LiveAssistant';
 import {
   acceptJobSubmission,
@@ -310,8 +311,14 @@ export function AIPanel({
     if (assistantOpen) setAssistantVisited(true);
   }, [assistantOpen]);
   const [overlay, setOverlay] = useState<
-    'tasks' | 'settings' | 'references' | 'history' | 'recovery' | null
+    'tasks' | 'settings' | 'image-parameters' | 'references' | 'history' | 'recovery' | null
   >(null);
+  const imageParametersId = useId();
+  const imageParametersButton = useRef<HTMLButtonElement>(null);
+  const imageParametersSection = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    if (overlay === 'image-parameters') imageParametersSection.current?.focus({ preventScroll: true });
+  }, [overlay]);
   const [assistantActivity, setAssistantActivity] = useState<AIActivity>(IDLE_AI_ACTIVITY);
   const [capturingReference, setCapturingReference] = useState(false);
   const referenceCaptureLock = useRef(false);
@@ -1245,20 +1252,50 @@ export function AIPanel({
     ...(pendingSubmission && modelId && !eligible.some((model) => model.id === modelId)
       ? [{ value: modelId, label: t('{model} · 原请求模型', { model: modelId }) }]
       : []),
-    ...eligible.map((model) => ({
-      value: model.id,
-      label: model.label,
-      description: modelReady(model)
-        ? model.provider === 'openai'
-          ? 'OpenAI'
-          : model.provider === 'qwen'
-            ? 'Qwen'
-            : model.provider === 'ark'
-              ? 'Ark'
-              : undefined
-        : t('当前未开通'),
-    })),
+    ...eligible.map((model) => {
+      const available = modelReady(model);
+      const points = operation === 'generate-image'
+        ? imagePointQuote(model, model.id === modelId ? imageOptions : defaultImageOptions(model))
+        : model.pointsPerPlan ?? null;
+      const price = !available ? t('当前未开通') : points === null ? t('点数待确认')
+        : t('{v0} 点 / 次', { v0: points });
+      return {
+        value: model.id,
+        label: model.label,
+        disabled: !available,
+        description: describeModel(model.id, operation, operation === 'generate-image' && model.parameterCapabilities?.references.supported),
+        price,
+      };
+    }),
   ];
+  const imageParameters = operation === 'generate-image' && (
+    <ImageParameters
+      model={selected}
+      width={width}
+      height={height}
+      options={imageOptions}
+      hasReference={referencedCount > 0}
+      disabled={inputLocked}
+      onSize={(w, h) => {
+        setImageOptions((current) => {
+          if (!current.size) return current;
+          const { size: _auto, ...explicit } = current;
+          return explicit;
+        });
+        setWidth(w);
+        setHeight(h);
+        changed();
+      }}
+      onOptions={(next) => {
+        setImageOptions(next);
+        changed();
+      }}
+    />
+  );
+  function closeImageParameters() {
+    setOverlay(null);
+    imageParametersButton.current?.focus({ preventScroll: true });
+  }
   const availableTasks = tasks.filter((item) =>
     primaryTasks.includes(item.id) || operation === item.id || modelResponse?.operationStatus?.[item.id]?.available === true ||
     modelResponse?.models.some((model) => model.enabled && model.runtimeOperations?.includes(item.id)),
@@ -1351,12 +1388,8 @@ export function AIPanel({
                 <IconButton label={t('创作记录')} onClick={() => setOverlay('history')}>
                   <ClockCounterClockwise size={18} />
                 </IconButton>
-                {operation === 'generate-image' ? (
-                  <button type="button" className="text-button" onClick={() => setOverlay('settings')}>
-                    <GearSix size={18} />{t('生图参数')}
-                  </button>
-                ) : (
-                  <IconButton label={t('任务设置')} onClick={() => setOverlay('settings')}>
+                {operation !== 'generate-image' && (
+                    <IconButton label={t('任务设置')} onClick={() => setOverlay('settings')}>
                     <GearSix size={18} />
                   </IconButton>
                 )}
@@ -1368,6 +1401,9 @@ export function AIPanel({
               </div>
             </header>
             <div className="ai-conversation-body" aria-label={t('创作内容')}>
+              {operation === 'generate-image' && isLoggedIn && !loading && modelResponse && !eligible.length && (
+                <p className="ai-inline-error" role="status">{t('暂无适用模型')}</p>
+              )}
               {(needsContext || (!ready && !loading)) && (
                 <div className="ai-availability" role="status">
                   <span>{needsContext ? statusText : t(reason)}</span>
@@ -1497,8 +1533,24 @@ export function AIPanel({
               <form
                 className="ai-task-composer assistant-reference-composer"
                 data-ai-composer
+                onKeyDown={(event) => {
+                  if (event.key !== 'Escape' || overlay !== 'image-parameters' || event.nativeEvent.isComposing) return;
+                  event.preventDefault();
+                  event.stopPropagation();
+                  closeImageParameters();
+                }}
                 onSubmit={(event) => { event.preventDefault(); void submit(); }}
               >
+                {visible && overlay === 'image-parameters' && imageParameters && (
+                  <section ref={imageParametersSection} id={imageParametersId} tabIndex={-1}
+                    className="assistant-turn-options image-composer-options" aria-label={t('生图参数')}>
+                    <header>
+                      <div><strong>{t('生图参数')}</strong>{quote !== null && <small>{t('{v0} 点 / 次', { v0: quote })}</small>}</div>
+                      <IconButton label={t('完成参数设置')} onClick={closeImageParameters}><X size={16} /></IconButton>
+                    </header>
+                    {imageParameters}
+                  </section>
+                )}
                 {parent && (
                   <div className="ai-context-strip">
                     <ArrowBendDownRight size={14} />
@@ -1552,11 +1604,20 @@ export function AIPanel({
                   disabled={inputLocked}
                   sendDisabled={!canSubmit}
                   onValueChange={(value) => { setPrompt(value); changed(); }}
-                  onSend={() => void submit()}
+                  onSend={() => {
+                    if (overlay === 'image-parameters') setOverlay(null);
+                    void submit();
+                  }}
                   commands={[]}
                   efforts={[]}
-                  models={eligible.map((model) => ({
-                    key: model.id, name: model.label, disabled: !modelReady(model),
+                  inlineModelConfiguration
+                  onMenuChange={(menu) => {
+                    if (menu && overlay === 'image-parameters') setOverlay(null);
+                  }}
+                  models={modelOptions.map((model) => ({
+                    key: model.value, name: model.label, disabled: 'disabled' in model && model.disabled,
+                    description: 'description' in model ? model.description : undefined,
+                    tag: 'price' in model ? model.price : undefined,
                   }))}
                   modelKey={modelId}
                   onModelChange={(value) => { setModelId(value); changed(); }}
@@ -1565,6 +1626,15 @@ export function AIPanel({
                     attach: t('添加或管理参考图'), sources: t('参考图'),
                     chooseModel: t('选择模型'), models: t('模型'), empty: t('暂无适用模型'),
                   }}
+                  modelTools={operation === 'generate-image' && (
+                    <IconButton ref={imageParametersButton} className="assistant-parameter-trigger"
+                      label={t('生图参数')} aria-expanded={overlay === 'image-parameters'}
+                      aria-controls={overlay === 'image-parameters' ? imageParametersId : undefined}
+                      disabled={inputLocked || !selected}
+                      onClick={() => setOverlay((value) => value === 'image-parameters' ? null : 'image-parameters')}>
+                      <SlidersHorizontal size={17} />
+                    </IconButton>
+                  )}
                   sources={operation === 'generate-image' ? [
                     { key: 'references', name: t('参考图'), icon: <Paperclip size={17} />, action: () => setOverlay('references') },
                     { key: 'sketch', name: t('画草图'), icon: <PencilSimple size={17} />,
@@ -1720,7 +1790,9 @@ export function AIPanel({
               value={modelId}
               disabled={inputLocked || !eligible.length}
               placeholder={t('暂无适用模型')}
-              options={modelOptions}
+              options={modelOptions.map((option) => 'price' in option
+                ? { ...option, description: option.description + ' · ' + option.price }
+                : option)}
               onChange={(value) => {
                 setModelId(value);
                 changed();
@@ -1730,32 +1802,6 @@ export function AIPanel({
               <p className="ai-inline-error" role="status">
                 {t(reason)}
               </p>
-            )}
-            {operation === 'generate-image' && (
-              <section className="ai-option-section">
-                <ImageParameters
-                  model={selected}
-                  width={width}
-                  height={height}
-                  options={imageOptions}
-                  hasReference={referencedCount > 0}
-                  disabled={inputLocked}
-                  onSize={(w, h) => {
-                    setImageOptions((current) => {
-                      if (!current.size) return current;
-                      const { size: _auto, ...explicit } = current;
-                      return explicit;
-                    });
-                    setWidth(w);
-                    setHeight(h);
-                    changed();
-                  }}
-                  onOptions={(next) => {
-                    setImageOptions(next);
-                    changed();
-                  }}
-                />
-              </section>
             )}
             {operation === 'generate-text' && documents.length > 0 && (
               <section className="ai-option-section">

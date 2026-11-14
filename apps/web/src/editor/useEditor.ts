@@ -33,6 +33,7 @@ import { ensureWorker, releaseWorker } from './workerLifecycle';
 import { fitsNativePreview } from './native-preview';
 import { rememberHistogram } from './histogram-cache';
 import { cropRatioForGeometry } from './precision';
+import { captureRenderedImage } from './capture';
 export { editorGeometryKey } from './coordinates';
 
 const MAX_PREVIEW_PIXELS = 4_194_304;
@@ -312,10 +313,10 @@ export function useEditor() {
       worker,
       create,
       ({ id, type, result, blob, error: failure, histogram }: RenderReply) => {
-        if (type === 'export') {
+        if (type === 'export' || type === 'photo-preview') {
           const p = pending.current.get(id);
           pending.current.delete(id);
-          if (failure || (!result && !blob)) p?.reject(new Error(failure ?? '导出失败'));
+          if (failure || (!result && !blob)) p?.reject(new Error(failure ?? '图像处理失败'));
           else p?.resolve({ image: result, blob });
         } else if (id === settledLane.current.inFlight?.id) {
           const completed = settledLane.current.inFlight;
@@ -1122,6 +1123,24 @@ export function useEditor() {
     },
     [failWorker],
   );
+  const capturePhoto = useCallback(async () => {
+    const target = worker.current;
+    const frozen = recipeRef.current;
+    if (loadBusy.current || !sourceRef.current || !target || target !== sourceWorker.current)
+      throw new Error('画面还在更新，请就绪后共享当前图片。');
+    if (rendered && frozen === renderedRecipe) return captureRenderedImage(rendered);
+    const id = ++requestId.current;
+    const { image } = await new Promise<ExportResult>((resolve, reject) => {
+      pending.current.set(id, { resolve, reject });
+      try {
+        target.postMessage({ type: 'photo-preview', id, recipe: frozen, maxPixels: 1_048_576 });
+      } catch {
+        failWorker();
+      }
+    });
+    if (!image) throw new Error('图像结果为空。');
+    return captureRenderedImage(image);
+  }, [failWorker, rendered, renderedRecipe]);
   const getCloudUploadFile = useCallback(
     async (forceNormalize = false) => {
       if (!file) throw new Error('请先导入图片。');
@@ -1255,6 +1274,7 @@ export function useEditor() {
     undo,
     redo,
     exportImage,
+    capturePhoto,
     exportRecipe,
     importRecipe,
     reset: () =>

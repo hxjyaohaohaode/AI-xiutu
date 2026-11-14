@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import './voice-workspace.css';
 import { readModelCatalog } from '../lib/api';
 import { ModelReadStatus } from './ModelReadStatus';
-import { t, formatNumber, useLocale, type MessageParams } from '../i18n';
+import { t, useLocale, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -52,7 +52,7 @@ import type {
 import { assistantSearchEvidenceSchema, defaultLiveDecisionQuestions,
   OPENAI_DECISIONS_MODEL, OPENAI_TRANSLATION_MODEL, liveDelegationSchema } from '@ai-xiutu/contracts';
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
-import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
+import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
 import type { Artwork, Project, Space } from '../lib/types';
 import { EditorVoiceClient } from './voiceClient';
@@ -85,12 +85,14 @@ import { IDLE_AI_ACTIVITY, type AIActivity } from './AIVisibility';
 import { PanelSettings } from './PanelSettings';
 import { PanelSettingsPage } from './PanelSettingsPage';
 import { ModelChoice } from './ModelChoice';
+import { describeModel } from './model-guidance';
 import { modelCopy } from './model-copy';
 import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
 import { ResearchGraph } from './ResearchGraph';
 import { AssistantText, CopyMessage } from './AssistantText';
+import { SpeakButton } from './SpeakButton';
 import { MemoryControls } from './MemoryControls';
 import { WorkspaceCards } from './WorkspaceCards';
 import { CandidateActions } from './CandidateActions';
@@ -300,7 +302,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const freshConversation = useRef(false);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [conversations, setConversations] = useState<
-    { id: string; title: string; turnCount: number }[]
+    { id: string; title: string; turnCount: number; updatedAt: string }[]
   >([]);
   const [memorySuggestions, setMemorySuggestions] = useState<{
     items: MemorySuggestion[];
@@ -563,9 +565,19 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voiceCaptionsVisible = voiceCaptionsOverride ?? preferences.captions;
   const models = catalog?.models.filter((item) => item.operations.includes('assistant-turn') && !item.responses?.deprecated) ?? [];
   const voices = catalog?.models.filter((item) => item.operations.includes('realtime-voice')) ?? [];
+  const voiceModelOptions = voices.map((item) => ({
+    value: item.id,
+    label: item.label,
+    description: describeModel(item.id, 'realtime-voice') + ' · ' +
+      t('{v0} 服务点 · 最长 {v1} 秒', { v0: item.unitCost, v1: item.maxSeconds }),
+  }));
   const selected = models.find((item) => item.id === modelId),
     selectedVoice = voices.find((item) => item.id === voiceId);
   const [tuningByModel, setTuningByModel] = useState<Record<string, AssistantResponseTuning>>({});
+  function modelPriceLabel(model: Catalog['models'][number]) {
+    const points = assistantTurnPrice(model.unitCost, model.responsePrice, tuningByModel[model.id] ?? {}, model.responseDefaults);
+    return points === null ? t('点数待确认') : t('{v0} 点 / 轮', { v0: points });
+  }
   const activeTuning = tuningByModel[modelId] ?? {};
   const [invalidSchemaModel, setInvalidSchemaModel] = useState<string | null>(null);
   const quote = selected
@@ -2207,11 +2219,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
       if (searchAbort.current?.controller === controller) searchAbort.current = null;
     }
   }
-  function newConversation() {
-    freshConversation.current = true;
-    if (!catalogSelectionLocked && !grant)
+  function selectConversation(id: string) {
+    if (busy || inCall || submissionBlocked || (id && id === conversationId)) {
+      if (id === conversationId) setOverlay(null);
+      return;
+    }
+    freshConversation.current = !id;
+    if (!id && !catalogSelectionLocked && !grant)
       setModelId(models.find((model) => model.id === preferences.textModel)?.id ?? models[0]?.id ?? '');
-    setConversationId('');
+    setConversationId(id);
     setParentTurnId(undefined);
     setMessages([]);
     setCandidates([]);
@@ -2222,8 +2238,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setToolStatus('');
     setWorkspace(null);
     setMemorySuggestions({ items: [] });
+    setError('');
     followingConversation.current = true;
     setOverlay(null);
+  }
+  function newConversation() {
+    selectConversation('');
   }
   const canSend =
     !busy &&
@@ -2428,7 +2448,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             </IconButton>
             {voiceTools}
             <button ref={voiceStartButton} type="button" className="voice-start-button"
-              aria-label={t('开始实时通话')} aria-disabled={!canStartVoice}
+              aria-label={t('开始实时通话')} disabled={!canStartVoice}
               onClick={() => { if (canStartVoice) { setVoiceParametersOpen(false); void startVoice(); } }}>
               <Microphone size={17} /><span>{t('开始实时通话')}</span>
             </button>
@@ -2556,7 +2576,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           const article = (
             <article key={message.id} className={`assistant-message ${message.role}`}
             data-streaming={isStreaming || undefined} aria-busy={isStreaming || undefined}>
-            <small>{message.role === 'user' ? t('你') : t('创作助手')}</small>
+            {message.role === 'assistant' && <small>{t('创作助手')}</small>}
             {message.attachmentKind && (
               <span className="ai-sent-attachment">
                 <Paperclip size={13} /> {visualAttachmentLabel(message.attachmentKind)}
@@ -2601,7 +2621,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   ))}
                 </div>
               )}
-            {message.role === 'assistant' && message.text && !isStreaming && <CopyMessage text={message.text} />}
+            {message.role === 'assistant' && message.text && !isStreaming && !message.voiceSession && (
+              <div className="assistant-message-actions">
+                <CopyMessage text={message.text} />
+                <SpeakButton text={message.text} active={!inCall && !voiceVisible && props.visible !== false} />
+              </div>
+            )}
             </article>
           );
           return message === anchor && turnProgress ? [article, <div className="ai-turn-activity" key="turn-progress">{turnProgress}</div>] : [article];
@@ -2718,8 +2743,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <ModelChoice label={t('语音模型')} ariaLabel={t('语音模型')} value={voiceId}
                 disabled={!!grant}
                 placeholder={t('暂无语音模型')} onChange={setVoiceId}
-                options={voices.map((item) => ({ value: item.id, label: item.label,
-                  description: t('{v0} 服务点 · 最长 {v1} 秒', { v0: item.unitCost, v1: item.maxSeconds }) }))} />
+                options={voiceModelOptions} />
               {!translating && voiceOptions.length > 1 && <ChoiceSelect label={t('语音音色')} value={voice}
                 onValueChange={setVoice} options={voiceOptions.map((value) => ({ value, label: value }))} />}
               {voiceModelFields}
@@ -3087,15 +3111,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
             models={models.map((model) => ({
               key: model.id,
               name: model.label,
-              tag: t('{v0} 点', {
-                v0: assistantTurnPrice(model.unitCost, model.responsePrice, tuningByModel[model.id] ?? {}, model.responseDefaults)
-                  ?? model.unitCost,
-              }),
+              description: describeModel(model.id, undefined, model.imageInput),
+              tag: modelPriceLabel(model),
             }))}
             efforts={[]}
             commands={[
               { key: 'settings', name: '/' + t('助手设置'), action: () => setOverlay('settings') },
               { key: 'parameters', name: '/' + t('本轮模型参数'), action: () => setModelOptionsOpen(true) },
+              { key: 'new', name: '/' + t('新会话'), action: newConversation },
               { key: 'history', name: '/' + t('会话记录'), action: () => setOverlay('history') },
             ]}
             disabled={!isLoggedIn || !!pendingSubmission || !submissionReady}
@@ -3206,7 +3229,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               options={models.map((item) => ({
                 value: item.id,
                 label: item.label,
-                description: `${t('{v0} 服务点 / 轮', { v0: item.unitCost })}${item.responses?.deprecated ? ` · ${t('已公告停用')}` : ''}`,
+                description: describeModel(item.id, undefined, item.imageInput) + ' · ' + modelPriceLabel(item),
               }))}
             />
             {mode === 'voice' && (
@@ -3217,11 +3240,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 onChange={setVoiceId}
                 disabled={inCall || busy || submissionBlocked || !!grant}
                 placeholder={t('暂无语音模型')}
-                options={voices.map((item) => ({
-                  value: item.id,
-                  label: item.label,
-                  description: `${formatNumber(item.unitCost)} ${t('点')}`,
-                }))}
+                options={voiceModelOptions}
               />
             )}
             {mode === 'voice' && !translating && voiceOptions.length > 1 && (
@@ -3461,37 +3480,21 @@ export function LiveAssistant(props: LiveAssistantProps) {
             <Plus size={18} />
             {t('新会话')}
           </button>
-          <ChoiceSelect
-            label={t('会话记录')}
-            ariaLabel={t('会话记录')}
-            value={conversationId ?? ''}
-            disabled={busy || inCall}
-            options={[
-              { value: '', label: t('新会话') },
-              ...conversations.map((item) => ({
-                value: item.id,
-                label: item.title,
-                description: t('{v0} 轮', { v0: item.turnCount }),
-              })),
-            ]}
-            onValueChange={(value) => {
-              setConversationId(value);
-              freshConversation.current = !value;
-              setParentTurnId(undefined);
-              setMessages([]);
-              setCandidates([]);
-              setWorkspace(null);
-              setMemorySuggestions({ items: [] });
-              setContextManifest(null);
-              setResearchGraph(null);
-              setExecutionEvents([]);
-              setSettledTurn(null);
-              setToolStatus('');
-              setError('');
-              followingConversation.current = true;
-              setOverlay(null);
-            }}
-          />
+          {conversations.length ? (
+            <ul className="assistant-history-list">
+              {conversations.map((item) => (
+                <li key={item.id}>
+                  <button type="button" className="ai-history-row"
+                    aria-current={conversationId === item.id || undefined}
+                    disabled={busy || inCall || submissionBlocked}
+                    onClick={() => selectConversation(item.id)}>
+                    <span>{item.title}</span>
+                    <small>{t('{v0} 轮', { v0: item.turnCount })} · {formatDate(item.updatedAt)}</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : <p className="fine-print">{t('暂无历史对话')}</p>}
           <button
             type="button"
             className="text-button"

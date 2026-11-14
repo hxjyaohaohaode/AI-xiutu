@@ -13,6 +13,8 @@ import {
   UsersThree,
   ArrowRight,
   ArrowLeft,
+  CaretDown,
+  CaretUp,
   DotsThree,
   ShieldCheck,
   PencilSimple,
@@ -129,7 +131,6 @@ import { useTeamVoice } from './collaboration/useTeamVoice';
 import {
   captureRenderedImage,
   captureSketchVisual,
-  captureWorkspaceVisual,
 } from './editor/capture';
 import {
   ExportDialog,
@@ -2532,10 +2533,14 @@ export function App({
     (workspaceLayout.view.width < 1000 &&
       workspaceLayout.view.height <= 500 &&
       navigator.maxTouchPoints > 0);
-  const [inspectorContentHeight, setInspectorContentHeight] = useState<number>();
+  const [inspectorExpanded, setInspectorExpanded] = useState(false);
+  const [editingTopbarOpen, setEditingTopbarOpen] = useState(false);
   const [mobileChromeExpanded, setMobileChromeExpanded] = useState(false);
   useEffect(() => setMobileChromeExpanded(false), [view, editor.file]);
-  const phoneInspector = phoneEditor ? phoneInspectorLayout(workspaceLayout.view, inspectorContentHeight) : null;
+  const phoneInspector = phoneEditor ? phoneInspectorLayout(workspaceLayout.view, {
+    expanded: inspectorExpanded,
+    hideDock: true,
+  }) : null;
   const floatingVoice = activePanelId === 'ai' && aiActivity.callVisible;
   const mobileAssistantOpen = phoneEditor && activePanelId === 'ai' && !floatingVoice;
   const immersiveEditor = phoneEditor && view === 'editor' && !!editor.file && !mobileAssistantOpen;
@@ -2579,6 +2584,7 @@ export function App({
   const wideEditing = workspaceLayout.view.width >= 1180 && !phoneEditor;
   const editingWithAI = wideEditing && activePanelId === 'ai' && !floatingVoice && inspectorOpen && !!editor.file && activePanel?.presentation !== 'maximized';
   const fixedInspectorOpen = !!phoneInspector && activePanelId === 'inspector' && !workspaceLayout.focused;
+  const hideEditingTopbar = fixedInspectorOpen && !!editor.file && !editingTopbarOpen;
   const makeupPaint = group === 'beauty' && portraitCanvasTool === 'paint';
   const canvasInsets = fixedInspectorOpen
     ? phoneInspector.insets
@@ -2594,12 +2600,15 @@ export function App({
     setCommandTarget(undefined);
     setPortraitCanvasTool(null);
     setSampling(false);
+    if (tool !== group) setInspectorExpanded(false);
     if (tool !== 'history') lastEditTool.current = tool;
     setGroup(tool);
   };
   const closeInspector = () => {
     editor.commitCurrent(t('完成当前调节'));
     setInspectorOpen(false);
+    setInspectorExpanded(false);
+    setEditingTopbarOpen(false);
     if (group === 'history') setGroup(lastEditTool.current);
     setSampling(false);
   };
@@ -2748,9 +2757,8 @@ export function App({
     }
     capturingWorkspace.current = true;
     try {
-      const attachment = editor.rendered && !editor.rendering && recipe === editor.renderedRecipe
-        ? await captureWorkspaceVisual(workspace, editor.rendered)
-        : await captureSketchVisual(await readCurrentCanvas(), 'photo');
+      const imageDataUrl = await editor.capturePhoto();
+      const attachment = { kind: 'photo', imageDataUrl } as const;
       if (
         !workspace.isConnected ||
         !activeRef.current ||
@@ -2972,6 +2980,8 @@ export function App({
             data-immersive-editor={immersiveEditor || undefined}
             data-mobile-ai-page={mobileAssistantOpen || undefined}
             data-fixed-inspector-open={fixedInspectorOpen || undefined}
+            data-editing-topbar-hidden={hideEditingTopbar || undefined}
+            data-editing-tools-active={fixedInspectorOpen && !!editor.file || undefined}
           >
             <Sidebar
               brand={brand}
@@ -3296,6 +3306,7 @@ export function App({
                           historyOpen={inspectorOpen && group === 'history'}
                           makeupPaint={makeupPaint}
                           portraitWarp={group === 'beauty' && portraitCanvasTool === 'liquify'}
+                          touchEditor={phoneEditor}
                           onImport={(files) =>
                             files ? void importSelectedFiles(files) : void importFile()
                           }
@@ -3332,6 +3343,7 @@ export function App({
                           aiOpen={aiOpen}
                           compact={phoneEditor || workspaceLayout.view.height <= 480}
                           theme={studioTheme.theme}
+                          hidden={fixedInspectorOpen}
                           onTool={chooseTool}
                           onAI={() => {
                             if (aiOpen) closeAI();
@@ -3529,6 +3541,31 @@ export function App({
                         else closeInspector();
                       }}
                       fixedRectangle={shownPanelId === 'inspector' ? phoneInspector?.rect : undefined}
+                      fixedExpanded={shownPanelId === 'inspector' && inspectorExpanded}
+                      fixedFooter={shownPanelId === 'inspector' && phoneInspector ? (
+                        <div className="mobile-inspector-actions">
+                          <IconButton label={t('返回编辑工具')} onClick={closeInspector}>
+                            <ArrowLeft size={19} />
+                          </IconButton>
+                          <strong>{t(toolGroups.find((tool) => tool.id === group)?.label ?? '调整')}</strong>
+                          {editor.file && (
+                            <IconButton
+                              label={t(editingTopbarOpen ? '隐藏顶部导航' : '显示顶部导航')}
+                              aria-pressed={editingTopbarOpen}
+                              onClick={() => setEditingTopbarOpen((open) => !open)}
+                            >
+                              <List size={18} />
+                            </IconButton>
+                          )}
+                          <IconButton
+                            label={t(inspectorExpanded ? '收起工具选项' : '展开全部工具选项')}
+                            aria-expanded={inspectorExpanded}
+                            onClick={() => setInspectorExpanded((open) => !open)}
+                          >
+                            {inspectorExpanded ? <CaretDown size={19} /> : <CaretUp size={19} />}
+                          </IconButton>
+                        </div>
+                      ) : undefined}
                     >
                       {shownPanelId === 'inspector' ? (
                         <div className="inspector-retained">
@@ -3538,7 +3575,6 @@ export function App({
                               target={commandTarget}
                               onPortraitTool={setPortraitCanvasTool}
                               canvasOverlay={fixedInspectorOpen ? canvasToolOverlay : null}
-                              onContentHeight={phoneEditor ? setInspectorContentHeight : undefined}
                               onGroupChange={selectInspectorTool}
                               onCutout={createCutout}
                               onFlattenLayers={flattenLayers}

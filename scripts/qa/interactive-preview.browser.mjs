@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { createServer, preview } from 'vite';
+import { leaveMobileTool, showEditorTopbar } from './studio-navigation.mjs';
 import {
   compileEditorCoordinateMap,
   createRecipeV4,
@@ -44,6 +45,16 @@ async function openTool(page, id) {
   const root = ['color', 'curves', 'detail'].includes(id) ? 'light'
     : ['paint', 'liquify'].includes(id) ? 'repair' : id;
   const dock = page.locator(`[data-dock-tool="${root}"]`);
+  if (!(await dock.isVisible())) {
+    const current = page.locator('.free-panel[data-fixed-inspector][aria-hidden="false"]').first();
+    const sibling = current.locator(`.inspector-family-tabs:visible [data-segment-value="${id}"]`);
+    if (await sibling.isVisible()) {
+      if ((await sibling.getAttribute('aria-pressed')) !== 'true') await sibling.click();
+      return;
+    }
+    if (await current.locator(`[data-tool-family="${id}"]:visible`).count()) return;
+    await leaveMobileTool(page);
+  }
   if ((await dock.getAttribute('aria-pressed')) !== 'true') await dock.click();
   const panel = page.locator('.free-panel[aria-hidden="false"]');
   await panel.waitFor();
@@ -53,6 +64,7 @@ async function openTool(page, id) {
 }
 
 async function openRecipeExport(page) {
+  await showEditorTopbar(page);
   await page.locator('.workspace-top-actions .top-export').click();
   return page.locator('dialog.export-dialog[open]');
 }

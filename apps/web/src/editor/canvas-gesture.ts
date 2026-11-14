@@ -1,12 +1,18 @@
-/** Shared by the viewport capture handlers and the edit-start path. Two-finger
- * navigation remains available when no editing transaction owns a pointer. */
+/** Keep a canvas edit and a two-touch navigation gesture mutually exclusive. */
 export class CanvasPointerOwnership {
   private readonly pointers = new Set<number>();
   private suppressed = false;
+  private navigating = false;
 
-  down(pointerId: number, editingPointer: number | null): 'allow' | 'block' | 'cancel-edit' {
+  down(pointerId: number, editingPointer: number | null, canNavigate = false):
+    'allow' | 'block' | 'cancel-edit' | 'navigate' {
     this.pointers.add(pointerId);
     if (this.suppressed) return 'block';
+    if (this.navigating) return 'block';
+    if (canNavigate && this.pointers.size === 2 && pointerId !== editingPointer) {
+      this.navigating = true;
+      return 'navigate';
+    }
     if (editingPointer === null) return 'allow';
     if (editingPointer === pointerId) return 'block';
     // A captured edit pointer may have started before a viewport remount.
@@ -16,24 +22,28 @@ export class CanvasPointerOwnership {
   }
 
   canStart(pointerId: number): boolean {
-    return !this.suppressed && this.pointers.size === 1 && this.pointers.has(pointerId);
+    return !this.suppressed && !this.navigating && this.pointers.size === 1 && this.pointers.has(pointerId);
   }
 
   get blocked(): boolean {
-    return this.suppressed;
+    return this.suppressed || this.navigating;
   }
 
   /** Return the state before release so the final suppressed up cannot commit. */
   up(pointerId: number): boolean {
-    const blocked = this.suppressed;
+    const blocked = this.blocked;
     this.pointers.delete(pointerId);
-    if (!this.pointers.size) this.suppressed = false;
+    if (!this.pointers.size) {
+      this.suppressed = false;
+      this.navigating = false;
+    }
     return blocked;
   }
 
   reset(): void {
     this.pointers.clear();
     this.suppressed = false;
+    this.navigating = false;
   }
 }
 

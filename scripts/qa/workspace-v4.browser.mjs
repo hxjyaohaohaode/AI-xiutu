@@ -7,6 +7,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
+import { leaveMobileTool, showEditorTopbar } from './studio-navigation.mjs';
 import { createDatabase, transaction, adjustUnits } from '@ai-xiutu/db';
 import {
   createRecipeV4,
@@ -110,6 +111,7 @@ async function caseRun(name, run) {
   }
 }
 async function changeView(page, id, label) {
+  await showEditorTopbar(page);
   const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
   const project = page.getByRole('button', { name: '项目与用量', exact: true });
   const tab = page
@@ -156,6 +158,17 @@ async function tool(page, label) {
     '局部': 'local', '图层': 'composite', '合成': 'composite', 'AI 助手': 'ai' };
   const button = page.locator(label === '记录' ? '[data-action="open-history"]'
     : '[data-dock-tool="' + buttons[label] + '"]');
+  if (label !== '记录' && !(await button.isVisible())) {
+    const current = page.locator('.free-panel[data-fixed-inspector][aria-hidden="false"]').first();
+    const sibling = current.locator('.inspector-family-tabs:visible').getByRole('button', { name: label, exact: true });
+    if (await sibling.isVisible()) {
+      if ((await sibling.getAttribute('aria-pressed')) !== 'true') await sibling.click();
+      return;
+    }
+    if (await current.locator('[data-tool-family="' + buttons[label] + '"]:visible').count() &&
+      label !== '绘制' && label !== '液化') return;
+    await leaveMobileTool(page);
+  }
   if ((await button.getAttribute('aria-pressed')) !== 'true') await button.click();
   const panel = page.locator('.free-panel[aria-hidden="false"]').first();
   await panel.waitFor();
@@ -246,6 +259,7 @@ async function downloadBytes(page, action) {
   return Buffer.concat(chunks);
 }
 async function recipeDownload(page) {
+  await showEditorTopbar(page);
   await page.locator('.workspace-top-actions .top-export').click();
   const dialog = page.locator('dialog.export-dialog[open]');
   const bytes = await downloadBytes(page, () =>
@@ -262,6 +276,7 @@ async function openCloudHistory(page) {
   if ((await cloud.getAttribute('aria-pressed')) !== 'true') await cloud.click();
 }
 async function imageDownload(page) {
+  await showEditorTopbar(page);
   await page.getByRole('button', { name: '导出', exact: true }).click();
   const dialog = page.locator('dialog.export-dialog[open]');
   const bytes = await downloadBytes(page, () => dialog.locator('button.button-full').click());
@@ -645,6 +660,7 @@ async function layoutAssertions(page, phone) {
       scrollWidth: document.documentElement.scrollWidth,
       panel: rect('.free-panel[aria-hidden="false"]'),
       dock: rect('.floating-tool-dock'),
+      toolFooter: rect('.mobile-inspector-actions'),
       frame: rect('.image-frame'),
       slider: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current input[type="range"]'),
       control: rect('.free-panel[aria-hidden="false"] .parameter-shelf-current .precision-control'),
@@ -716,9 +732,10 @@ async function layoutAssertions(page, phone) {
   }
   if (phone) {
     assert.ok(
-      measured.dock.y - measured.panel.bottom >= -1.5 &&
-        measured.dock.y - measured.panel.bottom <= 12,
-      'the fixed panel stays immediately above the tool rail',
+      measured.dock?.height === 0 &&
+        measured.toolFooter?.height >= 44 &&
+        Math.abs(measured.toolFooter.bottom - measured.panel.bottom) <= 2,
+      'the active tool replaces the primary dock and keeps a reachable return row',
     );
     assert.ok(
       measured.frame.bottom <= measured.panel.y + 1.5,
@@ -965,8 +982,7 @@ try {
         assert.ok(normal.panel.height >= (size.height <= 500 ? 104 : 146));
         assert.ok(await panel.locator('.inspector-scroll').evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
           'the measured inspector fits the active adjustment without vertical scrolling');
-        const dock = page.locator('[data-dock-tool="light"]');
-        await dock.click();
+        await leaveMobileTool(page);
         await panel.waitFor({ state: 'hidden' });
         await tool(page, '明暗');
         fixedInspector = await layoutAssertions(page, true);
@@ -1448,7 +1464,7 @@ try {
           await tool(page, '绘制');
           const panel = page.locator('.free-panel[aria-hidden="false"]');
           if ((await panel.getAttribute('data-fixed-inspector')) === 'true') {
-            await page.locator('[data-dock-tool="repair"][aria-pressed="true"]').click();
+            await leaveMobileTool(page);
             await panel.waitFor({ state: 'hidden' });
           } else {
             await panel.getByRole('button', { name: /^收起.*可从工具栏重新打开$/ }).click();

@@ -7,6 +7,8 @@ import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { preview } from 'vite';
 import { collaborationFixture } from '../../apps/api/test/collaboration-fixture.ts';
+import { leaveMobileTool, showEditorTopbar } from './studio-navigation.mjs';
+import { describeOpenAIImageModel } from '../../packages/multimodal/src/openai.ts';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
   throw new Error('Isolated QA only.');
@@ -52,6 +54,7 @@ async function pageFor(actor, viewport) {
 }
 async function take(page, filename) { await page.screenshot({ path: resolve(out, filename + '.png') }); }
 async function works(page) {
+  await showEditorTopbar(page);
   const desktop = page.locator('button[data-view="works"]:visible');
   if (await desktop.count()) await desktop.first().click();
   else {
@@ -157,7 +160,46 @@ try {
   assert.equal(requests.at(-1).max_output_tokens, 512);
   assert.equal(requests.at(-1).temperature, 0.25);
   assert.equal(requests.at(-1).service_tier, 'flex');
+  assert.equal(await desktop.locator('.assistant-message.user > small').count(), 0);
+  await desktop.locator('.assistant-message.assistant').last().getByRole('button', { name: '朗读', exact: true }).waitFor();
   result.cases.push('inline model parameters; Shift+Enter newline and Enter submit; server quote; live conversation sync without replacing the other draft');
+
+  await secondDevice.getByRole('button', { name: '完成参数设置', exact: true }).click();
+  const imageId = 'gpt-image-2.6-flare';
+  await secondDevice.route('**/v1/models', (route) => route.fulfill({
+    json: {
+      models: [{
+        id: imageId, label: imageId, enabled: true, runtimeAvailable: true, provider: 'openai',
+        operations: ['generate-image'], runtimeOperations: ['generate-image'], pointsPerPlan: 8,
+        ...describeOpenAIImageModel(imageId, {}),
+        pricing: { unit: 'service-point', per: 'image', defaultPerImage: 8, qualityPerImage: { auto: 8, low: 3 } },
+      }],
+      executionEnabled: true, availableOperations: ['generate-image'],
+    },
+  }));
+  await secondDevice.reload();
+  await secondDevice.locator('[data-dock-tool="ai"]:visible').click();
+  await secondDevice.getByRole('button', { name: '切换 AI 任务', exact: true }).click();
+  await secondDevice.getByRole('dialog', { name: '选择 AI 任务', exact: true })
+    .getByRole('button', { name: /^生图/ }).click();
+  const imageComposer = secondDevice.locator('.ai-task-composer:visible');
+  await imageComposer.getByLabel('本轮创作要求').fill('保留这段生图草稿');
+  await imageComposer.getByRole('button', { name: '选择模型', exact: true }).click();
+  const imageModel = secondDevice.getByRole('option', { name: /gpt-image-2.6-flare/ });
+  await imageModel.getByText('出图快，适合反复试稿', { exact: true }).waitFor();
+  await imageModel.getByText('8 点 / 次', { exact: true }).waitFor();
+  await imageModel.click();
+  await imageComposer.getByRole('button', { name: '生图参数', exact: true }).click();
+  const imageOptions = imageComposer.getByRole('region', { name: '生图参数', exact: true });
+  await imageOptions.getByRole('group', { name: '质量', exact: true }).getByRole('button', { name: '低', exact: true }).click();
+  await imageOptions.getByText('3 点 / 次', { exact: true }).waitFor();
+  assert.equal(await imageComposer.getByLabel('本轮创作要求').inputValue(), '保留这段生图草稿');
+  await take(secondDevice, 'phone-image-parameters');
+  await imageOptions.getByRole('button', { name: '完成参数设置', exact: true }).click();
+  result.cases.push('image model guidance and price; inline quality updates the quote and preserves the prompt');
+  await secondDevice.getByRole('button', { name: '切换 AI 任务', exact: true }).click();
+  await secondDevice.getByRole('dialog', { name: '选择 AI 任务', exact: true })
+    .getByRole('button', { name: /^AI 助手/ }).click();
   const accountPreferences = secondDevice.request;
   const current = await accountPreferences.get(origin + '/v1/me/assistant-preferences');
   assert.equal(current.status(), 200);
@@ -184,7 +226,10 @@ try {
       if (await button.count()) await button.first().click();
       else await phone.locator('.inspector-family-tabs:visible').getByRole('button', {
         name: family === 'color' ? '色彩' : '曲线', exact: true }).click();
-    } else await phone.locator('[data-dock-tool="' + family + '"]:visible').click();
+    } else {
+      await leaveMobileTool(phone);
+      await phone.locator('[data-dock-tool="' + family + '"]:visible').click();
+    }
     const panel = phone.locator('.free-panel[data-fixed-inspector="true"]:visible');
     await panel.locator('[data-tool-family="' + family + '"]:visible').waitFor();
     await phone.waitForTimeout(180);
@@ -193,20 +238,66 @@ try {
       viewportWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth,
       canvasFilter: getComputedStyle(document.querySelector('.image-frame canvas')).filter,
     }));
-    assert.ok(measured.scroll <= measured.client + 1, JSON.stringify({ family, ...measured }));
+    assert.ok(measured.client > 0 && measured.scroll >= measured.client, JSON.stringify({ family, ...measured }));
     assert.equal(measured.canvasFilter, 'none');
     assert.equal(measured.scrollWidth, measured.viewportWidth);
     result.cases.push({ family, ...measured });
     await take(phone, 'phone-' + family);
   }
+  await leaveMobileTool(phone);
   await phone.locator('[data-dock-tool="beauty"]:visible').click();
   await phone.locator('.portrait-person-select').waitFor({ state: 'attached', timeout: 60000 });
   await phone.locator('.parameter-shelf:visible').waitFor();
-  const portraitOverflow = await phone.locator('.free-panel[data-fixed-inspector="true"]:visible .inspector-scroll')
-    .evaluate((node) => node.scrollHeight - node.clientHeight);
-  assert.ok(portraitOverflow <= 1, 'recognized portrait controls fit in the visible inspector');
+  const portraitPanel = phone.locator('.free-panel[data-fixed-inspector="true"]:visible');
+  const photo = phone.locator('.image-frame:visible');
+  const photoBefore = await photo.boundingBox();
+  const compact = await portraitPanel.boundingBox();
+  assert.equal(compact.height, 178);
+  assert.equal(await phone.locator('.floating-tool-dock:visible').count(), 0);
+  assert.equal(await phone.locator('.floating-topbar').isVisible(), false);
+  await portraitPanel.getByRole('button', { name: '展开全部工具选项', exact: true }).click();
+  await portraitPanel.locator('[data-tool-family="beauty"]:visible').waitFor();
+  assert.ok((await portraitPanel.boundingBox()).height > compact.height);
+  assert.deepEqual(await photo.boundingBox(), photoBefore);
+  await take(phone, 'phone-editor-expanded');
+  await portraitPanel.getByRole('button', { name: '收起工具选项', exact: true }).click();
+  assert.equal((await portraitPanel.boundingBox()).height, compact.height);
+  await showEditorTopbar(phone);
+  assert.equal(await phone.locator('.floating-topbar').isVisible(), true);
+  assert.deepEqual(await photo.boundingBox(), photoBefore);
+  await portraitPanel.getByRole('button', { name: '隐藏顶部导航', exact: true }).click();
+  const hand = phone.getByRole('button', { name: '拖动画面模式', exact: true });
+  await hand.click();
+  assert.equal(await hand.getAttribute('aria-pressed'), 'true');
+  await leaveMobileTool(phone);
+  await phone.locator('[data-dock-tool="light"]:visible').click();
+  assert.equal(await hand.getAttribute('aria-pressed'), 'true');
+  await hand.click();
+  assert.equal(await hand.getAttribute('aria-pressed'), 'false');
+  const touch = await phone.context().newCDPSession(phone);
+  try {
+    const box = await photo.boundingBox();
+    const x = box.x + box.width / 2, y = box.y + box.height / 2;
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x - 30, y, id: 1 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: x - 30, y, id: 1 }, { x: x + 30, y, id: 2 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x - 66, y, id: 1 }, { x: x + 66, y, id: 2 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await phone.waitForFunction((before) =>
+      document.querySelector('.image-frame').getBoundingClientRect().width > before * 1.7, box.width);
+    const zoomed = await photo.boundingBox();
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 3 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + 28, y: y + 10, id: 3 }] });
+    await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await phone.waitForFunction((before) =>
+      document.querySelector('.image-frame').getBoundingClientRect().x > before + 16, zoomed.x);
+    await phone.getByRole('button', { name: '点击完整显示图片', exact: true }).click();
+  } finally {
+    await touch.detach();
+  }
+  result.cases.push('stable phone controls; no panel reflow; persistent hand mode; native two-finger zoom and one-finger pan');
   result.cases.push('local portrait analysis ran without a manual click');
   await take(phone, 'phone-portrait-ready');
+  await leaveMobileTool(phone);
   await phone.locator('[data-dock-tool="local"]:visible').click();
   const local = phone.locator('[data-motion="region-controls"]:visible');
   await local.locator('[data-action="create-region"][data-mask-type="radial"]').click();
@@ -235,6 +326,7 @@ try {
   result.cases.push('local mask controls stay reachable on short phones and in landscape');
   await works(desktop);
   await desktop.locator('.library-work-search').waitFor();
+  await showEditorTopbar(phone);
   await phone.getByRole('button', { name: '保存', exact: true }).click();
   await toast(phone, '已保存到', false);
   const saved = desktop.locator('.saved-work-open').filter({ hasText: 'smile-headshot' });

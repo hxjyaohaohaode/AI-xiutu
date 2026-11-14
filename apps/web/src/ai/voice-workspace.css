@@ -182,7 +182,7 @@
   font-weight: 650;
   white-space: nowrap;
 }
-.voice-start-button[aria-disabled='true'] {
+.voice-start-button:disabled {
   background: var(--voice-control);
   color: var(--voice-muted);
   cursor: default;
@@ -308,15 +308,25 @@
 
 @media (width < 640px) {
   .voice-call-workspace {
-    --voice-hit: 42px;
+    --voice-hit: 44px;
     inset-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
     inline-size: auto;
-    max-inline-size: 300px;
+    max-inline-size: 380px;
     margin-inline: auto;
     grid-template-rows: minmax(0, 1.25fr) auto minmax(0, .75fr);
     inset-block-start: max(58px, calc(var(--voice-viewport-top) + env(safe-area-inset-top) + 6px));
     inset-block-end: max(70px, calc(var(--voice-viewport-bottom) + env(safe-area-inset-bottom) + 10px));
   }
+  .voice-workspace-actions {
+    padding: 5px;
+    gap: 4px;
+    border-radius: 18px;
+  }
+  .voice-workspace-actions .assistant-call-status {
+    padding-inline: 4px;
+    font-size: 14px;
+  }
+  .voice-workspace-actions .assistant-call-status > span { flex-basis: 100%; }
   .voice-call-workspace:has(.voice-more[aria-expanded='true']) { grid-template-rows: minmax(0, .82fr) auto minmax(0, 1.18fr); }
   .voice-call-workspace:has(.voice-composer) { grid-template-rows: minmax(0, .28fr) auto minmax(0, 1fr); }
 }
@@ -337,7 +347,7 @@
   .voice-workspace-details { max-block-size: min(22dvh, 150px); }
 }
 @media (pointer: coarse) {
-  .voice-call-workspace { --voice-hit: 42px; }
+  .voice-call-workspace { --voice-hit: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .voice-orb-connecting { animation: none; }

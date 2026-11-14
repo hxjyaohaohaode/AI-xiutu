@@ -84,6 +84,20 @@ test('normal two-finger navigation remains possible but a new edit cannot join t
   assert.equal(ownership.canStart(6), true);
 });
 
+test('a second touch takes over an active edit without handing the remaining touch back to that edit', () => {
+  const state = new CanvasPointerOwnership();
+  assert.equal(state.down(1, null), 'allow');
+  assert.equal(state.canStart(1), true);
+  assert.equal(state.down(2, 1, true), 'navigate');
+  assert.equal(state.down(3, null, true), 'block');
+  assert.equal(state.up(2), true);
+  assert.equal(state.canStart(1), false);
+  assert.equal(state.up(1), true);
+  assert.equal(state.up(3), true);
+  assert.equal(state.down(4, null), 'allow');
+  assert.equal(state.canStart(4), true);
+});
+
 test('blur/source reset discards obsolete contacts without leaving the next gesture disabled', () => {
   const ownership = new CanvasPointerOwnership();
   ownership.down(1, null);

@@ -54,6 +54,7 @@ export interface PromptBarCommand {
 export interface PromptBarModel {
   key: string;
   name: string;
+  description?: string;
   tag?: string;
   disabled?: boolean;
 }
@@ -765,8 +766,10 @@ const PromptBar: React.FC<PromptBarProps> = ({
                   onClick={() => pick(row)}
                 >
                   {open === 'at' ? <span className="prompt-bar__row-icon">{renderIcon(row.icon, 15)}</span> : null}
-                  <span className="prompt-bar__row-name">{row.name}</span>
-                  {row.description ? <span className="prompt-bar__row-desc">{row.description}</span> : null}
+                  <span className="prompt-bar__row-label">
+                    <span className="prompt-bar__row-name">{row.name}</span>
+                    {row.description && <small className="prompt-bar__row-desc">{row.description}</small>}
+                  </span>
                   {open === 'model' ? (
                     <>
                       <span className="prompt-bar__row-tag">{row.tag}</span>

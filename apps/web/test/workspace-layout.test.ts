@@ -34,16 +34,24 @@ test('the fixed phone inspector and canvas agree about the measured dock clearan
     workspaceHeight: 596, toolShelfHeight: 56,
   };
   assert.deepEqual(phoneInspectorLayout(narrow), {
-    rect: { x: 0, y: 394, width: 320, height: 146 },
-    insets: { left: 0, right: 0, bottom: 202 },
+    rect: { x: 0, y: 362, width: 320, height: 178 },
+    insets: { left: 0, right: 0, bottom: 234 },
   });
   const landscape: Viewport = {
     width: 844, height: 390, bucket: 'tablet', workspaceHeight: 334, toolShelfHeight: 44,
   };
   assert.deepEqual(phoneInspectorLayout(landscape), {
-    rect: { x: 0, y: 174, width: 844, height: 104 },
-    insets: { left: 0, right: 0, bottom: 160 },
+    rect: { x: 0, y: 150, width: 844, height: 128 },
+    insets: { left: 0, right: 0, bottom: 184 },
   });
+  for (const view of [narrow, landscape]) {
+    const base = phoneInspectorLayout(view, { hideDock: true });
+    const expanded = phoneInspectorLayout(view, { hideDock: true, expanded: true });
+    assert.equal(base.rect.y + base.rect.height, view.workspaceHeight);
+    assert.equal(expanded.rect.y + expanded.rect.height, view.workspaceHeight);
+    assert.ok(expanded.rect.height > base.rect.height);
+    assert.deepEqual(expanded.insets, base.insets);
+  }
   const keyboard = phoneInspectorLayout({ ...narrow, workspaceHeight: 154 });
   assert.equal(keyboard.rect.y, 0);
   assert.equal(keyboard.rect.height, 98);

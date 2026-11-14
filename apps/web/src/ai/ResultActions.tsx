@@ -100,8 +100,8 @@ export function ResultActions({
   const displayedDraft = useRetainedDialogValue(draft);
   const [result, setResult] = useState<DecisionResponse | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
-  const current = useRef({ artwork, isDirty });
-  current.current = { artwork, isDirty };
+  const current = useRef({ artwork, isDirty, visible });
+  current.current = { artwork, isDirty, visible };
   const isImage = job.output?.kind === 'image';
   const isPlan = job.output?.kind === 'edit-plan';
   const hasCurrentAction = isImage || isPlan;
@@ -140,6 +140,10 @@ export function ResultActions({
     if (!response) return;
     setResult(response);
     setDraft(null);
+    if (request.action === 'fork' && isImage && current.current.visible && response.artwork) {
+      onOpen(response.artwork.id);
+      return;
+    }
     if (
       (request.action === 'replace' ||
         request.action === 'layer' ||
@@ -177,7 +181,7 @@ export function ResultActions({
             }
           >
             <GitBranch size={16} />
-            {t('另存作品')}
+            {t(isImage ? '添加到项目并编辑' : '另存作品')}
           </button>
         )}
         {hasCurrentAction && (
@@ -269,7 +273,7 @@ export function ResultActions({
           open={visible && !!draft}
           title={
             displayedDraft.action === 'fork'
-              ? t('另存独立作品')
+              ? t(isImage ? '添加为项目作品' : '另存独立作品')
               : displayedDraft.action === 'reject'
                 ? t('暂不采用这个结果')
                 : displayedDraft.action === 'layer'
@@ -403,7 +407,9 @@ export function ResultActions({
                   if (visible && draft) void confirm(draft);
                 }}
               >
-                {controller.busy ? <Busy label={t('保存决定')} /> : t('确认')}
+                {controller.busy
+                  ? <Busy label={t('保存决定')} />
+                  : t(displayedDraft.action === 'fork' && isImage ? '保存并编辑' : '确认')}
               </button>
             </div>
             {matchingUncertain && (
