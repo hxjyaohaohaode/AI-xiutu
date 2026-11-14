@@ -213,6 +213,7 @@ try {
   await take(desktop, 'desktop-trash-image-cards');
   await trash.getByRole('button', { name: '恢复', exact: true }).click();
   await trash.getByRole('button', { name: '关闭窗口', exact: true }).click();
+  await trash.waitFor({ state: 'hidden' });
   await saved.waitFor();
   await desktop.getByRole('button', { name: '删除作品 · smile-headshot', exact: true }).click();
   await desktop.getByRole('dialog').getByRole('button', { name: '移入回收站', exact: true }).click();

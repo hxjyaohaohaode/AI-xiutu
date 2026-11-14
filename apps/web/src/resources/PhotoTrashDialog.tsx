@@ -179,7 +179,7 @@ export function PhotoTrashDialog({
   return (<>
     <Modal title={t('回收站')} subtitle={t('删除后保留 48 小时，到期自动清理。')}
       profile="detail" className="photo-trash-dialog"
-      canClose={() => !restoring.current} onClose={onClose}>
+      onClose={onClose}>
       <InlineError message={actionError} />
       <InlineError message={localError} />
       <InlineError message={cloudError} />
