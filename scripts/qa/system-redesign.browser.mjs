@@ -615,7 +615,11 @@ async function changeView(page, id) {
     const menuId = await trigger.getAttribute('aria-controls');
     assert.ok(menuId);
     const navigation = page.locator(`nav[id="${menuId}"][data-open]`);
-    if (!(await navigation.isVisible())) await trigger.click();
+    if (!(await navigation.isVisible())) {
+      await trigger.click();
+      await navigation.waitFor();
+      await settle(page);
+    }
     await navigation.locator('[data-view="' + id + '"]').click();
     await navigation.waitFor({ state: 'detached' });
   } else await page.locator('.compact-view-tabs > button[data-view="' + id + '"]').click();

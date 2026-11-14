@@ -152,7 +152,12 @@ try {
   await secondDevice.getByText('浏览器验收完成', { exact: false }).first().waitFor({ timeout: 12000 });
   assert.equal(await secondEntry.inputValue(), '另一设备正在输入的草稿');
   await secondDevice.getByRole('button', { name: '选择助手模型与执行方式', exact: true }).click();
-  await secondDevice.getByRole('listbox', { name: '选择模型', exact: true }).getByRole('option', { name: /gpt-5\.4-mini/ }).click();
+  const assistantModel = secondDevice.getByRole('listbox', { name: '选择模型', exact: true })
+    .getByRole('option', { name: /gpt-5\.4-mini/ });
+  await assistantModel.getByText('快速看图和处理常用任务', { exact: true }).waitFor();
+  await assistantModel.getByText('5 点 / 轮', { exact: true }).waitFor();
+  await take(secondDevice, 'phone-assistant-model-list');
+  await assistantModel.click();
   await secondDevice.getByRole('button', { name: '本轮模型参数', exact: true }).click();
   await secondDevice.getByRole('region', { name: '本轮模型参数', exact: true }).waitFor();
   assert.equal(await secondDevice.evaluate(() => document.documentElement.scrollWidth), 390);
@@ -188,6 +193,7 @@ try {
   const imageModel = secondDevice.getByRole('option', { name: /gpt-image-2.6-flare/ });
   await imageModel.getByText('出图快，适合反复试稿', { exact: true }).waitFor();
   await imageModel.getByText('8 点 / 次', { exact: true }).waitFor();
+  await take(secondDevice, 'phone-image-model-list');
   await imageModel.click();
   await imageComposer.getByRole('button', { name: '生图参数', exact: true }).click();
   const imageOptions = imageComposer.getByRole('region', { name: '生图参数', exact: true });

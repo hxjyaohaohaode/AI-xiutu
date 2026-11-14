@@ -1173,6 +1173,7 @@ try {
         const readsBeforeDismiss = configReads;
         await notice.getByRole('button', { name: '收起云端状态', exact: true }).click();
         await notice.waitFor({ state: 'hidden' });
+        await showEditorTopbar(page);
         const restore = page.getByRole('button', { name: '查看云端连接状态', exact: true });
         await restore.waitFor();
         await restore.click({ trial: true });

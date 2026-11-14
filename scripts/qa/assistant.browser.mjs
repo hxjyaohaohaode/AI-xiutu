@@ -12,6 +12,7 @@ import { transaction, adjustUnits, reserveUnits, markUnknownHold } from '@ai-xiu
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
 import { migrateRecipeToV4 } from '@ai-xiutu/editor';
 import { runUsagePresentationChecks } from './usage-presentation.browser.mjs';
+import { showEditorTopbar } from './studio-navigation.mjs';
 import { leaveMobileTool } from './studio-navigation.mjs';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
@@ -194,6 +195,7 @@ async function closeAIPanel(target = page) {
       .click();
 }
 async function changeView(id, label) {
+  await showEditorTopbar(page);
   const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
   const project = page.getByRole('button', { name: '项目与用量', exact: true });
   if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
