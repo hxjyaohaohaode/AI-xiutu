@@ -736,9 +736,10 @@ export function CollaborateView({
             <span>{t('刷新')}</span>
           </button>
           {permissions.share && (
-            <button className="button button-secondary" onClick={onShare}>
+            <button className="button button-secondary collaboration-share-action" onClick={onShare}
+              aria-label={t('共享项目')} title={t('共享项目')}>
               <ShareNetwork size={17} />
-              {t('共享项目')}
+              <span>{t('共享项目')}</span>
             </button>
           )}
         </div>

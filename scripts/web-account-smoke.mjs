@@ -496,7 +496,10 @@ async function measureReachable(page, target, name) {
 async function setTheme(page, theme) {
   const current = await page.locator('html').getAttribute('data-theme');
   if (current === theme) return;
-  await page.getByRole('button', { name: '布局与工作台设置', exact: true }).click();
+  const settings = page.getByRole('button', { name: '布局与工作台设置', exact: true });
+  const expand = page.locator('.mobile-chrome-toggle[aria-expanded="false"]:visible');
+  if (!(await settings.isVisible()) && (await expand.isVisible())) await expand.click();
+  await settings.click();
   const dialog = page.getByRole('dialog', { name: '工作台设置', exact: true });
   await dialog
     .getByRole('button', { name: theme === 'dark' ? '深色' : '浅色', exact: true })

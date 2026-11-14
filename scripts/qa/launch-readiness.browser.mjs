@@ -252,6 +252,9 @@ try {
   await gallery.locator('.library-reference-masonry img:visible').first().waitFor();
   assert.equal(await gallery.locator('.library-folder-disclosure').getAttribute('open'), null);
   assert.equal(await narrow.evaluate(() => document.documentElement.scrollWidth), 320);
+  assert.ok(await narrow.locator('.library-context-tabs:visible').evaluate((node) =>
+    node.getBoundingClientRect().height <= 44 && node.clientWidth + 2 >= node.scrollWidth),
+  'the narrow gallery navigation fits all sections and actions on one line');
   await take(narrow, 'narrow-phone-library');
   result.cases.push('operator replaces code and updates the visible exchange on another context');
   await narrow.getByRole('button', { name: '打开空间与项目', exact: true }).click();
@@ -259,6 +262,8 @@ try {
   await selectView(narrow, 'collaborate');
   await narrow.locator('.collaboration-view:visible').first().waitFor();
   assert.equal(await narrow.evaluate(() => document.documentElement.scrollWidth), 320);
+  assert.ok(await narrow.locator('.collaboration-view:visible .view-heading').first().evaluate((node) =>
+    node.getBoundingClientRect().height < 76), 'the narrow collaboration header leaves room for discussions');
   await take(narrow, 'narrow-phone-collaboration');
   const landscape = await pageFor('owner', { width: 844, height: 390 });
   await landscape.locator('input[type=file]').first().setInputFiles(sample);

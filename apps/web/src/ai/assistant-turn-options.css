@@ -36,7 +36,12 @@
   .voice-model-popout { position: absolute; inset: auto calc(100% + 9px) 0 auto; width: 305px; }
 }
 @media (max-width: 759px) {
-  .assistant-turn-options { width: 100%; }
+  .assistant-turn-options { width: 100%; gap: 6px; padding: 8px; max-height: 49dvh; }
+  .assistant-turn-options header > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 7px; }
+  .assistant-turn-options header strong { font-size: 13px; }
+  .assistant-turn-options header small { font-size: 11px; }
   .assistant-parameter-trigger { width: 42px; min-width: 42px; min-height: 42px; }
+  .assistant-turn-fields, .assistant-turn-schema { gap: 5px 7px; }
+  .assistant-turn-fields label { gap: 2px; }
   .assistant-turn-fields :is(select,input,textarea) { font-size: 16px; }
 }

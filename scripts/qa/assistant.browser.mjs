@@ -2090,7 +2090,11 @@ try {
     await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
     await changeView('editor', '精修');
     const collageEntry = page.locator('[data-action="open-collage"]:visible');
-    if (!(await collageEntry.isVisible())) await page.locator('.canvas-tools-trigger').click();
+    if (!(await collageEntry.isVisible())) {
+      const compactHeader = page.locator('.mobile-chrome-toggle[aria-expanded="false"]:visible');
+      if (await compactHeader.isVisible()) await compactHeader.click();
+      else await page.locator('.canvas-tools-trigger').click();
+    }
     await collageEntry.click();
     const collage = page.locator('.collage-studio:visible');
     const collageCanvas = collage.getByRole('img', { name: '拼图预览' });

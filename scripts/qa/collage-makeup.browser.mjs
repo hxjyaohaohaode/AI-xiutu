@@ -76,8 +76,9 @@ function canvasPixel(canvas, x, y) {
 async function openCollage(page) {
   const entry = page.locator('[data-action="open-collage"]:visible');
   const more = page.locator('.canvas-tools-trigger:visible');
-  await entry.or(more).first().waitFor();
-  if (!(await entry.count())) await more.click();
+  const compactHeader = page.locator('.mobile-chrome-toggle[aria-expanded="false"]:visible');
+  await entry.or(more).or(compactHeader).first().waitFor();
+  if (!(await entry.count())) await (await compactHeader.isVisible() ? compactHeader : more).click();
   await entry.click();
   const surface = page.locator('.collage-studio:visible');
   await surface.waitFor();

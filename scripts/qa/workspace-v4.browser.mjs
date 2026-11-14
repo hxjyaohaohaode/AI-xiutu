@@ -3025,19 +3025,11 @@ try {
       .click();
     const afterTeamSelection = await navigationClosed(page);
     await page.getByRole('button', { name: '打开空间与项目', exact: true }).click();
-    const [projectResponse, assetsResponse] = await Promise.all([
+    const [projectResponse] = await Promise.all([
       page.waitForResponse(
         (response) =>
           response.request().method() === 'GET' &&
           new URL(response.url()).pathname === `/v1/projects/${projectId}`,
-      ),
-      page.waitForResponse(
-        (response) => {
-          const url = new URL(response.url());
-          return response.request().method() === 'GET' &&
-            url.pathname === `/v1/projects/${projectId}/assets` &&
-            !url.searchParams.has('groupBy');
-        },
       ),
       page
         .getByRole('navigation', { name: '项目', exact: true })
@@ -3046,6 +3038,17 @@ try {
     ]);
     assert.equal(projectResponse.status(), 200);
     assert.equal((await projectResponse.json()).project.id, projectId);
+    const afterProjectSelection = await navigationClosed(page);
+    await changeView(page, 'works', '作品');
+    const [assetsResponse] = await Promise.all([
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return response.request().method() === 'GET' &&
+          url.pathname === `/v1/projects/${projectId}/assets` &&
+          !url.searchParams.has('groupBy');
+      }),
+      page.getByRole('button', { name: '项目原图', exact: true }).click(),
+    ]);
     assert.equal(assetsResponse.status(), 200);
     assert.ok(
       (await assetsResponse.json()).assets.some(
@@ -3053,7 +3056,6 @@ try {
       ),
       'the project asset listing contains the actual collage source',
     );
-    const afterProjectSelection = await navigationClosed(page);
     async function checkDialog(layout, name, action) {
       for (const [width, height] of [
         [1440, 960],

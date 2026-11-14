@@ -1126,6 +1126,8 @@ async function checkModalTooltip(page, drawing) {
 }
 
 async function sketchScreens(page, locale) {
+  const compactHeader = page.locator('.mobile-chrome-toggle[aria-expanded="false"]:visible');
+  if (await compactHeader.isVisible()) await compactHeader.click();
   await page.locator('[data-action="open-sketch"]:visible').first().click();
   const drawing = page.locator('dialog.drawing-modal[open]');
   await drawing.waitFor();
@@ -1257,7 +1259,9 @@ async function mobileEditingFlow() {
     assert.equal(turnWrites, 0, 'switching views and previewing attachments do not submit requests');
 
     const canvasTools = page.getByRole('button', { name: '画布工具', exact: true });
-    if (await canvasTools.isVisible()) await canvasTools.click();
+    const compactHeader = page.locator('.mobile-chrome-toggle[aria-expanded="false"]:visible');
+    if (await compactHeader.isVisible()) await compactHeader.click();
+    else if (await canvasTools.isVisible()) await canvasTools.click();
     await page.locator('[data-action="open-sketch"]:visible').first().click();
     const drawing = page.locator('dialog.drawing-modal[open]');
     const canvas = drawing.locator('.drawing-surface canvas');
@@ -1925,7 +1929,7 @@ async function accountAndOperationsReview(section, requestedPhone) {
   // Explicit fixture setup in the disposable in-memory database, never a production grant.
   await db.query('INSERT INTO operator_users(user_id) VALUES($1) ON CONFLICT (user_id) DO NOTHING',[reviewFixture.actorId]);
   const operationsEvidence=[];
-  const tabs=['overview','users','config','plans','models','assistant','quota','usage','reconciliation','audit'];
+  const tabs=['overview','users','config','plans','support','models','assistant','quota','usage','reconciliation','audit'];
   for (const phone of [requestedPhone]) {
     const {context,page}=await newPage({
       locale:'zh-CN',viewport:phone?{width:390,height:844}:{width:1440,height:960},touch:phone,
@@ -2040,7 +2044,7 @@ try {
   for (const phone of [false,true])
     await check('account:'+(phone?'phone':'desktop')+'-four-sections',()=>accountAndOperationsReview('account',phone));
   for (const phone of [false,true])
-    await check('operations:'+(phone?'phone':'desktop')+'-ten-tabs',()=>accountAndOperationsReview('operations',phone));
+    await check('operations:'+(phone?'phone':'desktop')+'-all-tabs',()=>accountAndOperationsReview('operations',phone));
   await check('brand:dark-studio-and-favicon', async () => {
     const { context, page } = await newPage({
       locale: 'en', viewport: { width: 1440, height: 960 }, theme: 'dark', motion: 'reduce',
