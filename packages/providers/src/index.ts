@@ -30,8 +30,10 @@ export interface TencentCredentials {
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const hmac = (key: string | Buffer, value: string) =>
   createHmac('sha256', key).update(value).digest();
+const isRequestId = (value: unknown): value is string =>
+  typeof value === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(value);
 const requestIdOf = (result: Record<string, unknown>) => {
-  if (typeof result.RequestId !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(result.RequestId))
+  if (!isRequestId(result.RequestId))
     throw new ProviderError('PROVIDER_REQUEST_ID_MISSING', 'unknown');
   return result.RequestId;
 };
@@ -313,9 +315,10 @@ export function createAlibabaSms(
         throw new ProviderError('PROVIDER_NETWORK_UNKNOWN', 'unknown');
       }
       const data = await readJson(response, signal);
-      const requestId = requestIdOf(data);
+      const receipt = data.Model as Record<string, unknown> | undefined;
       if (response.ok && data.Code === 'OK' && data.Success === true) {
-        const receipt = data.Model as Record<string, unknown> | undefined;
+        // PNVS can return the request ID only inside Model.
+        const requestId = isRequestId(data.RequestId) ? data.RequestId : requestIdOf(receipt ?? {});
         if (
           typeof receipt?.BizId === 'string' &&
           /^[A-Za-z0-9._:^|-]{1,128}$/.test(receipt.BizId) &&
@@ -324,6 +327,7 @@ export function createAlibabaSms(
           return { requestId };
       }
       if (
+        isRequestId(data.RequestId) &&
         response.status < 500 &&
         ![408, 429].includes(response.status) &&
         data.Success !== true &&

@@ -78,19 +78,25 @@ test('Alibaba SMS Authentication binds each OTP purpose, signature and receipt w
       return Response.json({
         Code: 'OK',
         Success: true,
-        RequestId: 'request-1',
-        Model: { BizId: 'fixture^1', OutId: attempts === 4 ? 'unrelated' : query.get('OutId') },
+        ...(attempts !== 2 && attempts !== 5 ? { RequestId: 'request-1' } : {}),
+        Model: {
+          ...(attempts !== 5 ? { RequestId: 'nested-request-1' } : {}),
+          BizId: 'fixture^1',
+          OutId: attempts === 4 ? 'unrelated' : query.get('OutId'),
+        },
       });
     }),
   );
   assert.equal(adapter.configured, true);
-  for (const purpose of ['register', 'login', 'reset'] as const)
-    assert.deepEqual(await adapter.send({ ...otp, purpose }), { requestId: 'request-1' });
+  assert.deepEqual(await adapter.send(otp), { requestId: 'request-1' });
+  assert.deepEqual(await adapter.send({ ...otp, purpose: 'login' }), { requestId: 'nested-request-1' });
+  assert.deepEqual(await adapter.send({ ...otp, purpose: 'reset' }), { requestId: 'request-1' });
   await assert.rejects(adapter.send(otp), unknown);
+  await assert.rejects(adapter.send(otp), { code: 'PROVIDER_REQUEST_ID_MISSING', outcome: 'unknown' });
   await assert.rejects(adapter.send({ ...otp, phone: '+12025550123' }), {
     code: 'SMS_PHONE_UNSUPPORTED',
   });
-  assert.equal(attempts, 4);
+  assert.equal(attempts, 5);
   const broken = createSms(
     aliEnv,
     fetchAs(async () => Response.json({ Code: 'InternalError', RequestId: 'r1' })),

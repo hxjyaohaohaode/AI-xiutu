@@ -7,8 +7,8 @@ ACS3-HMAC-SHA256 and fixed `dypnsapi.aliyuncs.com` HTTPS. Configure a RAM key
 pair, an approved platform signature and a template for each OTP purpose. The
 adapter sends the locally generated code and minutes as template variables.
 The application keeps its existing purpose-scoped OTP verification and
-expiry. Provider acceptance requires `Success`, `Code`, a request ID and a
-business receipt. A transport error or uncertain response is never retried
+expiry. Provider acceptance requires `Success`, `Code`, a request ID from the
+response envelope or `Model.RequestId`, and a business receipt. A transport error or uncertain response is never retried
 automatically. Mainland China numbers only. [Official SendSmsVerifyCode reference](https://help.aliyun.com/zh/pnvs/developer-reference/api-dypnsapi-2017-05-25-sendsmsverifycode)
 
 `createTencentSms(env)` implements Tencent SMS `SendSms`, API `2021-01-11`,
