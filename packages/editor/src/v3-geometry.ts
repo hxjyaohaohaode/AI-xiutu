@@ -182,7 +182,9 @@ function locateWarpedContent(
   let point = target,
     mapped = reverse(point),
     distance = error(mapped);
-  for (let i = 0; i < 12 && distance > 0.15; i++) {
+  // Subpixel lid changes are visible in high magnification. A coarse initial
+  // stop snapped their landmarks to the original positions during slider use.
+  for (let i = 0; i < 12 && distance > 0.015; i++) {
     const x = reverse({ x: point.x + dx, y: point.y }),
       y = reverse({ x: point.x, y: point.y + dy });
     const a = (x.x - mapped.x) / dx,

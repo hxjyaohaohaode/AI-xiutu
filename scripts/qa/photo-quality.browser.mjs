@@ -436,6 +436,7 @@ try {
     );
     const analysis = validatePortraitAnalysis(result, frame);
     assert.equal(analysis.algorithmVersion, SCENE_PORTRAIT_ANALYSIS);
+    await writeFile(join(output, source.name + '-analysis.json'), JSON.stringify(analysis));
     if (source.name === 'basketball')
       assert.ok(
         analysis.targets.some(({ kind }) => kind === 'face'),
@@ -513,7 +514,7 @@ try {
         const slim = applyPortraitValues(createRecipeV4(), analysis, target.id, { faceSlim: 55 });
         assert.equal(slim.warp.strokes.length, 1);
         const field = slim.warp.strokes[0];
-        assert.equal(field.algorithm, 'face-field-v2');
+        assert.equal(field.algorithm, 'portrait-field-v1');
         assert.ok(field.contour.rows.length >= 12);
         assert.ok(
           field.contour.rows.some(({ leftShift, rightShift }) => leftShift > 0 || rightShift > 0),
@@ -584,7 +585,7 @@ try {
           assert.ok(ratio(singleV, 150, 379) < 0.989, 'single lower-jaw narrowing stays visible');
           assert.ok(ratio(singleEye, 159, 145) > 1.015, 'a clear eye opening still responds');
           assert.ok(cheek > 0.955 && cheek < 0.992 && jaw > 0.947 && jaw < 0.993);
-          assert.ok(aperture > 1.015 && aperture < 1.105);
+          assert.ok(aperture > 1.015 && aperture < 1.105, JSON.stringify({ photo: source.name, cheek, jaw, aperture, strongJaw }));
           assert.ok(strongJaw > 0.9 && strongJaw < 0.995);
           assert.ok(
             Math.abs(mouthOpening - 1) < 0.035,

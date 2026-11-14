@@ -127,7 +127,14 @@ export function compilePortraitWarp(
       }
     }
   }
-  const safe = derivativeScale(field, cols, rows, stepX, stepY, 0.72);
+  // Relieve high strain where it occurs before applying a global bound. A
+  // narrow pin at the cheek or jaw must not flatten the distant eye movement.
+  const limit = 0.72;
+  let safe = derivativeScale(field, cols, rows, stepX, stepY, limit);
+  if (safe < 1) {
+    constrainContour(field, cols, rows, stepX, stepY, limit, mobility);
+    safe = derivativeScale(field, cols, rows, stepX, stepY, limit);
+  }
   return (x: number, y: number): Point => {
     if (x <= left || x >= right || y <= top || y >= bottom) return { x, y };
     const u = (x - left) / stepX, v = (y - top) / stepY;
@@ -177,6 +184,7 @@ function constrainContour(
   stepX: number,
   stepY: number,
   limit: number,
+  mobility?: Float32Array,
 ) {
   const stride = cols * 2;
   const project = (a: number, b: number, maximum: number, moveA: boolean, moveB: boolean) => {
@@ -184,14 +192,17 @@ function constrainContour(
     const dv = field[b + 1]! - field[a + 1]!;
     const distanceSquared = du * du + dv * dv;
     if (distanceSquared <= maximum * maximum) return;
-    const fraction = (1 - maximum / Math.sqrt(distanceSquared)) / (Number(moveA) + Number(moveB));
-    if (moveA) {
-      field[a]! += fraction * du;
-      field[a + 1]! += fraction * dv;
+    const weightA = moveA ? (mobility?.[a / 2] ?? 1) : 0;
+    const weightB = moveB ? (mobility?.[b / 2] ?? 1) : 0;
+    if (weightA + weightB === 0) return;
+    const fraction = (1 - maximum / Math.sqrt(distanceSquared)) / (weightA + weightB);
+    if (weightA) {
+      field[a]! += fraction * du * weightA;
+      field[a + 1]! += fraction * dv * weightA;
     }
-    if (moveB) {
-      field[b]! -= fraction * du;
-      field[b + 1]! -= fraction * dv;
+    if (weightB) {
+      field[b]! -= fraction * du * weightB;
+      field[b + 1]! -= fraction * dv * weightB;
     }
   };
   // Repair excessive strain in the affected neighborhood. Alternating sweeps

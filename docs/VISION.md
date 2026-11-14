@@ -1,6 +1,6 @@
 # 人物识别、手工标注与真实可用性
 
-本页说明 v3 人像模块的实际依赖、失败行为、扩展入口和质量边界。人物识别提供关键点和分割结果；美肤、五官、美体、化妆控制随后编译成同一个编辑引擎的局部调节、绘制和位移节点。识别结果不是美颜效果本身，不能用识别成功代替成片质量验收。
+本页说明人像模块的实际依赖、失败行为、扩展入口和质量边界。人物识别提供关键点和分割结果；美肤、五官、美体、化妆控制随后编译成同一个编辑引擎的局部调节、绘制和位移节点。识别成功和成片质量分别验收。
 
 ## 1. 同源模型准备
 
@@ -9,16 +9,18 @@ npm ci
 npm run vision:prepare
 ```
 
-脚本从 Google 官方公开模型目录下载四个固定版本，逐文件校验 SHA-256，复制锁文件指定版本的 Tasks Vision WebAssembly 运行时，并生成 `apps/web/public/vision/manifest.json`。模型从网站自己的 `/vision/` 加载，照片留在浏览器。四个模型约 27.0 MB，另有 WebAssembly 运行时。
+脚本从 Google 和 OpenCV 的官方来源下载固定版本的模型，逐文件校验 SHA-256，复制锁文件指定的 Tasks Vision 与 ONNX Runtime WebAssembly 资源，并生成 `apps/web/public/vision/manifest.json`。基础识别的六个模型约 28 MB，另有抠图模型和 WebAssembly 运行时。它们按需从网站自己的 `/vision/` 加载，自动识别时照片留在浏览器。
 
 | 资源                        | 用途                         | 不是它能保证的能力                                     |
 | --------------------------- | ---------------------------- | ------------------------------------------------------ |
 | Face Landmarker             | 面部关键点、五官定位         | 身份认证、遮挡后精确补全、任意角度人脸可靠识别         |
 | BlazeFace Full Range        | 为远景小脸提供二次定位窗口   | 在缺少足够像素时确认五官、修饰被遮挡的部位             |
+| YuNet                       | 补充遗漏的小脸和暗光人脸候选 | 代替稠密点位复核，或判断任意画面是否为海报             |
 | Pose Landmarker Lite        | 身体关键点、可见度与人物分割 | 多人拥挤、被遮挡关节、极端姿态的产品级美体质量保证     |
 | Selfie Multiclass Segmenter | 皮肤、头发、衣物、背景等类别 | 单像素准确的商业级头发抠图、所有肤色与光照的无偏误分割 |
+| Hair Segmenter              | 近景发顶、发际线与遮挡证据   | 找回被刘海遮住的发根或重建缺失的发丝                   |
 
-官方模型卡注明 Apache 2.0，许可副本和来源放在 [`third-party`](../third-party/NOTICE.md)。在产品中再分发模型时随同保留这些文件。
+MediaPipe 模型为 Apache 2.0，YuNet 为 MIT。许可副本及来源见 [`third-party`](../third-party/NOTICE.md)，在产品中再分发时随同保留。
 
 ## 2. 浏览器运行条件与当前实测边界
 
@@ -37,7 +39,7 @@ Web Worker 中需要 OffscreenCanvas、WebAssembly 和可用的 WebGL 2 图像�
 - JSON 文件不超过 2 MiB；禁止执行代码、加载远程图片或模型。
 - schema、提供方、算法版本、点位范围、蒙版预算均须通过 `@ai-xiutu/portrait` 校验。
 - 标注的 `frame`（`SourceFrame` 类型）绑定当前尺寸和 `SHA-256(UTF-8("宽x高:srgb-rgba8:") + 原始 RGBA 字节)`。
-- 浏览器输出 `provider: mediapipe` 和 `algorithmVersion: mediapipe-v4-visible-regions`，并接受 v1、v2、v3 和当前标注格式。已有配方继续使用保存当时的算子和参数。
+- 浏览器输出 `provider: mediapipe` 和 `algorithmVersion: portrait-v5-scene`，同时接受此前的 v1 至 v4 标注格式。已有配方继续使用保存当时的算子和参数。
 - 原图旋转归一化或色彩解码不同会产生不同摘要；应对识别与浏览器导入使用同一份已规范化的 PNG。
 
 源文件和标准入口见 [`packages/portrait`](../packages/portrait/README.md) 与 [`EXTENSIONS.md`](EXTENSIONS.md)。产品不内置测试照片或预生成假标注。

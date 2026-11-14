@@ -15,7 +15,7 @@ import {
   type WarpStrokeV3,
 } from '../src/index.js';
 import { applyWarpV3, compileWarpFieldV3 } from '../src/v3-warp.js';
-import { compileFaceWarp } from '../src/face-warp.js';
+import { compileFaceWarp, compilePortraitWarp } from '../src/face-warp.js';
 import { compileFaceContour, faceContourBounds } from '../src/face-contour.js';
 import { sampleBilinearV3, sampleBoundedCubicV3 } from '../src/v3-pixels.js';
 import { flowWarpPoint, flowWarpPointV2 } from '../src/v3-flow.js';
@@ -479,6 +479,39 @@ test('an eye transform preserves the jaw displacement and shares a bounded inver
       assert.ok(area > 0.05, 'the combined field must preserve local orientation');
     }
   }
+});
+
+test('scene protection pins a background line without flattening a distant eye adjustment', () => {
+  const eye: FaceWarpAnchorV3 = {
+    mode: 'affine',
+    from: { x: 0.43, y: 0.34 },
+    to: { x: 0.43, y: 0.34 },
+    radius: 0.11,
+    strength: 1,
+    affine: { radiusY: 0.057, axis: 0, scaleX: 1.1, scaleY: 1.13, rotation: 0 },
+  };
+  const jaw: FaceWarpAnchorV3 = {
+    mode: 'push',
+    from: { x: 0.38, y: 0.70 },
+    to: { x: 0.48, y: 0.70 },
+    radius: 0.19,
+    strength: 1,
+  };
+  const line = (x: number, y: number) =>
+    y > 0.52 ? Math.max(0, 1 - Math.max(0, Math.abs(x - 0.38) - 0.003) / 0.012) : 0;
+  const feature = compilePortraitWarp([eye], undefined, dimensions, line);
+  const combined = compilePortraitWarp([eye, jaw], undefined, dimensions, line);
+  const top = { x: 129, y: 69 };
+  const foot = { x: 114, y: 156 };
+  assert.deepEqual(combined(foot.x, foot.y), foot);
+  const expected = feature(top.x, top.y).y - top.y;
+  const retained = combined(top.x, top.y).y - top.y;
+  assert.ok(expected > 0.5 && retained > expected * 0.65);
+  for (let y = 100; y < 185; y += 2)
+    for (let x = 70; x < 158; x += 2) {
+      const a = combined(x, y), b = combined(x + 1, y), c = combined(x, y + 1);
+      assert.ok((b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x) > 0.05);
+    }
 });
 
 test('face contour is signed, preserves the central features and reaches the fitted outline without folding', () => {

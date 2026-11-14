@@ -26,7 +26,7 @@ cp .env.example .env
 
 ### 人物模型的同源资源
 
-`vision:prepare` 从 Google 官方版本 1 地址下载 Face Landmarker、BlazeFace Full Range、Pose Landmarker Lite 和 Selfie Multiclass Segmenter（合计约 27.0 MB），逐一验证源码中固定的 SHA-256，再复制锁定版本的 MediaPipe 1.2.2 WASM 加载器和二进制。资源从网站自己的 `/vision/` 提供，照片留在浏览器。
+`vision:prepare` 下载固定版本的 MediaPipe 和 OpenCV YuNet 模型，逐一验证源码中固定的 SHA-256，再复制锁定版本的 MediaPipe 和 ONNX Runtime WASM 加载器和二进制。上线时网页与其 `/vision/` 静态文件应使用同一个构建，按需从网站自身加载。自动识别时照片留在浏览器。
 
 Docker 构建默认准备这些资源；明确不部署时可设置构建参数 `WITH_PORTRAIT_MODELS=false`，相应自动功能会报告未安装。离线构建需先建立可信的已校验构建缓存，不能把任意同名模型当作正确资源。模型下载失败使启用模型的构建失败；没有静默假成功。
 

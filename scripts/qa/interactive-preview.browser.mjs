@@ -456,7 +456,8 @@ async function verifyWorkerRecovery({ png, source }) {
       window.Worker = class extends NativeWorker {
         constructor(url, options) {
           super(url, options);
-          if (!new URL(String(url), location.href).pathname.endsWith('/render.worker.ts')) return;
+          if (!/\/render\.worker(?:\.ts|-[\w-]+\.js)$/.test(new URL(String(url), location.href).pathname))
+            return;
           const record = {
             id: probe.workers.length + 1,
             instance: this,
