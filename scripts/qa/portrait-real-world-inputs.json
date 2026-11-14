@@ -1,0 +1,191 @@
+{
+  "inputs": [
+    {
+      "name": "low-phone-light",
+      "source": "Ponor",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "tags": ["low-light"],
+      "page": "https://commons.wikimedia.org/wiki/File:Low-key_photography_-_portrait_of_a_young_man.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/5/5d/Low-key_photography_-_portrait_of_a_young_man.jpg",
+      "bytes": 58392,
+      "sha256": "deb78a8242b4b6b11a1bc6e00aca0e5a529784fd0f17cbd2dc786453d2f558fe"
+    },
+    {
+      "name": "low-nina",
+      "source": "Gürkan Sengün",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "tags": ["low-light"],
+      "page": "https://commons.wikimedia.org/wiki/File:Low_key_Nina.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/1/13/Low_key_Nina.jpg",
+      "bytes": 1889808,
+      "sha256": "2588062b5383b89f7473b3dab778e91223d84898a482b5568d23785731375f5a"
+    },
+    {
+      "name": "group-crew",
+      "source": "NASA",
+      "license": "Public domain",
+      "licenseUrl": "https://commons.wikimedia.org/wiki/Template:PD-USGov-NASA",
+      "tags": ["group-full-body"],
+      "page": "https://commons.wikimedia.org/wiki/File:Apollo_1_crew_posing_at_Downey_8.22.66.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/a/a7/Apollo_1_crew_posing_at_Downey_8.22.66.jpg",
+      "bytes": 177177,
+      "sha256": "0e2deddc2339b217246bcbe4abc8dad5acbc5a928d0315fb9f2a610915a1e14c"
+    },
+    {
+      "name": "group-street",
+      "source": "Adam Jones",
+      "license": "CC BY-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "tags": ["group-full-body", "small-faces"],
+      "page": "https://commons.wikimedia.org/wiki/File:Young_Women_on_Shopping_Street_-_Sapporo_-_Hokkaido_-_Japan_(47977657236).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/8/86/Young_Women_on_Shopping_Street_-_Sapporo_-_Hokkaido_-_Japan_(47977657236).jpg",
+      "bytes": 3543970,
+      "sha256": "5c6a89af5c6677fe4cf20d04ca08997e745e90857043b405c6610db2d994c182"
+    },
+    {
+      "name": "group-distance",
+      "source": "首相官邸ホームページ",
+      "license": "CC BY 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+      "tags": ["group-full-body", "small-faces"],
+      "page": "https://commons.wikimedia.org/wiki/File:Family_photo_of_G7_leaders_at_2017_Taormina_Summit.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/9/96/Family_photo_of_G7_leaders_at_2017_Taormina_Summit.jpg",
+      "bytes": 546441,
+      "sha256": "88053846c54b227e768ffe381e5853b1c30b3ca63c9d181aa3931f9004772351"
+    },
+    {
+      "name": "half-mask",
+      "source": "Jūlija Mažora",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "tags": ["occlusion"],
+      "page": "https://commons.wikimedia.org/wiki/File:Half_face_portrait_of_a_mysterious_woman_with_a_mask.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/8/81/Half_face_portrait_of_a_mysterious_woman_with_a_mask.jpg",
+      "bytes": 7005609,
+      "sha256": "2b752f38fa5489d899d275853cf46f1384408a53d5a94d12765aa1cf5c388d44"
+    },
+    {
+      "name": "smile-fringe",
+      "source": "Heather Hazzan / SELF Magazine",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "tags": ["profile", "occlusion"],
+      "page": "https://commons.wikimedia.org/wiki/File:Closeup_of_woman_smiling_(48546099182).jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/f/ff/Closeup_of_woman_smiling_(48546099182).jpg",
+      "bytes": 6059998,
+      "sha256": "e9888baaa45e52f91a80fb2e34b9e3ce487151e39c6ecc1125427ed80a7bebb4"
+    },
+    {
+      "name": "profile-curls",
+      "source": "Pete Bellis",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "tags": ["profile"],
+      "page": "https://commons.wikimedia.org/wiki/File:Close-up_of_woman%27s_face_%28Unsplash%29.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/3/3a/Close-up_of_woman%27s_face_%28Unsplash%29.jpg",
+      "bytes": 14109224,
+      "sha256": "f589257160d9b0ee1ea6f20e1e05bc9ddb1c4b93300ca88cce9405ed9962ae6f"
+    },
+    {
+      "name": "smile-freckles",
+      "source": "Eddy Van 3000",
+      "license": "CC BY-SA 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.0/",
+      "tags": ["teeth", "pupils", "hair"],
+      "page": "https://commons.wikimedia.org/wiki/File:Smiling_model_with_freckles.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/3/38/Smiling_model_with_freckles.jpg",
+      "bytes": 2319598,
+      "sha256": "de2052c9fdc9767e13e000524a79aa519fb46b6c76ad2bef68304896c83a27ba"
+    },
+    {
+      "name": "smile-studio",
+      "source": "Mahesk",
+      "license": "CC0 1.0",
+      "licenseUrl": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "tags": ["teeth", "pupils"],
+      "page": "https://commons.wikimedia.org/wiki/File:Woman_smiling.png",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/c/c5/Woman_smiling.png",
+      "bytes": 1135608,
+      "sha256": "e07e021a0ac5951e1a9b2a6b07bb035819e2108ab56babb4fddf3b191032b629"
+    },
+    {
+      "name": "smile-headshot",
+      "source": "Mollieoneal",
+      "license": "CC BY-SA 4.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0/",
+      "tags": ["teeth", "pupils", "hair"],
+      "page": "https://commons.wikimedia.org/wiki/File:Helen_Headshot.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/21/Helen_Headshot.jpg",
+      "bytes": 932773,
+      "sha256": "dbfd81c78c5d35c433d89d7124e73f7fac8cab03da6b8944e051f01db9d4de5e"
+    },
+    {
+      "name": "low-vox",
+      "source": "Vox Efx",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "tags": ["low-light"],
+      "page": "https://commons.wikimedia.org/wiki/File:Low_key.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/c/c4/Low_key.jpg",
+      "bytes": 1661598,
+      "sha256": "4417a542edefbff44c5bd2ce4a6320a90ef27850d8ceb07ddab4b5ff90503a00"
+    },
+    {
+      "name": "low-koshy",
+      "source": "Koshy Koshy",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "tags": ["low-light"],
+      "page": "https://commons.wikimedia.org/wiki/File:Low_Key_Portrait_%2829906320551%29.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/2c/Low_Key_Portrait_%2829906320551%29.jpg",
+      "bytes": 156540,
+      "sha256": "193cc4eabbdbb7ce4d5f245da6d06a40492685341accbcdd0b4db0fbacdb8282"
+    },
+    {
+      "name": "standing-pat",
+      "source": "Contatta",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "tags": ["full-body"],
+      "page": "https://commons.wikimedia.org/wiki/File:Pat-standing-medium.png",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/2/21/Pat-standing-medium.png",
+      "bytes": 217605,
+      "sha256": "5b122ff3db2e41ebf6317365bfe7dda21c4ba21b70a6ccd346b71e6376863584"
+    },
+    {
+      "name": "standing-guo",
+      "source": "Tan J3nny",
+      "license": "CC BY-SA 3.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "tags": ["full-body"],
+      "page": "https://commons.wikimedia.org/wiki/File:%E9%83%AD%E6%98%8E%E7%BF%94.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/d/d0/%E9%83%AD%E6%98%8E%E7%BF%94.jpg",
+      "bytes": 94641,
+      "sha256": "e7974df10dcd7912f575b88222ce818c22c157e6a36006b761dd41b837098723"
+    },
+    {
+      "name": "profile-pedro",
+      "source": "Pedro Ribeiro Simões",
+      "license": "CC BY 2.0",
+      "licenseUrl": "https://creativecommons.org/licenses/by/2.0/",
+      "tags": ["profile"],
+      "page": "https://commons.wikimedia.org/wiki/File:Man_profile_portrait_%285652920331%29.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/d/d7/Man_profile_portrait_%285652920331%29.jpg",
+      "bytes": 2634373,
+      "sha256": "85656ca423d392e2047a4b23a56447c448428a1712882682bffa7b11ba02806c"
+    },
+    {
+      "name": "group-aerobics",
+      "source": "ShinyFan",
+      "license": "CC BY-SA 2.5",
+      "licenseUrl": "https://creativecommons.org/licenses/by-sa/2.5/",
+      "tags": ["group-full-body", "arms"],
+      "page": "https://commons.wikimedia.org/wiki/File:Step_aerobics_demonstration.jpg",
+      "url": "https://upload.wikimedia.org/wikipedia/commons/b/b9/Step_aerobics_demonstration.jpg",
+      "bytes": 192551,
+      "sha256": "f81f0cf1171fbfcc3122c6a3005a7a062f0e538c78cd0b96db2926f1ca5e3f3a"
+    }
+  ]
+}

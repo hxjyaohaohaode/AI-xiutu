@@ -3,6 +3,16 @@ import type { Point, SelectionMaskV3 } from '@ai-xiutu/editor';
 
 export const REFINED_PORTRAIT_ANALYSIS = 'mediapipe-v2-face-roi';
 export const PRECISE_PORTRAIT_ANALYSIS = 'mediapipe-v3-part-evidence';
+export const OBSERVED_PORTRAIT_ANALYSIS = 'mediapipe-v4-visible-regions';
+
+export interface VisibleFaceParts {
+  pixels: number;
+  leftEye: boolean;
+  rightEye: boolean;
+  mouth: boolean;
+  nose: boolean;
+  profile: boolean;
+}
 
 /** Detection is geometric analysis, never identity recognition or a beauty score. */
 export interface PortraitTarget {
@@ -12,6 +22,7 @@ export interface PortraitTarget {
   landmarks: (Point & { z?: number; visibility?: number })[];
   contours: Record<string, Point[]>;
   bounds: { x: number; y: number; width: number; height: number };
+  visibleParts?: VisibleFaceParts;
   featureMasks?: {
     skin?: SelectionMaskV3;
     teeth?: SelectionMaskV3;

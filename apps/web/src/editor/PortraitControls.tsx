@@ -9,7 +9,7 @@ import { makeupPalettes } from './makeup-palettes';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
-  PRECISE_PORTRAIT_ANALYSIS,
+  OBSERVED_PORTRAIT_ANALYSIS,
   CURRENT_PORTRAIT_GEOMETRY,
   portraitValues,
   applyPortraitValues,
@@ -199,7 +199,7 @@ export function PortraitControls({
     recipe.schemaVersion === 4 &&
     !!target &&
     hasAutomatic &&
-    state.analysis?.algorithmVersion === PRECISE_PORTRAIT_ANALYSIS &&
+    state.analysis?.algorithmVersion === OBSERVED_PORTRAIT_ANALYSIS &&
     !hasCurrentPortrait;
   const values = target ? portraitValues(recipe, target.id) : {};
   const availability = useMemo(
@@ -210,7 +210,10 @@ export function PortraitControls({
     [state.analysis, target, recipe.schemaVersion, hasAutomatic, hasCurrentPortrait],
   );
   const hasLegacyNeck =
-    recipe.schemaVersion === 4 && category === 'body' && (values.neckLength ?? 0) !== 0;
+    recipe.schemaVersion === 4 &&
+    category === 'body' &&
+    !hasCurrentPortrait &&
+    (values.neckLength ?? 0) !== 0;
   async function createCutout() {
     if (cutoutLocked.current || !mounted.current || !onCutout) return;
     if (editor.isLoading() || editor.getSourceIdentity() !== sourceIdentity) {

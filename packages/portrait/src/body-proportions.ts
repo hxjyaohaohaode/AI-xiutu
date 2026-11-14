@@ -48,6 +48,7 @@ export function measureBodySections(
   size: Dimensions,
   subject: Sample,
   neighbor: Sample,
+  observed = false,
 ): PortraitTarget['contours'] {
   const contours: PortraitTarget['contours'] = {};
   const point = (i: number) => visible(target, i);
@@ -59,7 +60,7 @@ export function measureBodySections(
   const hips = hipA && hipB ? center([hipA, hipB]) : undefined;
   const shoulderSpan = left && right ? span(left, right, size) : 0;
   function band(
-    key: SectionKey,
+    key: SectionKey | 'neckBand',
     a: Point,
     b: Point,
     positions: number[],
@@ -101,7 +102,7 @@ export function measureBodySections(
       if (edges.length !== 2) continue;
       const m = span(edges[0]!, from, size),
         p = span(edges[1]!, from, size);
-      if (Math.max(m, p) > Math.min(m, p) * 2.25) continue;
+      if (Math.max(m, p) > Math.min(m, p) * (observed ? 2.7 : 2.25)) continue;
       sections.push(from, edges[0]!, edges[1]!);
     }
     if (sections.length) contours[key] = sections;
@@ -109,7 +110,14 @@ export function measureBodySections(
   if (shoulders && hips && shoulderSpan >= 10) {
     band('upperTorso', shoulders, hips, [0.13, 0.24], shoulderSpan * 0.81, shoulderSpan * 0.21);
     band('midTorso', shoulders, hips, [0.32, 0.44], shoulderSpan * 0.79, shoulderSpan * 0.19);
-    band('waistBand', shoulders, hips, [0.54, 0.66, 0.77], shoulderSpan * 0.7, shoulderSpan * 0.16);
+    band(
+      'waistBand',
+      shoulders,
+      hips,
+      observed ? [0.48, 0.58, 0.68, 0.79] : [0.54, 0.66, 0.77],
+      shoulderSpan * (observed ? 0.79 : 0.7),
+      shoulderSpan * 0.16,
+    );
     band(
       'pelvisBand',
       shoulders,
@@ -141,6 +149,11 @@ export function measureBodySections(
     );
     band(key, a, b, [0.22, 0.42, 0.63, 0.81], cap, Math.max(1.35, length * 0.035));
   }
+  if (observed && shoulders && point(7) && point(8)) {
+    const head = center([point(7)!, point(8)!]);
+    if (span(head, shoulders, size) > shoulderSpan * 0.27)
+      band('neckBand', head, shoulders, [0.45, 0.58, 0.7], shoulderSpan * 0.6, shoulderSpan * 0.1);
+  }
   const pins = (ids: number[], threshold: number) =>
     ids.flatMap((id) => {
       const p = point(id);
@@ -149,10 +162,37 @@ export function measureBodySections(
   const tail = pins([27, 28, 29, 30, 31, 32], 0.3);
   const head = pins([0, 7, 8], 0.38);
   if (tail.length === 6) contours.footPins = tail;
+  else if (observed) {
+    // The toe landmark often lies on the shoe boundary. A recoverable contact
+    // needs a visible ankle, a visible heel or toe, and foreground support on both feet.
+    const contacts = [
+      [27, 29, 31],
+      [28, 30, 32],
+    ].map(([ankleId, heelId, toeId]) => {
+      const ankle = point(ankleId!);
+      if (!ankle || subject(ankle) < 0.42 || neighbor(ankle) > 0.38) return [];
+      const contacts = [heelId!, toeId!].flatMap((id) => {
+        const p = target.landmarks[id];
+        if (
+          !p ||
+          (p.visibility ?? 0) < 0.43 ||
+          !inside(p) ||
+          neighbor(p) > 0.34 ||
+          span(ankle, p, size) < 1.5 ||
+          span(ankle, p, size) > Math.max(9, shoulderSpan * 0.54)
+        )
+          return [];
+        const supported = mix(ankle, p, 0.74);
+        return subject(supported) >= 0.46 ? [{ x: p.x, y: p.y }] : [];
+      });
+      return contacts.length ? [{ x: ankle.x, y: ankle.y }, ...contacts] : [];
+    });
+    if (contacts.every((points) => points.length >= 2)) contours.footPins = contacts.flat();
+  }
   if (head.length === 3) contours.headPins = head;
   return contours;
 }
-function sections(target: PortraitTarget, key: SectionKey): Band[] {
+function sections(target: PortraitTarget, key: SectionKey | 'neckBand'): Band[] {
   const source = target.contours[key] ?? [];
   const result: Band[] = [];
   if (source.length % 3 !== 0 || source.length > 12) return result;
@@ -162,9 +202,10 @@ function sections(target: PortraitTarget, key: SectionKey): Band[] {
 }
 const ready = (target: PortraitTarget, ...keys: SectionKey[]) =>
   keys.every((key) => sections(target, key).length >= 2);
-function fullPose(target: PortraitTarget, size: Dimensions) {
+function fullPose(target: PortraitTarget, size: Dimensions, observed = false) {
   const joints = [11, 12, 23, 24, 25, 26, 27, 28].map((id) => visible(target, id));
-  if (joints.some((p) => !p) || (target.contours.footPins?.length ?? 0) < 6) return;
+  if (joints.some((p) => !p) || (target.contours.footPins?.length ?? 0) < (observed ? 4 : 6))
+    return;
   const [s1, s2, h1, h2, k1, k2, a1, a2] = joints as [
     Point,
     Point,
@@ -208,9 +249,21 @@ export const bodyPrecisionTools = new Set([
   'legLength',
   'height',
 ]);
-export function bodyPrecisionAvailable(target: PortraitTarget, size: Dimensions, tool: string) {
+export function bodyPrecisionAvailable(
+  target: PortraitTarget,
+  size: Dimensions,
+  tool: string,
+  observed = false,
+) {
   if (!target.bodyMask || !target.bodySupport) return false;
   switch (tool) {
+    case 'neckLength':
+    case 'neckWidth':
+      return (
+        observed &&
+        sections(target, 'neckBand').length >= 2 &&
+        (target.contours.headPins?.length ?? 0) === 3
+      );
     case 'shoulders':
       return ready(target, 'upperTorso') && !!visible(target, 11) && !!visible(target, 12);
     case 'waist':
@@ -223,15 +276,22 @@ export function bodyPrecisionAvailable(target: PortraitTarget, size: Dimensions,
       return ready(target, 'thighA', 'shinA') || ready(target, 'thighB', 'shinB');
     case 'legLength':
       return (
-        !!fullPose(target, size) &&
-        ready(target, 'thighA', 'shinA', 'thighB', 'shinB') &&
+        !!fullPose(target, size, observed) &&
+        (ready(target, 'thighA', 'shinA', 'thighB', 'shinB') ||
+          (observed &&
+            ready(target, 'shinA', 'shinB') &&
+            sections(target, 'thighA').length > 0 &&
+            sections(target, 'thighB').length > 0)) &&
         sections(target, 'pelvisBand').length >= 1
       );
     case 'height':
       return (
-        !!fullPose(target, size) &&
+        !!fullPose(target, size, observed) &&
         ready(target, 'thighA', 'shinA', 'thighB', 'shinB') &&
-        sections(target, 'midTorso').length >= 1 &&
+        (sections(target, 'midTorso').length >= 1 ||
+          (observed &&
+            sections(target, 'upperTorso').length >= 2 &&
+            sections(target, 'waistBand').length >= 1)) &&
         sections(target, 'pelvisBand').length >= 1 &&
         (target.contours.headPins?.length ?? 0) === 3
       );
@@ -247,6 +307,7 @@ export function bodyProportionAnchors(
   target: PortraitTarget,
   size: Dimensions,
   value: (id: string) => number,
+  observed = false,
 ): FaceWarpAnchorV3[] {
   const result: FaceWarpAnchorV3[] = [];
   const short = Math.min(size.width, size.height);
@@ -265,10 +326,15 @@ export function bodyProportionAnchors(
   };
   // The caller has already filtered unavailable values on the same analysis.
   const gain = Object.fromEntries([...bodyPrecisionTools].map((id) => [id, value(id)]));
-  const pose = gain.height || gain.legLength ? fullPose(target, size) : undefined;
+  const pose = gain.height || gain.legLength ? fullPose(target, size, observed) : undefined;
   const shoulderDistance = pose ? span(pose.shoulder, pose.hip, size) : 0;
-  const lengthGain = pose ? (gain.legLength ?? 0) * 0.037 * pose.length : 0;
-  const heightGain = pose ? (gain.height ?? 0) * 0.032 * (pose.length + shoulderDistance) : 0;
+  const stretchBudget = observed
+    ? 1 / Math.max(1, Math.abs(gain.legLength ?? 0) + Math.abs(gain.height ?? 0) * 0.8)
+    : 1;
+  const lengthGain = pose ? (gain.legLength ?? 0) * 0.037 * pose.length * stretchBudget : 0;
+  const heightGain = pose
+    ? (gain.height ?? 0) * 0.032 * (pose.length + shoulderDistance) * stretchBudget
+    : 0;
   const point = (p: Point) => ({ x: unit(p.x), y: unit(p.y) });
   const push = (p: Point, dx: number, dy: number, radius: number, strength = 1) => {
     if (radius < 2 || Math.hypot(dx, dy) < 0.015) return;
@@ -276,9 +342,50 @@ export function bodyProportionAnchors(
     result.push({ mode: 'push', from: p, to, radius: Math.min(0.75, radius / short), strength });
   };
   const pin = (p: Point, r: number, strength: number) => {
-    if (inside(p))
-      result.push({ mode: 'pin', from: p, to: p, radius: Math.min(0.75, r / short), strength });
+    if (inside(p)) {
+      const position = point(p);
+      result.push({
+        mode: 'pin',
+        from: position,
+        to: position,
+        radius: Math.min(0.75, r / short),
+        strength,
+      });
+    }
   };
+  if (observed && (value('neckWidth') || value('neckLength'))) {
+    const first = visible(target, 11),
+      second = visible(target, 12);
+    const ears = target.contours.headPins ?? [];
+    const neck = sections(target, 'neckBand');
+    if (first && second && ears.length === 3 && neck.length >= 2) {
+      const shoulder = center([first, second]);
+      const head = center(ears);
+      const axis = direction(shoulder, head, size);
+      const across = span(first, second, size);
+      if (axis) {
+        for (const { from, minus, plus } of neck)
+          for (const p of [minus, plus]) {
+            const inward = direction(p, from, size);
+            if (inward)
+              push(
+                p,
+                inward.x * inward.length * value('neckWidth') * 0.16,
+                inward.y * inward.length * value('neckWidth') * 0.16,
+                across * 0.15,
+              );
+          }
+        const rise = axis.length * 0.12 * value('neckLength');
+        // Move the visible head as a supported unit. Lower neck and both
+        // shoulders are pinned to redistribute the change across the neck.
+        push(head, axis.x * rise, axis.y * rise, Math.max(axis.length, across * 0.55));
+        for (const p of ears) push(p, axis.x * rise, axis.y * rise, across * 0.34);
+        pin(shoulder, across * 0.24, 1);
+        pin(first, across * 0.18, 1);
+        pin(second, across * 0.18, 1);
+      }
+    }
+  }
   for (const key of bodySectionKeys) {
     const band = sections(target, key);
     const setting = widthKeys[key];
@@ -291,13 +398,17 @@ export function bodyProportionAnchors(
           continue;
       } else if (subjectLeg) {
         const side = key.slice(-1);
-        if (!ready(target, ('thigh' + side) as SectionKey, ('shin' + side) as SectionKey)) continue;
+        if (
+          !ready(target, ('thigh' + side) as SectionKey, ('shin' + side) as SectionKey) &&
+          !(observed && pose && band.length)
+        )
+          continue;
       }
     }
     for (const { from, minus, plus } of band) {
       const across = span(minus, plus, size);
       if (across < 4 || across > short * 0.9) continue;
-      if (width)
+      if (width && (!observed || !subjectLeg || band.length >= 2))
         for (const p of [minus, plus]) {
           const toward = direction(p, from, size);
           if (toward)

@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import {
   applyPortraitValues,
-  PRECISE_PORTRAIT_ANALYSIS,
+  OBSERVED_PORTRAIT_ANALYSIS,
   portraitToolAvailability,
   validatePortraitAnalysis,
 } from '@ai-xiutu/portrait';
@@ -79,7 +79,8 @@ async function sourceBytes(input) {
   } catch (error) {
     if (error.code !== 'ENOENT') throw error;
     const response = await fetch(input.url, {
-      signal: AbortSignal.timeout(30000), headers: { 'User-Agent': 'AI-Xiutu QA (public photo model acceptance)' },
+      signal: AbortSignal.timeout(30000),
+      headers: { 'User-Agent': 'AI-Xiutu QA (public photo model acceptance)' },
     });
     if (!response.ok) throw new Error(input.name + ': HTTP ' + response.status);
     bytes = Buffer.from(await response.arrayBuffer());
@@ -166,7 +167,7 @@ try {
       ),
       frame,
     );
-    assert.equal(analysis.algorithmVersion, PRECISE_PORTRAIT_ANALYSIS);
+    assert.equal(analysis.algorithmVersion, OBSERVED_PORTRAIT_ANALYSIS);
     await writeFile(join(output, input.name + '-analysis.json'), JSON.stringify(analysis));
     const result = {
       name: input.name,

@@ -9,15 +9,16 @@ npm ci
 npm run vision:prepare
 ```
 
-脚本从 Google 官方公开模型目录下载三个固定版本，逐文件校验 SHA-256，复制锁文件指定版本的 Tasks Vision WebAssembly 运行时，并生成 `apps/web/public/vision/manifest.json`。运行时只访问网站自己的 `/vision/`，照片不因本地人物识别而上传。模型文件约 25.91 MB，另有 WebAssembly 运行时；部署时应计入下载流量、缓存与冷启动时间。
+脚本从 Google 官方公开模型目录下载四个固定版本，逐文件校验 SHA-256，复制锁文件指定版本的 Tasks Vision WebAssembly 运行时，并生成 `apps/web/public/vision/manifest.json`。模型从网站自己的 `/vision/` 加载，照片留在浏览器。四个模型约 27.0 MB，另有 WebAssembly 运行时。
 
 | 资源                        | 用途                         | 不是它能保证的能力                                     |
 | --------------------------- | ---------------------------- | ------------------------------------------------------ |
 | Face Landmarker             | 面部关键点、五官定位         | 身份认证、遮挡后精确补全、任意角度人脸可靠识别         |
+| BlazeFace Full Range        | 为远景小脸提供二次定位窗口   | 在缺少足够像素时确认五官、修饰被遮挡的部位             |
 | Pose Landmarker Lite        | 身体关键点、可见度与人物分割 | 多人拥挤、被遮挡关节、极端姿态的产品级美体质量保证     |
 | Selfie Multiclass Segmenter | 皮肤、头发、衣物、背景等类别 | 单像素准确的商业级头发抠图、所有肤色与光照的无偏误分割 |
 
-三者对应的官方模型卡均注明 Apache 2.0，许可副本和来源放在 [`third-party`](../third-party/NOTICE.md)。在产品中再分发模型时应随同保留这些文件。若替换模型或 SDK，必须同时更新内容校验、算法版本、适配器和质量验证记录。
+官方模型卡注明 Apache 2.0，许可副本和来源放在 [`third-party`](../third-party/NOTICE.md)。在产品中再分发模型时随同保留这些文件。
 
 ## 2. 浏览器运行条件与当前实测边界
 
@@ -36,7 +37,7 @@ Web Worker 中需要 OffscreenCanvas、WebAssembly 和可用的 WebGL 2 图像�
 - JSON 文件不超过 2 MiB；禁止执行代码、加载远程图片或模型。
 - schema、提供方、算法版本、点位范围、蒙版预算均须通过 `@ai-xiutu/portrait` 校验。
 - 标注的 `frame`（`SourceFrame` 类型）绑定当前尺寸和 `SHA-256(UTF-8("宽x高:srgb-rgba8:") + 原始 RGBA 字节)`。
-- 当前版本接受 `provider: mediapipe`、`algorithmVersion: mediapipe-v1-selfie256`。扩展新适配器需显式登记和验证，不能任意伪造提供方标识。
+- 浏览器输出 `provider: mediapipe` 和 `algorithmVersion: mediapipe-v4-visible-regions`，并接受 v1、v2、v3 和当前标注格式。已有配方继续使用保存当时的算子和参数。
 - 原图旋转归一化或色彩解码不同会产生不同摘要；应对识别与浏览器导入使用同一份已规范化的 PNG。
 
 源文件和标准入口见 [`packages/portrait`](../packages/portrait/README.md) 与 [`EXTENSIONS.md`](EXTENSIONS.md)。产品不内置测试照片或预生成假标注。

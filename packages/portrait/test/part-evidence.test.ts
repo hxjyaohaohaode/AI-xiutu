@@ -11,9 +11,11 @@ import {
   analyzeFacePixels,
   applyPortraitValues,
   measureBodySections,
+  OBSERVED_PORTRAIT_ANALYSIS,
   PRECISE_PORTRAIT_ANALYSIS,
   portraitToolAvailability,
   validatePortraitAnalysis,
+  visibleFaceParts,
 } from '../src/index.js';
 import { toothArch } from '../src/part-evidence.js';
 import { analysis, bodyTarget, faceTarget, frame } from './fixtures.js';
@@ -79,6 +81,41 @@ test('a visible pupil needs a dark core enclosed by the original aperture', () =
   assert.equal(available?.available, true);
   const w = applyPortraitValues(createRecipeV4(), input, target.id, { pupilSize: 80 }).warp;
   assert.ok(w.strokes[0]?.anchors?.some((p) => p.mode === 'bulge'));
+});
+
+test('v4 exposes only the eye supported by source pixels and keeps a neighbor fixed', () => {
+  const target = faceTarget();
+  const eye = center(target.contours.leftEye!);
+  target.featureMasks = {
+    accessories: {
+      type: 'polygon',
+      points: [
+        { x: eye.x - 0.045, y: eye.y - 0.021 },
+        { x: eye.x + 0.045, y: eye.y - 0.021 },
+        { x: eye.x + 0.045, y: eye.y + 0.021 },
+        { x: eye.x - 0.045, y: eye.y + 0.021 },
+      ],
+      feather: 0,
+      invert: false,
+    },
+  };
+  const original = paint(() => [126, 83, 71]);
+  target.visibleParts = visibleFaceParts(original, target);
+  assert.equal(target.visibleParts.leftEye, false);
+  assert.equal(target.visibleParts.rightEye, true);
+  const neighbor = faceTarget(2, 0.8, 0.43, 0.58);
+  const data = { ...analysis([target, neighbor]), algorithmVersion: OBSERVED_PORTRAIT_ANALYSIS };
+  const tools = portraitToolAvailability(data, target.id);
+  assert.equal(tools.find((t) => t.id === 'eyeSpacing')?.available, false);
+  const recipe = applyPortraitValues(createRecipeV4(), data, target.id, {
+    eyeSize: 64,
+    faceSlim: 80,
+  });
+  const stroke = recipe.warp.strokes[0]!;
+  assert.equal(stroke.origin?.parameters?.portraitGeometry, 4);
+  assert.equal(stroke.anchors?.filter((a) => a.mode === 'affine').length, 1);
+  const other = center(neighbor.contours.oval!);
+  assert.deepEqual(compileWarpFieldV3(recipe.warp, frame)(other), other);
 });
 
 function bodyFixture() {
@@ -154,4 +191,33 @@ test('body resizing uses independent silhouette sections and keeps the floor and
   const blocked = portraitToolAvailability({ ...input, targets: [occluded] }, occluded.id);
   assert.equal(blocked.find(({ id }) => id === 'legLength')?.available, false);
   assert.equal(blocked.find(({ id }) => id === 'waist')?.available, false);
+});
+
+test('v4 neck edits require a measured neck and serialize only planar anchor coordinates', () => {
+  const { target } = bodyFixture();
+  const data = { ...analysis([target]), algorithmVersion: OBSERVED_PORTRAIT_ANALYSIS };
+  assert.equal(
+    portraitToolAvailability(data, target.id).find((t) => t.id === 'neckLength')?.available,
+    false,
+  );
+  target.contours.neckBand = [
+    { x: 0.5, y: 0.16 },
+    { x: 0.46, y: 0.16 },
+    { x: 0.54, y: 0.16 },
+    { x: 0.5, y: 0.19 },
+    { x: 0.46, y: 0.19 },
+    { x: 0.54, y: 0.19 },
+  ];
+  assert.equal(
+    portraitToolAvailability(data, target.id).find((t) => t.id === 'neckLength')?.available,
+    true,
+  );
+  const recipe = applyPortraitValues(createRecipeV4(), data, target.id, {
+    neckLength: 48,
+    neckWidth: 25,
+  });
+  const stroke = recipe.warp.strokes.find((s) => s.id.endsWith('body-field'));
+  assert.ok(stroke?.anchors);
+  assert.ok(stroke.anchors.some((a) => a.mode === 'push'));
+  assert.ok(stroke.anchors.every((a) => Object.keys(a.from).sort().join(',') === 'x,y'));
 });

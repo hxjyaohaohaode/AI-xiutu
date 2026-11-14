@@ -11,6 +11,13 @@ export const assets = [
     format: 'task',
   },
   {
+    file: 'blaze_face_full_range.tflite',
+    path: 'face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite',
+    bytes: 1083786,
+    sha256: '3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b',
+    format: 'tflite',
+  },
+  {
     file: 'pose_landmarker_lite.task',
     path: 'pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
     bytes: 5777746,

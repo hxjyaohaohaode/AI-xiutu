@@ -68,6 +68,12 @@ jobs:
       - name: Diverse real-photo beauty, matte and sports restoration observations
         if: matrix.round == 1
         run: node --import tsx scripts/qa/photo-quality.browser.mjs
+      - name: Verify distant faces and source-pixel visibility on public portraits
+        if: matrix.round == 1
+        env:
+          PORTRAIT_QA_CASES: group-distance,half-mask,smile-headshot
+          PORTRAIT_QA_METER_ONLY: 'true'
+        run: node --import tsx scripts/qa/portrait-real-world.browser.mjs
       # Keep the product checks independent of transient artifact service errors.
       - name: Preserve preview timing evidence
         if: always() && matrix.round == 1
@@ -244,7 +250,7 @@ jobs:
           matting = json.loads(Path('third-party/portrait-matting.json').read_text())
           fine_matting = json.loads(Path('third-party/portrait-fine-matting.json').read_text())
           expected_vision = {
-              'face_landmarker.task', 'pose_landmarker_lite.task',
+              'face_landmarker.task', 'blaze_face_full_range.tflite', 'pose_landmarker_lite.task',
               'selfie_multiclass_256x256.tflite', matting['file'], fine_matting['file'],
           }
           assert len(vision['assets']) == len(expected_vision)

@@ -22,6 +22,7 @@ export function facialDetailMoves(
   target: PortraitTarget,
   dimensions: Dimensions,
   coordinated = false,
+  observed = false,
 ) {
   const result = new Map<DetailFeatureId, Move[]>();
   const { width, height } = dimensions;
@@ -78,10 +79,12 @@ export function facialDetailMoves(
     moves.push({ from, to, radius: pixels / short, mode, gain });
     result.set(id, moves);
   };
-  for (const [eye, brow, iris] of [
-    [leftEye, contours.leftBrow, 468],
-    [rightEye, contours.rightBrow, 473],
+  const parts = observed ? target.visibleParts : undefined;
+  for (const [eye, brow, iris, side] of [
+    [leftEye, contours.leftBrow, 468, 'left'],
+    [rightEye, contours.rightBrow, 473, 'right'],
   ] as const) {
+    if (parts?.[`${side}Eye`] === false) continue;
     const e = extent(eye);
     if (e.width < 6 || e.height < Math.max(1.5, e.width * 0.07)) continue;
     const cornerSupport = Math.min(e.width * 0.3, Math.max(2, e.height * 0.76));
@@ -108,10 +111,12 @@ export function facialDetailMoves(
       const clearance = v(e.top) - v(origin);
       move('browPosition', origin, 0, -clearance * 0.22, Math.min(b.width * 0.65, clearance * 0.8));
     }
+    const ring = parts && contours[`${side}Iris`];
+    if (parts && !ring?.length) continue;
     // The iris landmark order is resolved against the actual aperture below.
     const candidates = [iris, iris === 468 ? 473 : 468];
     for (const index of candidates) {
-      const pupil = target.landmarks[index];
+      const pupil = ring ? ring[0] : target.landmarks[index];
       if (
         !pupil ||
         u(pupil) <= u(e.left) ||
@@ -140,10 +145,11 @@ export function facialDetailMoves(
         );
         clearance = Math.min(clearance, Math.hypot(ax - ex * projection, ay - ey * projection));
       }
-      const ring = target.landmarks.slice(index + 1, index + 5);
-      const irisRadius =
-        ring.length === 4
-          ? ring.reduce(
+      const landmarks = target.landmarks.slice(index + 1, index + 5);
+      const irisRadius = ring?.[1]
+        ? Math.hypot((ring[1].x - pupil.x) * width, (ring[1].y - pupil.y) * height)
+        : landmarks.length === 4
+          ? landmarks.reduce(
               (sum, p) => sum + Math.hypot((p.x - pupil.x) * width, (p.y - pupil.y) * height),
               0,
             ) / 4
@@ -152,7 +158,7 @@ export function facialDetailMoves(
         inside &&
         irisRadius >= 1 &&
         irisRadius < e.width * 0.42 &&
-        clearance >= irisRadius * 0.65
+        clearance >= irisRadius * (parts ? 0.46 : 0.65)
       )
         if (aperture >= 0.04)
           move(
@@ -168,7 +174,7 @@ export function facialDetailMoves(
     }
   }
   const lip = extent(lips);
-  if (lip.width >= 7 && lip.height >= 3) {
+  if (parts?.mouth !== false && lip.width >= 7 && lip.height >= 3) {
     const inner = contours.innerLips?.length ? extent(contours.innerLips) : null;
     const corners = Math.min(lip.width * 0.23, lip.height * 0.68);
     move('lipWidth', lip.left, -lip.width * 0.08, 0, corners);

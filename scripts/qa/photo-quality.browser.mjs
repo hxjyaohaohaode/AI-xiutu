@@ -25,7 +25,7 @@ import {
   validatePortraitAnalysis,
   applyPortraitValues,
   portraitToolAvailability,
-  PRECISE_PORTRAIT_ANALYSIS,
+  OBSERVED_PORTRAIT_ANALYSIS,
 } from '@ai-xiutu/portrait';
 
 if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production')
@@ -435,7 +435,7 @@ try {
       { ...frame, bytes: decoded.data.toString('base64') },
     );
     const analysis = validatePortraitAnalysis(result, frame);
-    assert.equal(analysis.algorithmVersion, PRECISE_PORTRAIT_ANALYSIS);
+    assert.equal(analysis.algorithmVersion, OBSERVED_PORTRAIT_ANALYSIS);
     if (source.name === 'basketball')
       assert.ok(
         analysis.targets.some(({ kind }) => kind === 'face'),

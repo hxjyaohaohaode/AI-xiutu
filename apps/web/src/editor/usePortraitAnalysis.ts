@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPortraitAnalysisAdapter,
+  OBSERVED_PORTRAIT_ANALYSIS,
   PRECISE_PORTRAIT_ANALYSIS,
   REFINED_PORTRAIT_ANALYSIS,
   validatePortraitAnalysis,
@@ -88,7 +89,7 @@ export function usePortraitAnalysis(
       try {
         const adapter = createPortraitAnalysisAdapter({
           id: 'mediapipe',
-          algorithmVersion: PRECISE_PORTRAIT_ANALYSIS,
+          algorithmVersion: OBSERVED_PORTRAIT_ANALYSIS,
           configured: true,
           analyze: async (input, options) =>
             new Promise((resolve, reject) => {
@@ -166,10 +167,13 @@ export function usePortraitAnalysis(
         if (request.current !== id || sourceRef.current !== sourceAtStart) return;
         setAnalysis(result);
         setTarget((selected) =>
-          result.targets.some((target) => target.id === selected && target.kind === (body ? 'body' : 'face'))
+          result.targets.some(
+            (target) => target.id === selected && target.kind === (body ? 'body' : 'face'),
+          )
             ? selected
             : (result.targets.find((target) => target.kind === (body ? 'body' : 'face'))?.id ??
-               result.targets[0]?.id ?? null),
+              result.targets[0]?.id ??
+              null),
         );
         if (!result.targets.length && !result.segmentation?.subject)
           setError('未找到可信的人像目标；可使用手动局部、绘制或液化。');
@@ -257,7 +261,8 @@ export function usePortraitAnalysis(
         result.provider !== 'mediapipe' ||
         (result.algorithmVersion !== ALGORITHM &&
           result.algorithmVersion !== REFINED_PORTRAIT_ANALYSIS &&
-          result.algorithmVersion !== PRECISE_PORTRAIT_ANALYSIS)
+          result.algorithmVersion !== PRECISE_PORTRAIT_ANALYSIS &&
+          result.algorithmVersion !== OBSERVED_PORTRAIT_ANALYSIS)
       )
         throw new Error('人物标注的关键点协议不受当前版本支持，请先通过对应分析适配器转换。');
       stop();

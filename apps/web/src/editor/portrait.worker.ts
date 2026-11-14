@@ -1,5 +1,6 @@
 import {
   FaceLandmarker,
+  FaceDetector,
   PoseLandmarker,
   ImageSegmenter,
   FilesetResolver,
@@ -17,9 +18,10 @@ import {
   analyzeFacePixels,
   analyzeHeadBoundaries,
   measureBodySections,
+  visibleFaceParts,
   visibleEyeAccessories,
   visibleMeshLighting,
-  PRECISE_PORTRAIT_ANALYSIS,
+  OBSERVED_PORTRAIT_ANALYSIS,
   anchoredSubjectPrior,
   type PortraitAnalysis,
   type PortraitTarget,
@@ -34,7 +36,9 @@ import {
   entireFrame,
   faceWindow,
   headWindow,
+  observeBodies,
   poseEditCorridor,
+  recoverDistantFaces,
 } from './portrait-refinement';
 
 type Request = {
@@ -140,7 +144,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     const result: PortraitAnalysis = {
       schemaVersion: 1,
       provider: 'mediapipe',
-      algorithmVersion: PRECISE_PORTRAIT_ANALYSIS,
+      algorithmVersion: OBSERVED_PORTRAIT_ANALYSIS,
       frame: {
         coordinates: 'source-normalized',
         contentHash: hash,
@@ -180,11 +184,38 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       minFacePresenceConfidence: 0.6,
     });
     try {
-      const found = detectFaceDetails(
-        canvas,
-        face,
-        (points) => contourLoops(points, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL)[0] ?? [],
-      );
+      const oval = (points: Point[]) =>
+        contourLoops(points, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL)[0] ?? [];
+      const primary = detectFaceDetails(canvas, face, oval);
+      let found = primary;
+      if (
+        manifest.assets?.some(
+          (asset: { file?: string }) => asset.file === 'blaze_face_full_range.tflite',
+        )
+      ) {
+        try {
+          found = await recoverDistantFaces(
+            canvas,
+            face,
+            () =>
+              FaceDetector.createFromOptions(freshWasm(), {
+                canvas: new OffscreenCanvas(1, 1),
+                baseOptions: {
+                  modelAssetPath: '/vision/blaze_face_full_range.tflite',
+                  delegate: 'CPU',
+                },
+                runningMode: 'IMAGE',
+                minDetectionConfidence: 0.58,
+                minSuppressionThreshold: 0.35,
+              }),
+            primary,
+            oval,
+          );
+        } catch (error) {
+          if (import.meta.env.DEV) console.error('Wide-range face detector unavailable', error);
+          result.warnings.push('远景人脸补充识别未完成。');
+        }
+      }
       const targets = found.map((points) => {
         const shape = contours(points);
         return {
@@ -200,6 +231,8 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         label: `人物 ${i + 1}`,
       }));
       for (const target of result.targets) {
+        if (Math.min(target.bounds.width * image.width, target.bounds.height * image.height) < 34)
+          continue;
         const relight = visibleMeshLighting(
           target,
           image,
@@ -281,6 +314,8 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           };
         });
         for (const target of result.targets) {
+          if (Math.min(target.bounds.width * image.width, target.bounds.height * image.height) < 34)
+            continue;
           const window = faceWindow(canvas, target.bounds, 1.3);
           if (Math.min(window.width * canvas.width, window.height * canvas.height) < 28) continue;
           const crop = analysisCanvas(canvas, window, 448);
@@ -305,7 +340,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
                         u < b.x - b.width * 0.05 ||
                         u > b.x + b.width * 1.05 ||
                         v < b.y + b.height * 0.15 ||
-                        v > b.y + b.height * 0.7
+                        v > b.y + b.height * 1.04
                       )
                         return 0;
                       return confidenceWeight(accessory[at]!, 0.36, 0.68);
@@ -332,8 +367,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
                 window,
               );
               if (faceSkin) target.featureMasks = { ...target.featureMasks, skin: faceSkin };
-              if (alpha && !target.featureMasks?.accessories)
-                target.featureMasks = { ...target.featureMasks, accessories: alpha };
+              if (alpha) target.featureMasks = { ...target.featureMasks, accessories: alpha };
             });
           } finally {
             crop.width = crop.height = 1;
@@ -373,6 +407,8 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       }
     }
     for (const target of result.targets) {
+      target.visibleParts = visibleFaceParts(image, target);
+      if (target.visibleParts.pixels < 34) continue;
       const evidence = analyzeFacePixels(image, target);
       Object.assign(target.contours, evidence.contours);
       if (evidence.featureMasks && Object.keys(evidence.featureMasks).length)
@@ -391,106 +427,73 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           minPosePresenceConfidence: 0.6,
           outputSegmentationMasks: true,
         });
-        const targets: PortraitTarget[] = [];
-        // The native float mask listener expects contiguous rows. Align the
-        // inference width to four float samples; normalized positions still
-        // address the complete source without cropping or padding.
-        const poseCanvas = analysisCanvas(canvas, entireFrame, 896, 4);
-        try {
-          pose.detect(poseCanvas, (output) => {
-            const masks =
-              output.segmentationMasks?.map((mask) => ({
-                width: mask.width,
-                height: mask.height,
-                values: mask.getAsFloat32Array(),
-              })) ?? [];
-            const samplers = masks.map(({ width, height, values }) =>
-              confidenceSampler(values, width, height),
-            );
-            output.landmarks.forEach((points, index) => {
-              try {
-                const target: PortraitTarget = {
-                  id: '',
-                  kind: 'body' as const,
-                  label: '',
-                  landmarks: points.map((p) => ({
-                    x: p.x,
-                    y: p.y,
-                    z: p.z,
-                    visibility: p.visibility,
-                  })),
-                  contours: {},
-                  bounds: boundsOf(points.filter((p) => (p.visibility ?? 0) > 0.5)),
-                };
-                const raster = masks[index],
-                  subject = samplers[index];
-                if (raster && subject) {
-                  const neighbor = (p: Point) =>
-                    samplers.reduce(
-                      (maximum, sample, i) =>
-                        i === index ? maximum : Math.max(maximum, sample(p)),
-                      0,
-                    );
-                  target.contours = measureBodySections(target, image, subject, neighbor);
-                  const { x, y, width, height } = target.bounds;
-                  const x0 = Math.max(0, x - width * 0.28),
-                    y0 = Math.max(0, y - height * 0.14);
-                  const extent = {
-                    x: x0,
-                    y: y0,
-                    width: Math.min(1, x + width * 1.28) - x0,
-                    height: Math.min(1, y + height * 1.14) - y0,
-                  };
-                  const scale = Math.min(
-                    1,
-                    100 / Math.max(extent.width * image.width, extent.height * image.height),
-                  );
-                  const w = Math.max(1, Math.round(extent.width * image.width * scale));
-                  const h = Math.max(1, Math.round(extent.height * image.height * scale));
-                  const samples = Float32Array.from({ length: w * h }, (_, i) =>
-                    subject({
-                      x: extent.x + (((i % w) + 0.5) / w) * extent.width,
-                      y: extent.y + ((Math.floor(i / w) + 0.5) / h) * extent.height,
-                    }),
-                  );
-                  const mask = confidenceRaster(
-                    w,
-                    h,
-                    (i) => confidenceWeight(samples[i]!, 0.28, 0.75),
-                    100,
-                    560,
-                    extent,
-                  );
-                  if (mask) target.bodyMask = mask;
-                  const a = points[11],
-                    b = points[12];
-                  if (mask && a && b) {
-                    const shoulder = Math.hypot(
-                      (a.x - b.x) * image.width,
-                      (a.y - b.y) * image.height,
-                    );
-                    const support = poseEditCorridor(
-                      samples,
-                      w,
-                      h,
-                      extent.width * image.width,
-                      extent.height * image.height,
-                      shoulder,
-                    );
-                    const corridor = support && confidenceRaster(w, h, support, 100, 680, extent);
-                    if (corridor) target.bodySupport = corridor;
-                  }
-                }
-                targets.push(target);
-              } catch {
-                // A partly out-of-frame detection may have no usable bounds.
+        const observations = observeBodies(
+          canvas,
+          pose,
+          result.targets.map((target) => target.bounds),
+        );
+        const targets = observations.flatMap(({ points, sample }, index) => {
+          try {
+            const target: PortraitTarget = {
+              id: '',
+              kind: 'body',
+              label: '',
+              landmarks: points.map(({ x, y, z, visibility }) => ({ x, y, z, visibility })),
+              contours: {},
+              bounds: boundsOf(points.filter((p) => p.visibility > 0.55)),
+            };
+            if (sample) {
+              const neighbor = (p: Point) =>
+                observations.reduce(
+                  (maximum, other, i) =>
+                    i === index ? maximum : Math.max(maximum, other.sample?.(p) ?? 0),
+                  0,
+                );
+              target.contours = measureBodySections(target, image, sample, neighbor, true);
+              const { x, y, width, height } = target.bounds;
+              const x0 = Math.max(0, x - width * 0.28);
+              const y0 = Math.max(0, y - height * 0.14);
+              const extent = {
+                x: x0,
+                y: y0,
+                width: Math.min(1, x + width * 1.28) - x0,
+                height: Math.min(1, y + height * 1.14) - y0,
+              };
+              const ew = extent.width * image.width;
+              const eh = extent.height * image.height;
+              const scale = Math.min(1, 144 / Math.max(ew, eh));
+              const w = Math.max(1, Math.round(ew * scale)),
+                h = Math.max(1, Math.round(eh * scale));
+              const samples = Float32Array.from({ length: w * h }, (_, i) =>
+                sample({
+                  x: extent.x + (((i % w) + 0.5) / w) * extent.width,
+                  y: extent.y + ((Math.floor(i / w) + 0.5) / h) * extent.height,
+                }),
+              );
+              const mask = confidenceRaster(
+                w,
+                h,
+                (i) => confidenceWeight(samples[i]!, 0.31, 0.76),
+                144,
+                630,
+                extent,
+              );
+              if (mask) {
+                target.bodyMask = mask;
+                const a = points[11]!,
+                  b = points[12]!;
+                const shoulder = Math.hypot((a.x - b.x) * image.width, (a.y - b.y) * image.height);
+                const support = poseEditCorridor(samples, w, h, ew, eh, shoulder);
+                const corridor = support && confidenceRaster(w, h, support, 144, 740, extent);
+                if (corridor) target.bodySupport = corridor;
               }
-            });
-          });
-        } finally {
-          poseCanvas.width = poseCanvas.height = 1;
-        }
-        targets.sort((a, b) => a.bounds.x - b.bounds.x);
+            }
+            return [target];
+          } catch {
+            // A partly out-of-frame detection may have no usable bounds.
+            return [];
+          }
+        });
         result.targets.push(
           ...targets.map((t, i) => ({
             ...t,

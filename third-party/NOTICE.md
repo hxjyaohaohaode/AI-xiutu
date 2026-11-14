@@ -3,6 +3,7 @@
 This project uses MediaPipe Tasks Vision and distributes the following unmodified, version-pinned public model assets when `npm run vision:prepare` is run:
 
 - MediaPipe Face Landmarker, float16 version 1 (`face_landmarker.task`).
+- MediaPipe BlazeFace Full Range, float16 version 1 (`blaze_face_full_range.tflite`).
 - MediaPipe Pose Landmarker Lite, float16 version 1 (`pose_landmarker_lite.task`).
 - MediaPipe Selfie Multiclass Image Segmenter, float32, 256 × 256, version 1 (`selfie_multiclass_256x256.tflite`).
 
@@ -13,6 +14,7 @@ Upstream license: https://github.com/google-ai-edge/mediapipe/blob/master/LICENS
 Model cards:
 
 - https://storage.googleapis.com/mediapipe-assets/Model%20Card%20MediaPipe%20Face%20Mesh%20V2.pdf
+- https://storage.googleapis.com/mediapipe-assets/MediaPipe%20BlazeFace%20Model%20Card%20%28Full%20Range%29.pdf
 - https://storage.googleapis.com/mediapipe-assets/Model%20Card%20BlazePose%20GHUM%203D.pdf
 - https://storage.googleapis.com/mediapipe-assets/Model%20Card%20Multiclass%20Segmentation.pdf
 

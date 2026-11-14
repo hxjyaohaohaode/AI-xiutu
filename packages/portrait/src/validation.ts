@@ -100,7 +100,7 @@ function readTarget(input: unknown): PortraitTarget {
   const r = object(
     input,
     ['id', 'kind', 'label', 'landmarks', 'contours', 'bounds'],
-    ['featureMasks', 'bodyMask', 'bodySupport'],
+    ['featureMasks', 'bodyMask', 'bodySupport', 'visibleParts'],
   );
   if (r.kind !== 'face' && r.kind !== 'body') throw new Error('人像目标类别不支持。');
   const id = string(r.id, 80);
@@ -148,6 +148,31 @@ function readTarget(input: unknown): PortraitTarget {
   }
   if ((r.bodyMask !== undefined || r.bodySupport !== undefined) && r.kind !== 'body')
     throw new Error('面部目标不能携带身体蒙版。');
+  let visibleParts: PortraitTarget['visibleParts'];
+  if (r.visibleParts !== undefined) {
+    if (r.kind !== 'face') throw new Error('身形目标不能携带面部可见性。');
+    const parts = object(r.visibleParts, [
+      'pixels',
+      'leftEye',
+      'rightEye',
+      'mouth',
+      'nose',
+      'profile',
+    ]);
+    const flag = (key: string) => {
+      const value = parts[key];
+      if (typeof value !== 'boolean') throw new Error('面部可见性字段无效。');
+      return value;
+    };
+    visibleParts = {
+      pixels: scalar(parts.pixels, 0, 100_000),
+      leftEye: flag('leftEye'),
+      rightEye: flag('rightEye'),
+      mouth: flag('mouth'),
+      nose: flag('nose'),
+      profile: flag('profile'),
+    };
+  }
   return {
     id,
     kind: r.kind,
@@ -155,6 +180,7 @@ function readTarget(input: unknown): PortraitTarget {
     landmarks,
     contours,
     bounds,
+    ...(visibleParts ? { visibleParts } : {}),
     ...(featureMasks ? { featureMasks } : {}),
     ...(r.bodyMask !== undefined ? { bodyMask: parseSelectionMaskV3(r.bodyMask) } : {}),
     ...(r.bodySupport !== undefined ? { bodySupport: parseSelectionMaskV3(r.bodySupport) } : {}),

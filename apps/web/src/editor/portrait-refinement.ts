@@ -1,6 +1,6 @@
 import { createRasterMask, MAX_RASTER_RUNS_PER_MASK, type Point } from '@ai-xiutu/editor';
 import { boundsOf } from '@ai-xiutu/portrait';
-import type { FaceLandmarker } from '@mediapipe/tasks-vision';
+import type { FaceDetector, FaceLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
 
 type Landmarks = ReturnType<FaceLandmarker['detect']>['faceLandmarks'][number];
 type Window = ReturnType<typeof boundsOf>;
@@ -96,6 +96,229 @@ function sameFace(a: Window, b: Window) {
   const smaller = Math.min(a.width * a.height, b.width * b.height);
   const larger = Math.max(a.width * a.height, b.width * b.height);
   return width * height > 0.56 * smaller && smaller > larger * 0.44;
+}
+
+/** Lift a bounded analysis crop only. Part evidence still reads the original pixels. */
+function liftShadows(canvas: OffscreenCanvas, recovery = false) {
+  const context = canvas.getContext('2d', { willReadFrequently: true });
+  if (!context) return false;
+  const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+  const histogram = new Uint32Array(256);
+  const luma = (i: number) =>
+    Math.round(
+      0.2126 * pixels.data[i]! + 0.7152 * pixels.data[i + 1]! + 0.0722 * pixels.data[i + 2]!,
+    );
+  let count = 0,
+    opaque = 0;
+  for (let i = 0; i < pixels.data.length; i += 28) {
+    if (pixels.data[i + 3]! < 220) continue;
+    opaque++;
+    const level = luma(i);
+    if (level > 6) {
+      histogram[level] = histogram[level]! + 1;
+      count++;
+    }
+  }
+  if (count < pixels.data.length / 800) return false;
+  let seen = 0,
+    middle = 0,
+    high = 0;
+  for (let level = 7; level < histogram.length; level++) {
+    seen += histogram[level]!;
+    if (!middle && seen >= count * 0.58) middle = level;
+    if (seen >= count * 0.93) {
+      high = level;
+      break;
+    }
+  }
+  if (middle >= (recovery ? 102 : 76) || high < 17 || high - middle < 5) return false;
+  const gain = Math.min(4.2, Math.max(1.26, 132 / Math.max(21, middle)));
+  const curve = Float32Array.from({ length: 256 }, (_, y) => 1 + (gain - 1) * (1 - y / 255) ** 2);
+  const deepShadows = count < opaque * 0.24;
+  for (let i = 0; i < pixels.data.length; i += 4) {
+    const y = luma(i);
+    // Retain a black floor. A toe with a softer contrast curve can expose
+    // shape in near-black inputs without clipping an isolated reflection.
+    const multiplier = deepShadows ? Math.min(9.2, 12 / (1 + Math.sqrt(y / 25))) : curve[y]!;
+    for (let channel = 0; channel < 3; channel++) {
+      const at = i + channel;
+      pixels.data[at] = deepShadows
+        ? (y * 0.83 + pixels.data[at]! * 0.17) * multiplier
+        : pixels.data[at]! * multiplier;
+    }
+  }
+  context.putImageData(pixels, 0, 0);
+  return true;
+}
+
+export async function recoverDistantFaces(
+  source: OffscreenCanvas,
+  landmarker: FaceLandmarker,
+  openDetector: () => Promise<FaceDetector>,
+  primary: Landmarks[],
+  oval: (points: Point[]) => Point[],
+) {
+  const bounds = primary.map((points) => boundsOf(oval(points)));
+  if (primary.length >= 8 || (primary.length === 1 && bounds[0]!.width * bounds[0]!.height >= 0.12))
+    return primary;
+  const detector = await openDetector();
+  const found: { bounds: Window; score: number }[] = [];
+  function scan(window: Window, lift: boolean) {
+    const view = analysisCanvas(source, window, 720);
+    try {
+      if (lift && !liftShadows(view)) return;
+      for (const item of detector.detect(view).detections) {
+        const box = item.boundingBox;
+        const score = item.categories[0]?.score ?? 0;
+        if (!box || score < (lift ? 0.65 : 0.6)) continue;
+        const x = window.x + (box.originX / view.width) * window.width;
+        const y = window.y + (box.originY / view.height) * window.height;
+        const w = (box.width / view.width) * window.width;
+        const h = (box.height / view.height) * window.height;
+        if (
+          Math.min(w * source.width, h * source.height) < 12 ||
+          x + w * 0.25 < window.x ||
+          y + h * 0.25 < window.y ||
+          x + w * 0.75 > window.x + window.width ||
+          y + h * 0.75 > window.y + window.height
+        )
+          continue;
+        const candidate = { x, y, width: w, height: h };
+        if (bounds.some((b) => sameFace(b, candidate))) continue;
+        const duplicate = found.findIndex((other) => sameFace(other.bounds, candidate));
+        if (duplicate === -1) found.push({ bounds: candidate, score });
+        else if (score > found[duplicate]!.score) found[duplicate] = { bounds: candidate, score };
+      }
+    } finally {
+      view.width = view.height = 1;
+    }
+  }
+  try {
+    scan(entireFrame, false);
+    if (!primary.length && found.length < 2) scan(entireFrame, true);
+    if (
+      Math.min(source.width, source.height) >= 256 &&
+      !found.some((item) => item.bounds.width * item.bounds.height > 0.11)
+    ) {
+      const extent = 0.58;
+      const windows = [0, 1 - extent].flatMap((y) =>
+        [0, 1 - extent].map((x) => ({ x, y, width: extent, height: extent })),
+      );
+      for (const window of windows) scan(window, false);
+      if (!primary.length && !found.length) for (const window of windows) scan(window, true);
+    }
+    const small = [...bounds, ...found.map(({ bounds }) => bounds)]
+      .filter((b) => b.width < 0.075 && b.height < 0.13)
+      .map((b) => b.y + b.height / 2)
+      .sort((a, b) => a - b);
+    // A row of distant faces gives a smaller search area for the others.
+    const row = small.filter((y) => Math.abs(y - small[Math.floor(small.length / 2)]!) < 0.085);
+    if (row.length >= 2 && primary.length + found.length < 10) {
+      const width = 0.34;
+      const height = Math.min(0.52, (width * source.width) / source.height);
+      const center = row.reduce((total, y) => total + y, 0) / row.length;
+      const y = Math.max(0, Math.min(1 - height, center - height * 0.5));
+      for (const x of [0, 0.22, 0.44, 1 - width]) scan({ x, y, width, height }, false);
+    }
+    const recovered: Face[] = [];
+    for (const candidate of found.sort((a, b) => b.score - a.score).slice(0, 10)) {
+      if (recovered.length + primary.length >= 8) break;
+      const window = faceWindow(source, candidate.bounds, 2.05);
+      const view = analysisCanvas(source, window, 640);
+      try {
+        for (const useLift of [false, true]) {
+          if (useLift && !liftShadows(view, true)) break;
+          const usable = landmarker
+            .detect(view)
+            .faceLandmarks.flatMap((points) => {
+              const projected = points.map((p) => ({
+                ...p,
+                x: window.x + p.x * window.width,
+                y: window.y + p.y * window.height,
+                z: p.z * window.width,
+              }));
+              try {
+                const measured = boundsOf(oval(projected));
+                return sameFace(measured, candidate.bounds) &&
+                  !bounds.some((other) => sameFace(other, measured)) &&
+                  !recovered.some((other) => sameFace(other.bounds, measured))
+                  ? [{ points: projected, bounds: measured }]
+                  : [];
+              } catch {
+                return [];
+              }
+            })
+            .sort(
+              (a, b) =>
+                Math.abs(a.bounds.x - candidate.bounds.x) -
+                Math.abs(b.bounds.x - candidate.bounds.x),
+            );
+          if (usable[0]) {
+            recovered.push(usable[0]);
+            break;
+          }
+        }
+      } finally {
+        view.width = view.height = 1;
+      }
+    }
+    // A tightly framed dark profile may miss both detectors at original
+    // contrast. Ask the dense model again on a contrast-normalized source.
+    if (!primary.length && !recovered.length) {
+      const view = analysisCanvas(source, entireFrame, 800);
+      try {
+        if (liftShadows(view, true)) {
+          await landmarker.setOptions({
+            minFaceDetectionConfidence: 0.44,
+            minFacePresenceConfidence: 0.53,
+          });
+          const candidates = landmarker.detect(view).faceLandmarks;
+          for (const points of candidates) {
+            try {
+              const measured = boundsOf(oval(points));
+              if (Math.min(measured.width * source.width, measured.height * source.height) < 34)
+                continue;
+              const second = faceWindow(source, measured, 2.12);
+              if (second.width * second.height > 0.9) continue;
+              const crop = analysisCanvas(source, second, 640);
+              try {
+                if (!liftShadows(crop, true)) continue;
+                const confirmed = landmarker
+                  .detect(crop)
+                  .faceLandmarks.map((points) =>
+                    points.map((p) => ({
+                      ...p,
+                      x: second.x + p.x * second.width,
+                      y: second.y + p.y * second.height,
+                      z: p.z * second.width,
+                    })),
+                  )
+                  .find(
+                    (candidate) =>
+                      sameFace(measured, boundsOf(oval(candidate))) &&
+                      anchorDistance(candidate, points) <
+                        Math.max(measured.width, measured.height) * 0.1,
+                  );
+                if (confirmed)
+                  recovered.push({ points: confirmed, bounds: boundsOf(oval(confirmed)) });
+              } finally {
+                crop.width = crop.height = 1;
+              }
+            } catch {
+              /* A clipped contour cannot be edited. */
+            }
+            if (recovered.length >= 4) break;
+          }
+        }
+      } finally {
+        view.width = view.height = 1;
+      }
+    }
+    recovered.sort((a, b) => a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y);
+    return [...primary, ...recovered.map((face) => face.points)];
+  } finally {
+    detector.close();
+  }
 }
 
 export function detectFaceDetails(
@@ -194,6 +417,125 @@ export function detectFaceDetails(
       return base.points;
     return refined.points;
   });
+}
+
+type PoseOutput = ReturnType<PoseLandmarker['detect']>;
+type BodyObservation = {
+  points: PoseOutput['landmarks'][number];
+  sample?: (p: Point) => number;
+};
+
+export function observeBodies(
+  source: OffscreenCanvas,
+  pose: PoseLandmarker,
+  faces: readonly Window[],
+) {
+  function detect(window: Window): BodyObservation[] {
+    // The native float callback requires aligned rows at the inference size.
+    const view = analysisCanvas(source, window, 896, 4);
+    let found: BodyObservation[] = [];
+    try {
+      pose.detect(view, (output) => {
+        found = output.landmarks.flatMap((points, i) => {
+          if (points.length < 33 || !points.some((p) => p.visibility >= 0.56)) return [];
+          const mask = output.segmentationMasks?.[i];
+          const original =
+            mask && confidenceSampler(mask.getAsFloat32Array(), mask.width, mask.height);
+          // Copy a bounded grid while the callback owns the mask.
+          const scale = Math.min(1, 288 / Math.max(view.width, view.height));
+          const w = Math.max(1, Math.round(view.width * scale));
+          const h = Math.max(1, Math.round(view.height * scale));
+          const values =
+            original &&
+            Float32Array.from({ length: w * h }, (_, index) =>
+              original({ x: ((index % w) + 0.5) / w, y: (Math.floor(index / w) + 0.5) / h }),
+            );
+          return [
+            {
+              points: points.map((p) => ({
+                ...p,
+                x: window.x + p.x * window.width,
+                y: window.y + p.y * window.height,
+                z: p.z * window.width,
+                visibility:
+                  p.x < 0.012 || p.x > 0.988 || p.y < 0.012 || p.y > 0.988 ? 0 : p.visibility,
+              })),
+              sample: values ? confidenceSampler(values, w, h, window) : undefined,
+            },
+          ];
+        });
+      });
+      return found;
+    } finally {
+      view.width = view.height = 1;
+    }
+  }
+  const distance = (a: Point, b: Point) =>
+    Math.hypot((a.x - b.x) * source.width, (a.y - b.y) * source.height);
+  function compatible(a: BodyObservation, b: BodyObservation) {
+    const first = a.points[0]!,
+      second = b.points[0]!;
+    const shoulder = Math.max(12, distance(a.points[11]!, a.points[12]!));
+    if (
+      first.visibility > 0.55 &&
+      second.visibility > 0.55 &&
+      distance(first, second) > shoulder * 0.35
+    )
+      return false;
+    const common = [0, 11, 12, 23, 24].filter(
+      (i) => Math.min(a.points[i]!.visibility, b.points[i]!.visibility) >= 0.52,
+    );
+    return (
+      common.length >= 2 &&
+      common.reduce((total, i) => total + distance(a.points[i]!, b.points[i]!), 0) / common.length <
+        shoulder * 0.38
+    );
+  }
+  const quality = (body: BodyObservation) =>
+    [0, 11, 12, 13, 14, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32].reduce(
+      (score, i) => score + body.points[i]!.visibility,
+      0,
+    );
+  const leftEdge = (observation: BodyObservation) =>
+    Math.min(...observation.points.filter((p) => p.visibility > 0.5).map((p) => p.x));
+  // Keep the previous full-frame order so a recovered target never reuses a
+  // slot previously assigned to another person in a saved recipe.
+  const bodies = detect(entireFrame).sort((a, b) => leftEdge(a) - leftEdge(b));
+  const originalCount = bodies.length;
+  const expected = faces
+    .filter((face) => face.height < 0.19 && face.y + face.height * 3 < 1)
+    .sort((a, b) => b.height - a.height);
+  for (const head of expected.slice(0, 8)) {
+    const x = head.x + head.width * 0.5;
+    const y = Math.max(0, head.y - head.height * 0.65);
+    const height = Math.min(1 - y, head.height * 10.85);
+    const halfWidth = Math.min(((height * source.height) / source.width) * 0.39, head.width * 3.1);
+    const left = Math.max(0, x - halfWidth),
+      right = Math.min(1, x + halfWidth);
+    const sameHead = (body: BodyObservation) => {
+      const nose = body.points[0]!;
+      return (
+        nose.visibility >= 0.51 &&
+        nose.x >= head.x - head.width * 0.3 &&
+        nose.x <= head.x + head.width * 1.3 &&
+        nose.y >= head.y - head.height * 0.3 &&
+        nose.y <= head.y + head.height * 1.23
+      );
+    };
+    const existing = bodies.findIndex(sameHead);
+    if (existing >= 0 && head.height >= 0.105 && quality(bodies[existing]!) > 12) continue;
+    if (existing < 0 && bodies.length >= 8) continue;
+    const alternatives = detect({ x: left, y, width: right - left, height }).filter(sameHead);
+    const best = alternatives.sort((a, b) => quality(b) - quality(a))[0];
+    if (!best || quality(best) < 7 || !best.sample || best.sample(best.points[0]!) < 0.3) continue;
+    const same = existing >= 0 ? existing : bodies.findIndex((body) => compatible(body, best));
+    if (same < 0) bodies.push(best);
+    else if (quality(best) >= quality(bodies[same]!) - 0.16) bodies[same] = best;
+  }
+  return [
+    ...bodies.slice(0, originalCount),
+    ...bodies.slice(originalCount).sort((a, b) => a.points[0]!.x - b.points[0]!.x),
+  ];
 }
 
 function anchorDistance(a: Landmarks, b: Landmarks) {

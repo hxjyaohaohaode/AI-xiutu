@@ -21,6 +21,7 @@ export function featureTransforms(
   { width, height }: Dimensions,
   value: (id: string) => number,
   coordinated = false,
+  observed = false,
 ): FaceWarpAnchorV3[] {
   const { leftEye, rightEye, lips } = target.contours;
   if (!leftEye?.length || !rightEye?.length || !lips?.length) return [];
@@ -69,11 +70,12 @@ export function featureTransforms(
     };
   };
   const result: FaceWarpAnchorV3[] = [];
-  for (const [side, eye, brow] of [
-    [-1, leftEye, target.contours.leftBrow],
-    [1, rightEye, target.contours.rightBrow],
+  const visibility = observed ? target.visibleParts : undefined;
+  for (const [side, eye, brow, visible] of [
+    [-1, leftEye, target.contours.leftBrow, visibility?.leftEye],
+    [1, rightEye, target.contours.rightBrow, visibility?.rightEye],
   ] as const) {
-    if (!eye.every(inside)) continue;
+    if (visible === false || !eye.every(inside)) continue;
     const origin = center(eye);
     const w = extent(eye, ux, uy),
       h = extent(eye, -uy, ux);
@@ -106,7 +108,7 @@ export function featureTransforms(
   }
   const w = extent(lips, ux, uy),
     h = extent(lips, -uy, ux);
-  if (lips.every(inside) && w >= 7 && h >= 2) {
+  if (visibility?.mouth !== false && lips.every(inside) && w >= 7 && h >= 2) {
     const size = value('lipSize');
     const lipMove = build(
       center(lips),

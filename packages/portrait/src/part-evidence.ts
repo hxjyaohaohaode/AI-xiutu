@@ -69,6 +69,45 @@ function frame(target: PortraitTarget, size: Dimensions) {
   return { local, point, span };
 }
 type FaceFrame = NonNullable<ReturnType<typeof frame>>;
+
+/** Use the actual analysis raster as the resolution limit. A landmark
+ * extrapolated by the mesh at a crop or behind an accessory is not evidence. */
+export function visibleFaceParts(image: RGBAImage, target: PortraitTarget) {
+  const axes = frame(target, image);
+  const pixels = Math.min(target.bounds.width * image.width, target.bounds.height * image.height);
+  const blocker =
+    target.featureMasks?.accessories &&
+    compileSelectionMaskV3(target.featureMasks.accessories, image);
+  const clear = (p: Point) => inFrame(p) && !!color(image, p) && (blocker?.(p.x, p.y) ?? 0) < 0.42;
+  const supported = (loop: Point[], minimum: number) => {
+    const box = loop.map((p) => axes!.local(p));
+    const span = (Math.max(...box.map((p) => p.x)) - Math.min(...box.map((p) => p.x))) * axes!.span;
+    return (
+      span >= minimum && clear(center(loop)) && loop.filter(clear).length >= loop.length * 0.82
+    );
+  };
+  const left = target.contours.leftEye ?? [];
+  const right = target.contours.rightEye ?? [];
+  const mouth = target.contours.lips ?? [];
+  const nose = target.landmarks[1];
+  const noseOffset = axes && nose ? Math.abs(axes.local(nose).x) : 0;
+  const spanOf = (eye: Point[]) => {
+    const xs = eye.map((p) => axes!.local(p).x);
+    return Math.max(...xs) - Math.min(...xs);
+  };
+  const l = axes && left.length ? spanOf(left) : 0;
+  const r = axes && right.length ? spanOf(right) : 0;
+  const profile =
+    noseOffset > 0.63 || (noseOffset > 0.35 && Math.min(l, r) < Math.max(l, r) * 0.62);
+  return {
+    pixels,
+    leftEye: !!axes && left.length >= 6 && supported(left, 4) && (!profile || l >= r * 0.66),
+    rightEye: !!axes && right.length >= 6 && supported(right, 4) && (!profile || r >= l * 0.66),
+    mouth: !!axes && mouth.length >= 6 && supported(mouth, 7),
+    nose: !!nose && clear(nose) && (target.landmarks[2] ? clear(target.landmarks[2]) : true),
+    profile,
+  };
+}
 function slice(poly: Point[], at: number, axis: 'x' | 'y') {
   const other = axis === 'x' ? 'y' : 'x',
     hits: number[] = [];
@@ -184,12 +223,14 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
     plausible.map((p) => p.luma),
     0.85,
   );
-  if (bright < 0.36 || bright - dark < 0.09) return;
+  const observed = Boolean(target.visibleParts);
+  if (bright < (observed ? 0.29 : 0.36) || bright - dark < (observed ? 0.11 : 0.09)) return;
   const weights = new Float32Array(width * height);
   const byIndex = new Map(samples.map((p) => [p.index, p]));
   for (const p of plausible) {
     const contrast = smooth(
-      (p.luma - Math.max(0.245, dark + 0.048)) / Math.max(0.075, (bright - dark) * 0.68),
+      (p.luma - Math.max(observed ? 0.17 : 0.245, dark + 0.048)) /
+        Math.max(0.075, (bright - dark) * 0.68),
     );
     weights[p.index] =
       contrast * p.neutral * smooth((p.clearance - 0.22) / Math.max(0.7, grid.cell * 0.64));
@@ -220,7 +261,7 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
       part.map((p) => p.depth),
       0.78,
     );
-    const upper = edge <= 0.48;
+    const upper = edge <= (observed ? 0.42 : 0.48);
     const lower = lowerEdge >= 0.79 && edge >= 0.48;
     if (
       (!upper && !lower) ||
@@ -229,10 +270,15 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
       cluster.length > samples.length * 0.93
     )
       continue;
+    const lumas = part.map((p) => p.luma);
+    const middle = quantile(lumas, 0.5);
+    if (observed && (middle < dark + 0.07 || quantile(lumas, 0.85) - quantile(lumas, 0.13) > 0.33))
+      continue;
     for (const i of cluster) {
       const p = byIndex.get(i)!;
       const depth = upper ? 1 - 0.45 * smooth((p.depth - 0.66) / 0.27) : 0.78;
-      result[i] = Math.round(smooth((weights[i]! - 0.29) / 0.61) * depth * 15) * 17;
+      const enamel = observed ? 0.68 + 0.32 * smooth((p.luma - middle + 0.07) / 0.12) : 1;
+      result[i] = Math.round(smooth((weights[i]! - 0.29) / 0.61) * depth * enamel * 15) * 17;
     }
   }
   const mask = localRaster(grid, result);
@@ -308,6 +354,35 @@ function pupil(
   return [best.center, offset(best.center, best.radius, 0)].filter(inFrame);
 }
 
+function irisBoundary(
+  image: RGBAImage,
+  eye: Point[],
+  prior: { point: Point; radius: number },
+  occlusion?: Sample,
+) {
+  const { point, radius } = prior;
+  if (radius < 2.8 || signedDistance(point, eye, image) < radius * 0.53) return;
+  const gaps: number[] = [];
+  for (let i = 0; i < 16; i++) {
+    const angle = (i * Math.PI) / 8;
+    const at = (r: number) => ({
+      x: point.x + (Math.cos(angle) * r) / image.width,
+      y: point.y + (Math.sin(angle) * r) / image.height,
+    });
+    const inner = at(radius * 0.79),
+      outer = at(radius * 1.21);
+    if (signedDistance(outer, eye, image) < 0.5 || (occlusion?.(outer) ?? 0) > 0.4) continue;
+    const a = lightness(image, inner),
+      b = lightness(image, outer);
+    if (a !== undefined && b !== undefined) gaps.push(b - a);
+  }
+  if (gaps.length >= 4 && quantile(gaps, 0.55) >= 0.049)
+    return [
+      { x: point.x, y: point.y },
+      { x: point.x + radius / image.width, y: point.y },
+    ].filter(inFrame);
+}
+
 function nostrilPixels(image: RGBAImage, target: PortraitTarget, axes: FaceFrame) {
   const { landmarks } = target;
   const masks = [];
@@ -379,7 +454,7 @@ export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget): Tar
   const featureMasks: NonNullable<PortraitTarget['featureMasks']> = {};
   const axes = frame(target, image);
   if (!axes) return { contours, featureMasks };
-  const teeth = toothArch(image, target, axes);
+  const teeth = target.visibleParts?.mouth === false ? undefined : toothArch(image, target, axes);
   if (teeth) featureMasks.teeth = teeth;
   const protectedAt = target.featureMasks?.accessories
     ? compileSelectionMaskV3(target.featureMasks.accessories, image)
@@ -393,6 +468,7 @@ export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget): Tar
     return [{ point, radius: quantile(radii, 0.5) }];
   });
   for (const side of ['left', 'right'] as const) {
+    if (target.visibleParts?.[`${side}Eye`] === false) continue;
     const eye = target.contours[side + 'Eye'];
     if (eye?.length && protectedAt) {
       const p = center(eye);
@@ -400,11 +476,21 @@ export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget): Tar
       // A frame or lens glare can supply a convincing radial contrast.
       if (visibleEdge.filter((q) => protectedAt(q.x, q.y) > 0.44).length >= 3) continue;
     }
-    const found = eye && pupil(image, eye, centers, protectedAt && ((p) => protectedAt(p.x, p.y)));
+    const occlusion = protectedAt && ((p: Point) => protectedAt(p.x, p.y));
+    const found = eye && pupil(image, eye, centers, occlusion);
     if (found?.length === 2) contours[side + 'Pupil'] = found;
+    if (target.visibleParts && eye?.length)
+      for (const prior of centers) {
+        const ring = irisBoundary(image, eye, prior, occlusion);
+        if (ring?.length === 2) {
+          contours[side + 'Iris'] = ring;
+          break;
+        }
+      }
   }
-  const nostrils = nostrilPixels(image, target, axes);
-  if (nostrils.mask) {
+  const nostrils =
+    target.visibleParts?.nose === false ? undefined : nostrilPixels(image, target, axes);
+  if (nostrils?.mask) {
     featureMasks.nostrils = nostrils.mask;
     contours.nostrilCenters = nostrils.points;
   }
@@ -446,7 +532,7 @@ export function analyzeHeadBoundaries(
   const hair: Point[] = [],
     crown: Point[] = [];
   const rows = [-0.7, -0.47, -0.23, 0, 0.23, 0.47, 0.7];
-  const step = Math.max(0.025, 0.65 / axes.span);
+  const step = Math.max(0.018, 0.65 / axes.span);
   for (const x of rows) {
     let supported = 0;
     for (let y = edge - 0.52; y < forehead; y += step) {
@@ -467,7 +553,10 @@ export function analyzeHeadBoundaries(
         sample(1, ahead) < 0.33 &&
         sample(5, p) < 0.36
       ) {
-        hair.push({ x, y });
+        const hairBefore = sample(1, behind),
+          hairAfter = sample(1, ahead);
+        const crossing = smooth((hairBefore - 0.5) / Math.max(0.01, hairBefore - hairAfter));
+        hair.push({ x, y: y + step * (crossing - 0.5) });
         break;
       }
     }
@@ -483,7 +572,10 @@ export function analyzeHeadBoundaries(
         sample(0, outside) > 0.63 &&
         sample(1, outside) < 0.27
       ) {
-        crown.push({ x, y });
+        const hairBefore = sample(1, inside),
+          hairAfter = sample(1, outside);
+        const crossing = smooth((hairBefore - 0.5) / Math.max(0.01, hairBefore - hairAfter));
+        crown.push({ x, y: y - step * (crossing - 0.5) });
         break;
       }
     }
