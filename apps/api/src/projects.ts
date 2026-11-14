@@ -35,6 +35,8 @@ import {
   revisionDto,
   assertVersion,
   hash,
+  lockActiveUser,
+  lockActiveSession,
   lockProjectMutation,
 } from './core.js';
 import type { LocalPrivateStorage } from './storage.js';
@@ -115,6 +117,76 @@ export function registerProjects(
       return projectDto({ ...row, role: r });
     });
     return reply.code(201).send({ project });
+  });
+  app.put('/v1/me/creative-project', async (req) => {
+    const user = requireUser(req);
+    z.object({}).strict().parse(req.body ?? {});
+    return transaction(db, async (tx) => {
+      await lockActiveUser(tx, user.id);
+      await lockActiveSession(tx, user.id, hash(req.cookies.xiutu_session ?? ''));
+      const personal = (await tx.query(
+        "SELECT s.id FROM spaces s JOIN memberships m ON m.space_id=s.id AND m.user_id=s.owner_id WHERE s.kind='personal' AND s.owner_id=$1 AND m.role='owner' FOR UPDATE OF s",
+        [user.id],
+      )).rows[0];
+      if (!personal) throw new HttpError(404, 'PERSONAL_SPACE_NOT_FOUND', '个人空间不存在');
+      let row = (await tx.query(
+        'SELECT * FROM projects WHERE space_id=$1 AND personal_inbox AND deleted_at IS NULL',
+        [personal.id],
+      )).rows[0];
+      if (!row) {
+        row = (await tx.query(
+          "INSERT INTO projects(space_id,title,created_by,personal_inbox) VALUES($1,'我的创作',$2,true) RETURNING *",
+          [personal.id, user.id],
+        )).rows[0];
+        await emit(tx, personal.id, row.id, 'project.created', row.id);
+      }
+      return { project: projectDto({ ...row, role: 'owner' }) };
+    });
+  });
+  app.get('/v1/artworks', async (req) => {
+    const user = requireUser(req);
+    const query = z.object({
+      spaceId: id.optional(), projectId: id.optional(), query: z.string().trim().max(100).default(''),
+      limit: z.coerce.number().int().min(1).max(100).default(60), cursor: z.string().max(240).optional(),
+    }).strict().parse(req.query);
+    if (query.projectId) await projectAccess(db, query.projectId, user.id);
+    else if (query.spaceId) await spaceRole(db, query.spaceId, user.id);
+    else throw new HttpError(400, 'ARTWORK_SCOPE_REQUIRED', '请选择作品所在空间');
+    const cursorShape = z.object({ at: z.string().datetime({ offset: true }), id });
+    let cursor: z.infer<typeof cursorShape> | undefined;
+    if (query.cursor) {
+      try { cursor = cursorShape.parse(JSON.parse(Buffer.from(query.cursor, 'base64url').toString('utf8'))); }
+      catch { throw new HttpError(400, 'INVALID_CURSOR', '作品翻页位置无效'); }
+    }
+    const rows = (await db.query(
+      `SELECT a.*,src.width,src.height,p.title AS project_title,COALESCE(m.role,'reviewer') AS project_role,
+        to_char(a.updated_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
+      FROM artworks a JOIN projects p ON p.id=a.project_id AND p.deleted_at IS NULL
+      JOIN assets src ON src.id=a.asset_id AND src.project_id=p.id AND src.deleted_at IS NULL
+      LEFT JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$1
+      WHERE a.deleted_at IS NULL AND (
+        ($2::uuid IS NULL AND p.space_id=$3 AND m.user_id IS NOT NULL)
+        OR ($2::uuid IS NOT NULL AND p.id=$2 AND (
+          m.user_id IS NOT NULL OR EXISTS (
+            SELECT 1 FROM share_grants g JOIN spaces s ON s.id=p.space_id
+            WHERE g.project_id=p.id AND g.target_user_id=$1 AND g.revoked_at IS NULL AND g.expires_at>clock_timestamp()
+              AND ((g.mode='reference' AND (s.sharing_policy->>'allowReference')::boolean)
+                OR (g.mode='copy' AND (s.sharing_policy->>'allowCopy')::boolean))
+          )
+        ))
+      ) AND ($4='' OR strpos(lower(a.title),lower($4))>0)
+        AND ($5::timestamptz IS NULL OR (a.updated_at,a.id)<($5::timestamptz,$6::uuid))
+      ORDER BY a.updated_at DESC,a.id DESC LIMIT $7`,
+      [user.id, query.projectId ?? null, query.spaceId ?? null, query.query, cursor?.at ?? null, cursor?.id ?? null, query.limit + 1],
+    )).rows;
+    const page = rows.slice(0, query.limit);
+    const last = page.at(-1);
+    return {
+      items: page.map((row) => ({ ...artworkDto(row), width: row.width, height: row.height,
+        projectTitle: row.project_title, projectRole: row.project_role })),
+      nextCursor: rows.length > page.length && last
+        ? Buffer.from(JSON.stringify({ at: last.cursor_at, id: last.id })).toString('base64url') : null,
+    };
   });
   app.get('/v1/projects/:id', async (req) => {
     const user = requireUser(req);

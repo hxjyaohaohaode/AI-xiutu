@@ -1,0 +1,42 @@
+
+/** Dates from the OpenAI API deprecation notice, reviewed 2026-11-14.
+ * Keep the adapters for already recorded requests, receipts and migration work. */
+export const OPENAI_LIFECYCLE_SOURCE = 'https://developers.openai.com/api/docs/deprecations';
+const announced: Record<string, readonly string[]> = {
+  '2026-10-23': ['gpt-image-1', 'gpt-4o-2024-05-13', 'gpt-4.1-nano', 'gpt-4.1-nano-2025-04-14'],
+  '2026-12-01': ['gpt-image-1-mini', 'gpt-image-1.5', 'gpt-image-1.5-2025-12-16', 'chatgpt-image-latest'],
+  '2026-12-11': [
+    'gpt-5', 'gpt-5-2025-08-07', 'gpt-5-mini', 'gpt-5-mini-2025-08-07',
+    'gpt-5-nano', 'gpt-5-nano-2025-08-07', 'gpt-5-pro', 'gpt-5-pro-2025-10-06',
+    'o3', 'o3-2025-04-16',
+  ],
+  '2027-01-06': [
+    'tts-1', 'tts-1-hd', 'tts-1-1106', 'tts-1-hd-1106',
+    'gpt-4o-mini-tts', 'gpt-4o-mini-tts-2025-03-20', 'gpt-4o-mini-tts-2025-12-15',
+  ],
+  '2027-01-14': [
+    'gpt-4o', 'gpt-4o-2024-08-06', 'gpt-4o-2024-11-20', 'gpt-4o-mini',
+    'gpt-4o-mini-2024-07-18', 'gpt-4.1', 'gpt-4.1-2025-04-14',
+    'gpt-4.1-mini', 'gpt-4.1-mini-2025-04-14',
+  ],
+  '2027-01-20': [
+    'gpt-realtime', 'gpt-realtime-2025-08-28', 'gpt-realtime-mini',
+    'gpt-realtime-mini-2025-12-15', 'gpt-audio', 'gpt-audio-2025-08-28',
+    'gpt-4o-audio', 'gpt-audio-mini', 'gpt-audio-mini-2025-12-15',
+    'gpt-4o-mini-audio', 'gpt-4o-mini-transcribe-2025-03-20',
+  ],
+  '2027-02-10': ['gpt-image-2', 'gpt-image-2-2026-04-21'],
+  '2027-02-26': ['whisper-1', 'gpt-4o-transcribe', 'gpt-4o-mini-transcribe',
+    'gpt-4o-mini-transcribe-2025-12-15', 'gpt-4o-transcribe-diarize'],
+  '2027-04-01': ['gpt-5.3-codex', 'gpt-5.4-nano', 'gpt-5.4-nano-2026-03-17', 'gpt-5.1', 'gpt-5.1-2025-11-13'],
+};
+const dates = new Map(Object.entries(announced).flatMap(([date, ids]) => ids.map((id) => [id, date] as const)));
+
+export function openAIShutdownDate(id: string) {
+  return dates.get(id);
+}
+
+export function openAIModelShutdown(id: string, now = Date.now()) {
+  const date = openAIShutdownDate(id);
+  return date !== undefined && now >= Date.parse(date);
+}

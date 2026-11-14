@@ -4,8 +4,8 @@ import { ChoiceSelect } from './ChoiceSelect';
 import { secureUuid } from '../lib/uuid';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { MagnifyingGlass, UserCircle, CheckCircle } from '@phosphor-icons/react';
-import { api, errorMessage, jsonRequest } from '../lib/api';
-import type { SupportCatalog, User } from '../lib/types';
+import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
+import type { SupportSettings, User } from '../lib/types';
 import { Busy, InlineError } from './Ui';
 import { StatusMark } from './StatusMark';
 
@@ -48,7 +48,7 @@ export function QuotaManager() {
   const [searchState, setSearchState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [accountState, setAccountState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [readError, setReadError] = useState<string | null>(null);
-  const [supportTiers, setSupportTiers] = useState<SupportCatalog['tiers']>([]);
+  const [supportTiers, setSupportTiers] = useState<SupportSettings['tiers']>([]);
   const [supportError, setSupportError] = useState<string | null>(null);
   const [supportCents, setSupportCents] = useState('');
   const [supportReference, setSupportReference] = useState('');
@@ -181,14 +181,18 @@ export function QuotaManager() {
       if (alive.current) setBusy(false);
     }
   }
+  const supportVersion = useRef<number | null>(null);
   async function readSupportTiers() {
     try {
-      const result = await api<SupportCatalog>('/support');
+      const result = await api<SupportSettings>('/ops/support');
       if (!alive.current) return;
-      if (!result.qrUrl) {
+      if (!result.qrSource) {
+        setSupportTiers([]);
+        supportVersion.current = null;
         setSupportError(t('微信赞赏暂未开放'));
         return;
       }
+      supportVersion.current = result.version;
       setSupportTiers(result.tiers);
       setSupportError(null);
     } catch (e) {
@@ -219,6 +223,7 @@ export function QuotaManager() {
           userId,
           cents: supportTier.cents,
           expectedPoints: supportTier.points,
+          expectedVersion: supportVersion.current ?? undefined,
           reference: supportReference.trim(),
         }),
       );
@@ -240,7 +245,10 @@ export function QuotaManager() {
         }),
       );
     } catch (e) {
-      if (alive.current) setSupportError(errorMessage(e));
+      if (alive.current) {
+        if (e instanceof ApiError && e.code === 'SUPPORT_TIER_CHANGED') await readSupportTiers();
+        if (alive.current) setSupportError(errorMessage(e));
+      }
     } finally {
       writing.current = false;
       if (alive.current) setBusy(false);
@@ -362,7 +370,7 @@ export function QuotaManager() {
         <MotionDetails
           className="surface ops-section"
           onOpenChange={(open) => {
-            if (open && !supportTiers.length) void readSupportTiers();
+            if (open) void readSupportTiers();
           }}
         >
           <summary>{t('微信赞赏核对发放')}</summary>

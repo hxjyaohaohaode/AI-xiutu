@@ -83,6 +83,9 @@ export interface PromptBarProps {
   onValueChange?: (value: string) => void;
   modelKey?: string;
   onModelChange?: (key: string) => void;
+  onMenuChange?: (menu: 'at' | 'model' | 'effort' | 'slash' | null) => void;
+  inlineModelConfiguration?: boolean;
+  modelTools?: ReactNode;
   disabled?: boolean;
   modelDisabled?: boolean;
   hideInput?: boolean;
@@ -254,6 +257,9 @@ const PromptBar: React.FC<PromptBarProps> = ({
   onValueChange,
   modelKey: controlledModel,
   onModelChange,
+  onMenuChange,
+  inlineModelConfiguration = false,
+  modelTools,
   disabled,
   modelDisabled,
   hideInput = false,
@@ -317,6 +323,9 @@ const PromptBar: React.FC<PromptBarProps> = ({
   const typed = dismissed || disabled || hideInput ? null : parseToken(draft);
   const token = typed && (typed.kind === 'at' ? sources.length : commands.length) ? typed : null;
   const open = disabled ? null : plusOpen ? 'at' : modelOpen && !modelDisabled ? 'model' : effortOpen ? 'effort' : token?.kind ?? null;
+  const onMenuChangeRef = useRef(onMenuChange);
+  onMenuChangeRef.current = onMenuChange;
+  useEffect(() => onMenuChangeRef.current?.(open), [open]);
   const query = plusOpen ? '' : (token?.query ?? '');
   const list = useMemo<Row[]>(() => {
     if (open === 'at') return sources.filter(s => s.name.toLowerCase().includes(query) || s.key.toLowerCase().startsWith(query));
@@ -547,7 +556,7 @@ const PromptBar: React.FC<PromptBarProps> = ({
       setModelKey(row.key);
       onModelChange?.(row.key);
       setModelOpen(false);
-      focusInput();
+      if (!inlineModelConfiguration) focusInput();
       return;
     }
     const command = !plusOpen && token;
@@ -668,6 +677,24 @@ const PromptBar: React.FC<PromptBarProps> = ({
           id={menuId}
           className="prompt-bar__menu"
           role={open === 'effort' ? 'dialog' : 'listbox'}
+          onKeyDown={(event) => {
+            if (open !== 'model' || !inlineModelConfiguration) return;
+            if (event.key === 'Escape') {
+              event.preventDefault();
+              setModelOpen(false);
+              rootRef.current?.querySelector<HTMLButtonElement>('.prompt-bar__model-pick')?.focus({ preventScroll: true });
+            }
+            if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+            event.preventDefault();
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            for (let step = 1; step <= list.length; step += 1) {
+              const index = (cursor + list.length + direction * step) % list.length;
+              if (list[index]?.disabled) continue;
+              setActive(index);
+              rowRefs.current[index]?.focus({ preventScroll: true });
+              break;
+            }
+          }}
           aria-label={
             open === 'at' ? labels.sources ?? 'Sources' : open === 'slash' ? labels.commands ?? 'Commands' : open === 'model' ? labels.models ?? 'Models' : labels.effort ?? 'Effort'
           }
@@ -837,25 +864,38 @@ const PromptBar: React.FC<PromptBarProps> = ({
           {models.length > 0 ? (
             <button
               type="button"
-              className="prompt-bar__pick"
+              className="prompt-bar__pick prompt-bar__model-pick"
               aria-label={labels.chooseModel ?? 'Choose model'}
               aria-expanded={modelOpen && !modelDisabled}
               aria-controls={modelOpen && !modelDisabled ? menuId : undefined}
               disabled={disabled || modelDisabled}
               data-on={modelOpen ? '' : undefined}
               onMouseDown={e => e.preventDefault()}
+              onKeyDown={(event) => {
+                if (!inlineModelConfiguration || (event.key !== 'ArrowDown' && event.key !== 'ArrowUp')) return;
+                event.preventDefault();
+                setPlusOpen(false);
+                setEffortOpen(false);
+                setModelOpen(true);
+                const index = Math.max(0, models.indexOf(model));
+                setActive(index);
+                requestAnimationFrame(() => rowRefs.current[index]?.focus({ preventScroll: true }));
+              }}
               onClick={() => {
-                focusInput();
+                if (!inlineModelConfiguration) focusInput();
                 setPlusOpen(false);
                 setEffortOpen(false);
                 setActive(Math.max(0, models.indexOf(model)));
                 setModelOpen(v => !v);
+                if (inlineModelConfiguration && !modelOpen)
+                  requestAnimationFrame(() => rowRefs.current[Math.max(0, models.indexOf(model))]?.focus({ preventScroll: true }));
               }}
             >
               <span>{model.name}</span>
               <HugeiconsIcon icon={ArrowDown01Icon} size={12} strokeWidth={2.4} />
             </button>
           ) : null}
+          {modelTools}
           {efforts.length > 0 ? (
             <button
               type="button"

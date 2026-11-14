@@ -7,6 +7,7 @@ export interface PhotoTrashEntry {
   kind: PhotoTrashKind;
   id: string;
   token: string;
+  thumbnailUrl?: string;
   title: string;
   projectId: string;
   projectTitle: string;

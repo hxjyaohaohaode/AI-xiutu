@@ -127,3 +127,9 @@ g.status-mark-stroke > path {
     transition: none !important;
   }
 }
+
+.toast[data-motion='notice'] { isolation: isolate; overflow: hidden; }
+:is(.toast, .floating-notice) > .toast-countdown { position: absolute; inset: auto 0 0; height: 2px; transform-origin: left center; background: var(--accent-ink); opacity: .72; pointer-events: none; }
+.toast.error > .toast-countdown { background: var(--danger); }
+
+.floating-notice { position: relative; isolation: isolate; overflow: hidden; }

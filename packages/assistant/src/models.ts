@@ -1,3 +1,4 @@
+import { assistantTurnPrice, responseFormatSchema, type AssistantResponsePricing, type AssistantResponseTuning } from '@ai-xiutu/contracts';
 import { z } from 'zod';
 import {
   RESPONSES_REASONING,
@@ -5,6 +6,9 @@ import {
   RESPONSES_SUMMARIES,
   responsesModel,
   OPENAI_TRANSLATION_MODEL,
+  REALTIME_REASONING,
+  realtimeOptionsSchema,
+  liveOptionsSchema,
 } from '@ai-xiutu/contracts';
 
 export {
@@ -15,6 +19,11 @@ export {
   RESPONSES_SUMMARIES,
   RESPONSES_VERIFIED_AT,
   responsesModel,
+} from '@ai-xiutu/contracts';
+
+export {
+  REALTIME_REASONING, CALL_TRANSCRIPTION_MODELS, realtimeOptionsSchema, liveOptionsSchema,
+  type RealtimeOptions, type LiveOptions,
 } from '@ai-xiutu/contracts';
 
 export const REALTIME_VOICES = [
@@ -60,68 +69,6 @@ export const LIVE_VOICES = [
   'luciernaga',
   'pearl',
 ] as const;
-export const REALTIME_REASONING = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
-export const CALL_TRANSCRIPTION_MODELS = [
-  'gpt-transcribe',
-  'gpt-live-transcribe',
-  'gpt-realtime-whisper',
-  'gpt-4o-transcribe',
-  'gpt-4o-mini-transcribe',
-  'gpt-4o-mini-transcribe-2025-03-20',
-  'gpt-4o-mini-transcribe-2025-12-15',
-  'whisper-1',
-] as const;
-export const realtimeOptionsSchema = z
-  .object({
-    transcriptionModel: z.enum(CALL_TRANSCRIPTION_MODELS).optional(),
-    language: z
-      .string()
-      .regex(/^[a-z]{2}$/)
-      .optional(),
-    prompt: z.string().trim().min(1).max(800).optional(),
-    delay: z.enum(REALTIME_REASONING).optional(),
-    noiseReduction: z.enum(['near_field', 'far_field']).nullable().optional(),
-    outputSpeed: z.number().min(0.25).max(1.5).optional(),
-    turnDetection: z
-      .discriminatedUnion('type', [
-        z
-          .object({
-            type: z.literal('server_vad'),
-            threshold: z.number().min(0).max(1).optional(),
-            prefixPaddingMs: z.number().int().min(0).max(3000).optional(),
-            silenceDurationMs: z.number().int().min(100).max(3000).optional(),
-          })
-          .strict(),
-        z
-          .object({
-            type: z.literal('semantic_vad'),
-            eagerness: z.enum(['auto', 'low', 'medium', 'high']).optional(),
-          })
-          .strict(),
-      ])
-      .optional(),
-  })
-  .strict()
-  .refine(
-    (options) =>
-      options.transcriptionModel === 'gpt-realtime-whisper' ? !options.prompt : !options.delay,
-    'Transcription delay is available only with Realtime Whisper, which does not accept a prompt',
-  );
-export const liveOptionsSchema = z
-  .object({
-    prompt: z.string().trim().min(1).max(1200).optional(),
-    opening: z
-      .string()
-      .trim()
-      .min(1)
-      .refine((value) => new TextEncoder().encode(value).length <= 350)
-      .optional(),
-    acknowledgementDelayMs: z.number().int().min(0).max(800).optional(),
-  })
-  .strict();
-export type RealtimeOptions = z.infer<typeof realtimeOptionsSchema>;
-export type LiveOptions = z.infer<typeof liveOptionsSchema>;
-
 export const VOICE_MODELS = Object.freeze([
   {
     id: OPENAI_TRANSLATION_MODEL,
@@ -215,42 +162,12 @@ export const VOICE_MODELS = Object.freeze([
   },
 ]);
 
-const jsonSchema = z.record(z.string(), z.unknown()).refine((value) => {
-  // Only bounded JSON data crosses to the provider. The application never
-  // evaluates schema code or resolves external references.
-  if (value.type !== 'object') return false;
-  function bounded(node: unknown, depth: number): boolean {
-    if (depth > 16) return false;
-    if (Array.isArray(node)) return node.every((item) => bounded(item, depth + 1));
-    if (!node || typeof node !== 'object') return true;
-    return Object.entries(node).every(([key, item]) =>
-      key === '$ref'
-        ? typeof item === 'string' && (item === '#' || item.startsWith('#/'))
-        : bounded(item, depth + 1),
-    );
-  }
-  return bounded(value, 0) && JSON.stringify(value).length <= 12_000;
-}, 'Use a bounded object JSON Schema with local references');
-
 export const responsesOptionsSchema = z
   .object({
     reasoningMode: z.enum(['standard', 'pro']).optional(),
     reasoningSummary: z.enum(RESPONSES_SUMMARIES).optional(),
     verbosity: z.enum(['low', 'medium', 'high']).optional(),
-    format: z
-      .discriminatedUnion('type', [
-        z.object({ type: z.literal('text') }).strict(),
-        z.object({ type: z.literal('json_object') }).strict(),
-        z
-          .object({
-            type: z.literal('json_schema'),
-            name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
-            schema: jsonSchema,
-            strict: z.boolean().default(true),
-          })
-          .strict(),
-      ])
-      .optional(),
+    format: responseFormatSchema.optional(),
     temperature: z.number().min(0).max(2).optional(),
     topP: z.number().min(0).max(1).optional(),
     serviceTier: z.enum(RESPONSES_SERVICE_TIERS).optional(),
@@ -290,6 +207,8 @@ export const assistantModelConfigSchema = z
     webImageSearch: z.boolean().optional(),
     reasoningEffort: z.enum(RESPONSES_REASONING).optional(),
     responses: responsesOptionsSchema.optional(),
+    responseTierUnits: z.partialRecord(z.enum(RESPONSES_SERVICE_TIERS), z.number().int().min(1).max(100_000)).optional(),
+    responseProExtraUnits: z.number().int().min(1).max(100_000).optional(),
     voiceReasoningEffort: z.enum(REALTIME_REASONING).optional(),
     realtime: realtimeOptionsSchema.optional(),
     live: liveOptionsSchema.optional(),
@@ -320,8 +239,8 @@ export function modelProfileError(
   const options = settings.responses;
   const effectiveEffort = settings.reasoningEffort ?? model?.defaultEffort;
   const sampling =
-    model?.sampling === 'always' ||
-    (model?.sampling === 'without-reasoning' && effectiveEffort === 'none');
+    options?.reasoningMode !== 'pro' && (model?.sampling === 'always' ||
+    (model?.sampling === 'without-reasoning' && effectiveEffort === 'none'));
   if (
     model &&
     (settings.contextWindowTokens > model.contextWindowTokens ||
@@ -330,6 +249,10 @@ export function modelProfileError(
       settings.maxOutputTokens > model.maxOutputTokens ||
       (settings.reasoningEffort && !model.reasoning.includes(settings.reasoningEffort)) ||
       (options?.reasoningMode && !model.reasoningMode) ||
+      (options?.reasoningMode === 'pro' && effectiveEffort === 'none') ||
+      (settings.responseProExtraUnits !== undefined && !model.reasoningMode) ||
+      Object.keys(settings.responseTierUnits ?? {}).some((tier) =>
+        !model.tiers.some((value) => value === tier)) ||
       (options?.reasoningSummary && !model.summaries.includes(options.reasoningSummary)) ||
       (options?.verbosity && !model.verbosity) ||
       (options?.format?.type === 'json_schema' && !model.structuredOutputs) ||
@@ -338,6 +261,43 @@ export function modelProfileError(
       (options?.serviceTier && !model.tiers.includes(options.serviceTier)))
   )
     return 'RESPONSES_PROFILE_MISMATCH';
+}
+
+export function responseDefaults(config: AssistantModelConfig): AssistantResponseTuning {
+  const { reasoningEffort, maxOutputTokens, responses } = config;
+  const { transport: _transport, ...overrides } = responses ?? {};
+  return { ...overrides, effort: reasoningEffort, maxOutputTokens };
+}
+export function responsePricing(config: AssistantModelConfig): AssistantResponsePricing {
+  return {
+    defaultTier: config.responses?.serviceTier ?? 'default',
+    tierUnits: config.responseTierUnits ?? {},
+    proExtraUnits: config.responseProExtraUnits,
+  };
+}
+export function tuneAssistantTurn(id: string, base: AssistantModelConfig, tuning?: AssistantResponseTuning, allowTest = false) {
+  if (!tuning) return { config: base, units: assistantTurnPrice(base.unitCost, responsePricing(base), {})! };
+  const { maxOutputTokens, effort, ...options } = tuning;
+  const config = assistantModelConfigSchema.parse({
+    ...base,
+    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
+    ...(effort !== undefined ? { reasoningEffort: effort } : {}),
+    responses: { ...base.responses, ...options },
+  });
+  // A model may have sampling defaults for effort=none. Suppress those inherited
+  // defaults if the user explicitly switches to a reasoning mode.
+  const profile = responsesModel(id);
+  const canSample = config.responses?.reasoningMode !== 'pro' &&
+    (profile?.sampling === 'always' ||
+      (profile?.sampling === 'without-reasoning' && (config.reasoningEffort ?? profile.defaultEffort) === 'none'));
+  if (!canSample && config.responses) {
+    if (tuning.temperature === undefined) delete config.responses.temperature;
+    if (tuning.topP === undefined) delete config.responses.topP;
+  }
+  const units = assistantTurnPrice(base.unitCost, responsePricing(base), tuning, responseDefaults(base));
+  if (units === null || (maxOutputTokens !== undefined && maxOutputTokens > base.maxOutputTokens) ||
+      modelProfileError(id, config, allowTest)) return null;
+  return { config, units };
 }
 
 export function responsesParameters(config: AssistantModelConfig, includeText = true) {

@@ -2,7 +2,7 @@ import type { Session, Space } from '../lib/types';
 import type { DocumentDraft } from './document-drafts';
 import { formatDateTime, formatNumber, t } from '../i18n';
 
-export type AccountTab = 'overview' | 'security' | 'billing' | 'data';
+export type AccountTab = 'overview' | 'security' | 'billing' | 'assistant' | 'data';
 
 export type AccountEntitlements = {
   spaceId: string;
@@ -131,7 +131,7 @@ export function accountPhone(phoneMasked: string) {
 }
 
 export function nextAccountTab(current: AccountTab, key: string): AccountTab | null {
-  const tabs: AccountTab[] = ['overview', 'security', 'billing', 'data'];
+  const tabs: AccountTab[] = ['overview', 'security', 'billing', 'assistant', 'data'];
   const at = tabs.indexOf(current);
   if (key === 'Home') return tabs[0];
   if (key === 'End') return tabs[tabs.length - 1];

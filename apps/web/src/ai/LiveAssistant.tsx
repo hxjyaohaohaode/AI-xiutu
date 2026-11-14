@@ -16,6 +16,7 @@ import {
   Eye,
   MagnifyingGlass,
   Sparkle,
+  SlidersHorizontal,
   Pause,
   Plus,
   GearSix,
@@ -27,6 +28,7 @@ import {
   ArrowsOut,
   ArrowsIn,
   ArrowLeft,
+  ArrowRight,
   X,
 } from '@phosphor-icons/react';
 import type {
@@ -45,6 +47,7 @@ import type {
   AssistantResponseTuning,
   LiveDelegationOptions,
   LiveTranslationOptions,
+  PersonalVoiceTuning,
 } from '@ai-xiutu/contracts';
 import { assistantSearchEvidenceSchema, defaultLiveDecisionQuestions,
   OPENAI_DECISIONS_MODEL, OPENAI_TRANSLATION_MODEL, liveDelegationSchema } from '@ai-xiutu/contracts';
@@ -118,6 +121,12 @@ import {
 import { readTeamVoiceSubmission, type TeamVoiceSubmission } from './teamVoiceSubmission';
 import { VOICE_SUBMISSION_CHANGED } from './voiceSubmissionStorage';
 
+import { VoiceModelOptions } from '../components/VoiceModelOptions';
+import { personalVoiceTuningSchema } from '@ai-xiutu/contracts';
+import { AssistantTurnOptions, type TextModelProfile } from './AssistantTurnOptions';
+import { useAssistantPreferences } from './assistantPreferences';
+import { assistantResponseTuning, assistantTurnPrice, type AssistantResponsePricing } from '@ai-xiutu/contracts';
+
 export type CaptureCurrentImage = () => Promise<AssistantContext & { imageDataUrl: string }>;
 interface Model {
   id: string;
@@ -130,14 +139,16 @@ interface Model {
   imageInput: boolean;
   webSearch: boolean;
   webImageSearch?: boolean;
-  voice?: { voices: string[] } | null;
-  responses?: { reasoning: readonly string[]; defaultEffort?: string; verbosity?: boolean;
-    deprecated?: boolean; streaming?: boolean; tiers?: readonly string[] } | null;
+  voice?: { protocol: string; voices: string[]; reasoning: readonly NonNullable<PersonalVoiceTuning['reasoningEffort']>[] } | null;
+  voiceDefaults?: PersonalVoiceTuning;
+  responses?: TextModelProfile | null;
   responseDefaults?: AssistantResponseTuning & { effortFixedForSampling?: boolean };
+  responsePrice?: AssistantResponsePricing;
 }
 interface Catalog {
   ready: boolean;
   voiceReady: boolean;
+  transcriptionModels?: string[];
   reason: string | null;
   models: Model[];
 }
@@ -223,6 +234,8 @@ export interface LiveAssistantProps {
   onSave: () => void;
   onExport?: () => void;
   onTopUp?: () => void;
+  onAssistantPreferences?: () => void;
+  onPreparePersonalAI?: () => void;
   voiceEntry?: number;
   onPreview: (recipe: EditorRecipe) => void;
   previewActive?: boolean;
@@ -261,6 +274,7 @@ const VOICE_STRANDS_DARK = ['#b7f3d8', '#8ce2c2', '#a8ebd7', '#f1fff0', '#84ebdf
 export function LiveAssistant(props: LiveAssistantProps) {
   const compactCopy = modelCopy(useLocale());
   const [composerExpanded, setComposerExpanded] = useState(false);
+  const [modelOptionsOpen, setModelOptionsOpen] = useState(false);
   const {
     project,
     artwork,
@@ -299,6 +313,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [voiceId, setVoiceId] = useState(''),
     [voice, setVoice] = useState('marin');
   const [liveDelegation, setLiveDelegation] = useState<LiveDelegationOptions>({ type: 'client' });
+  const [voiceTuningByModel, setVoiceTuningByModel] = useState<Record<string, PersonalVoiceTuning>>({});
   const [liveTranslation, setLiveTranslation] = useState<LiveTranslationOptions>({ language: 'en' });
   const [delegatedResult, setDelegatedResult] = useState<{ kind: 'responses' | 'decisions'; text: string } | null>(null);
   const [mode, setMode] = useState<'text' | 'voice'>('text'),
@@ -307,8 +322,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voiceStartButton = useRef<HTMLButtonElement>(null);
   const voiceDark = useContext(ThemeContext)?.theme === 'dark';
   const [voiceToolsOpen, setVoiceToolsOpen] = useState(false);
+  const [voiceParametersOpen, setVoiceParametersOpen] = useState(false);
+  const voiceParametersId = useId();
   const [voiceExtra, setVoiceExtra] = useState<'text' | 'details' | null>(null);
-  const [voiceCaptionsVisible, setVoiceCaptionsVisible] = useState(true);
+  const [voiceCaptionsOverride, setVoiceCaptionsOverride] = useState<boolean | null>(null);
   const voiceLevel = useRef(0);
   const readVoiceLevel = useCallback(() => voiceLevel.current, []);
   const setVoiceLevel = useCallback((level: number) => { voiceLevel.current = level; }, []);
@@ -329,6 +346,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voiceEntry = useRef<HTMLElement | null>(null);
   const dismissVoice = () => {
     setVoiceExpanded(false);
+    setVoiceParametersOpen(false);
     if (callState === 'idle') setMode('text');
     const trigger = voiceEntry.current;
     requestAnimationFrame(() => {
@@ -540,17 +558,47 @@ export function LiveAssistant(props: LiveAssistantProps) {
       assistantScopeKey(editorState(current.current)) === requestScope
     );
   }
-  const models = catalog?.models.filter((item) => item.operations.includes('assistant-turn')) ?? [];
+  const [preferences] = useAssistantPreferences(actorId, props.visible !== false);
+  const lastDefaults = useRef<{ actor: string | null; text: string; voice: string }>({ actor: null, text: '', voice: '' });
+  const voiceCaptionsVisible = voiceCaptionsOverride ?? preferences.captions;
+  const models = catalog?.models.filter((item) => item.operations.includes('assistant-turn') && !item.responses?.deprecated) ?? [];
   const voices = catalog?.models.filter((item) => item.operations.includes('realtime-voice')) ?? [];
   const selected = models.find((item) => item.id === modelId),
     selectedVoice = voices.find((item) => item.id === voiceId);
   const [tuningByModel, setTuningByModel] = useState<Record<string, AssistantResponseTuning>>({});
-  const tuning = tuningByModel[modelId];
-  const activeTuning: AssistantResponseTuning = {
-    ...(tuning?.effort && !selected?.responseDefaults?.effortFixedForSampling && selected?.responses?.reasoning.includes(tuning.effort) ? { effort: tuning.effort } : {}),
-    ...(tuning?.verbosity && selected?.responses?.verbosity ? { verbosity: tuning.verbosity } : {}),
-  };
+  const activeTuning = tuningByModel[modelId] ?? {};
+  const [invalidSchemaModel, setInvalidSchemaModel] = useState<string | null>(null);
+  const quote = selected
+    ? assistantTurnPrice(selected.unitCost, selected.responsePrice, activeTuning, selected.responseDefaults)
+    : null;
+  const tuningValid = invalidSchemaModel !== modelId && assistantResponseTuning.safeParse(activeTuning).success &&
+    (activeTuning.maxOutputTokens === undefined || activeTuning.maxOutputTokens <= (selected?.maxOutputTokens ?? 2048));
+  function updateTurnOptions(value: AssistantResponseTuning) {
+    setTuningByModel((old) => ({ ...old, [modelId]: value }));
+  }
+  function chooseTextModel(id: string) {
+    setModelId(id);
+    setInvalidSchemaModel(null);
+  }
+  function chooseComposerModel(id: string) {
+    chooseTextModel(id);
+    const supported = Boolean(models.find((item) => item.id === id)?.responses);
+    setModelOptionsOpen(supported);
+    requestAnimationFrame(() => {
+      if (supported)
+        composerInput.current?.closest('form')?.querySelector<HTMLElement>('.assistant-turn-options')?.focus({ preventScroll: true });
+      else composerInput.current?.focus({ preventScroll: true });
+    });
+  }
   const submissionBlocked = !submissionReady || !!pendingSubmission;
+  const voiceTuning = voiceTuningByModel[voiceId];
+  const effectiveVoiceTuning: PersonalVoiceTuning = voiceTuning ?? {};
+  const voiceSettingsValid = personalVoiceTuningSchema.safeParse(effectiveVoiceTuning).success &&
+    (effectiveVoiceTuning.maxOutputTokens === undefined ||
+      effectiveVoiceTuning.maxOutputTokens <= Math.min(4096, selectedVoice?.maxOutputTokens ?? 4096));
+  function updateVoiceTuning(patch: Partial<PersonalVoiceTuning>) {
+    setVoiceTuningByModel((old) => ({ ...old, [voiceId]: { ...old[voiceId], ...patch } }));
+  }
   const voiceOptions = selectedVoice?.voice?.voices ?? [];
   const translating = voiceId === OPENAI_TRANSLATION_MODEL;
   const actualDelegation = voiceId === 'gpt-live-1' ? liveDelegation : undefined;
@@ -566,7 +614,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       (actualDelegation.maxOutputTokens ?? 16) <= (liveBackend.maxOutputTokens ?? 2048) &&
       (!actualDelegation.effort || liveBackend.responses.reasoning.includes(actualDelegation.effort)) &&
       (!actualDelegation.verbosity || liveBackend.responses.verbosity) &&
-      (!actualDelegation.serviceTier || ['auto','default'].includes(actualDelegation.serviceTier) ||
+      (!actualDelegation.serviceTier || actualDelegation.serviceTier === 'auto' || actualDelegation.serviceTier === 'default' ||
         liveBackend.responses.tiers?.includes(actualDelegation.serviceTier))
     ));
   useEffect(() => {
@@ -615,17 +663,15 @@ export function LiveAssistant(props: LiveAssistantProps) {
     if (!catalog || catalogSelectionLocked) return;
     // Admission readiness depends on the actor loaded with the catalog. It must
     // never lock the initial default selection while that first read is pending.
-    setModelId((old) =>
-      catalog.models.some((item) => item.id === old && item.operations.includes('assistant-turn'))
-        ? old
-        : (catalog.models.find((item) => item.operations.includes('assistant-turn'))?.id ?? ''),
-    );
-    setVoiceId((old) =>
-      catalog.models.some((item) => item.id === old && item.operations.includes('realtime-voice'))
-        ? old
-        : (catalog.models.find((item) => item.operations.includes('realtime-voice'))?.id ?? ''),
-    );
-  }, [catalog, catalogSelectionLocked]);
+    const previous = lastDefaults.current;
+    const replaceText = previous.actor !== actorId || (!prompt.trim() && !modelOptionsOpen && previous.text !== preferences.textModel);
+    const replaceVoice = previous.actor !== actorId || (!voiceParametersOpen && previous.voice !== preferences.voiceModel);
+    lastDefaults.current = { actor: actorId, text: preferences.textModel, voice: preferences.voiceModel };
+    setModelId((old) => !replaceText && models.some((item) => item.id === old) ? old :
+      (models.find((item) => item.id === preferences.textModel)?.id ?? models[0]?.id ?? ''));
+    setVoiceId((old) => !replaceVoice && voices.some((item) => item.id === old) ? old :
+      (voices.find((item) => item.id === preferences.voiceModel)?.id ?? voices[0]?.id ?? ''));
+  }, [catalog, actorId, catalogSelectionLocked, preferences.textModel, preferences.voiceModel]);
   const currentVoiceControls = useRef({ callState, muted, end: endVoice });
   currentVoiceControls.current = { callState, muted, end: endVoice };
   const toggleVoiceMute = useCallback(() => {
@@ -775,7 +821,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setCandidateHistoryStatus('');
     streamText.current.clear();
     freshConversation.current = false;
-    setCreative(initialCreativeSettings());
+    setCreative({ ...initialCreativeSettings(), mode: preferences.mode });
     setMessages([]);
     setVoiceCaptions({});
     setCandidates([]);
@@ -791,6 +837,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setVoiceRecoveryError('');
     }
   }, [project?.id, project?.spaceId, isLoggedIn]);
+  useEffect(() => {
+    setCreative((current) => ({ ...current, mode: preferences.mode }));
+  }, [preferences.mode]);
+  useEffect(() => {
+    setVoiceCaptionsOverride(null);
+  }, [actorId, preferences.captions]);
   useEffect(() => {
     if (!isLoggedIn || !actorId || !project) return;
     const key = `${actorId}:${project.id}`;
@@ -842,9 +894,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
           { signal: controller.signal },
         );
         if (controller.signal.aborted) return;
-        setConversations(catalog.conversations);
-        if (conversationId === undefined) {
-          setConversationId(catalog.conversations[0]?.id ?? '');
+        setConversations((old) => JSON.stringify(old) === JSON.stringify(catalog.conversations) ? old : catalog.conversations);
+        if (conversationId === undefined || (!conversationId && !freshConversation.current && catalog.conversations.length)) {
+          const latest = catalog.conversations[0]?.id ?? '';
+          setConversationId(latest);
           return;
         }
         if (!conversationId) return;
@@ -868,24 +921,28 @@ export function LiveAssistant(props: LiveAssistantProps) {
           return;
         for (const turn of turns) acknowledgeKnownTurn(turn);
         const complete = turns.filter((turn) => turn.state === 'completed');
-        if (complete[0])
-          setMemorySuggestions({
-            items: complete[0].output?.memorySuggestions ?? [],
-            sourceTurnId: complete[0].id,
+        if (complete[0]) {
+          const latest = complete[0];
+          setMemorySuggestions((old) => old.sourceTurnId === latest.id ? old : {
+            items: latest.output?.memorySuggestions ?? [], sourceTurnId: latest.id,
           });
-        if (complete[0]?.output?.workspace)
-          setWorkspace({
-            spec: complete[0].output.workspace,
-            candidateIds: complete[0].output.candidates.map((item) => item.id),
-          });
-        if (!freshConversation.current) setParentTurnId((current) => current ?? complete[0]?.id);
+          if (!freshConversation.current && !requests.current.busy) setParentTurnId(latest.id);
+          if (latest.output?.workspace) {
+            const incoming = {
+              spec: latest.output.workspace, candidateIds: latest.output.candidates.map((item) => item.id),
+            };
+            setWorkspace((old) => JSON.stringify(old) === JSON.stringify(incoming) ? old : incoming);
+          }
+        }
         setMessages((old) => {
           const merged = new Map<string, Message>();
           for (const turn of [...turns].reverse()) {
+            const priorUser = old.find((message) => message.id === `${turn.id}-u`);
             merged.set(`${turn.id}-u`, {
               id: `${turn.id}-u`,
               role: 'user',
               text: turn.prompt ?? '',
+              attachmentKind: priorUser?.attachmentKind,
             });
             if (turn.state === 'running') continue;
             merged.set(turn.id, {
@@ -899,12 +956,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
             });
           }
           for (const message of old) if (!merged.has(message.id)) merged.set(message.id, message);
-          return [...merged.values()].slice(-60);
+          const next = [...merged.values()].slice(-60);
+          return JSON.stringify(next) === JSON.stringify(old) ? old : next;
         });
         setCandidates((old) => {
           const merged = new Map(old.map((item) => [item.id, item]));
           for (const candidate of savedCandidates.candidates) merged.set(candidate.id, candidate);
-          return [...merged.values()].slice(0, 50);
+          const next = [...merged.values()].slice(0, 50);
+          return JSON.stringify(next) === JSON.stringify(old) ? old : next;
         });
         const running = turns.find((turn) => turn.state === 'running');
         if (running && !requests.current.busy) {
@@ -936,7 +995,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
               });
           }
         }
-        if (running) timer = setTimeout(() => void load(), 1500);
       } catch (err) {
         if (
           !controller.signal.aborted &&
@@ -944,14 +1002,30 @@ export function LiveAssistant(props: LiveAssistantProps) {
           assistantScopeKey(editorState(current.current)) === requestScope
         )
           setError(errorMessage(err));
+      } finally {
+        if (!controller.signal.aborted && props.visible !== false && document.visibilityState === 'visible')
+          timer = setTimeout(refresh, 4000);
       }
     }
-    void load();
+    let refreshing = false;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || refreshing || controller.signal.aborted) return;
+      clearTimeout(timer);
+      refreshing = true;
+      void load().finally(() => { refreshing = false; });
+    };
+    if (props.visible !== false) {
+      refresh();
+      window.addEventListener('focus', refresh);
+      document.addEventListener('visibilitychange', refresh);
+    } else void load();
     return () => {
       controller.abort();
       clearTimeout(timer);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [project?.id, isLoggedIn, historyEpoch, conversationId]);
+  }, [project?.id, isLoggedIn, historyEpoch, conversationId, props.visible]);
   useEffect(
     () => () => {
       alive.current = false;
@@ -1252,7 +1326,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       !isLoggedIn ||
       !actorId ||
       !project ||
-      (!recovery && (!voiceId || !voiceBackendOk)) ||
+      (!recovery && (!voiceId || !voiceBackendOk || !voiceSettingsValid)) ||
       callState !== 'idle' ||
       !submissionReady ||
       !voiceSubmissionReady ||
@@ -1386,6 +1460,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
           body: {
             idempotencyKey: secureUuid(),
             modelId: voiceId,
+            expectedUnits: selectedVoice?.unitCost,
+            ...(voiceTuning ? { tuning: voiceTuning } : {}),
             ...(translating ? { translation: liveTranslation } : {
               backendModelId: actualDelegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL :
                 actualDelegation?.type === 'responses' ? liveBackend?.id : modelId,
@@ -1568,6 +1644,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       !isLoggedIn ||
       !project ||
       !prompt.trim() ||
+      (!inCall && (!tuningValid || quote === null)) ||
       !modelId
     )
       return;
@@ -1653,6 +1730,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           parentTurnId,
           ...(research.length ? { research } : {}),
           ...(Object.keys(activeTuning).length ? { responseTuning: activeTuning } : {}),
+          ...(quote !== null ? { expectedUnits: quote } : {}),
         },
       });
       // A storage failure stops before dispatch, so closing/reopening this panel cannot
@@ -1733,6 +1811,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
             old.filter((message) => message.id !== `pending-${saved.idempotencyKey}`),
           );
       }
+      if (err instanceof ApiError && ['ASSISTANT_QUOTE_CHANGED', 'ASSISTANT_MODEL_UNAVAILABLE'].includes(err.code))
+        setCatalogAttempt((n) => n + 1);
       throw err;
     }
     let accepted = acceptAssistantSubmission(saved, result);
@@ -2111,6 +2191,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
   }
   function newConversation() {
     freshConversation.current = true;
+    if (!catalogSelectionLocked && !grant)
+      setModelId(models.find((model) => model.id === preferences.textModel)?.id ?? models[0]?.id ?? '');
     setConversationId('');
     setParentTurnId(undefined);
     setMessages([]);
@@ -2132,6 +2214,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     !!project &&
     !!catalog?.ready &&
     !!selected &&
+    (inCall || (tuningValid && quote !== null)) &&
     (mode !== 'text' || !props.visualAttachment || selected.imageInput) &&
     (!inCall || callState === 'active');
   const hasVoiceRecovery =
@@ -2180,7 +2263,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const researchTurnId = activeTurn?.id ?? researchGraph?.turnId ?? parentTurnId;
   const canStartVoice = !inCall && !busy && !submissionBlocked && voiceSubmissionReady &&
     !pendingVoiceSubmission && !pendingTeamVoiceSubmission && catalog?.voiceReady &&
-    !!project && voiceBackendOk && !!selectedVoice && (!grant || (!nativeMode && !translating));
+    !!project && voiceBackendOk && voiceSettingsValid && !!selectedVoice && (!grant || (!nativeMode && !translating));
   const voiceMessages = messages.filter((message) => message.voiceSession === voiceEpoch.current);
   const catalogStatus = (
     <ModelReadStatus
@@ -2215,6 +2298,70 @@ export function LiveAssistant(props: LiveAssistantProps) {
       <DotsThree size={19} weight="bold" />
     </IconButton>
   );
+  const voiceModelFields = selectedVoice?.voice && !translating && (
+    <div className="assistant-turn-fields">
+      <VoiceModelOptions
+        protocol={selectedVoice.voice.protocol}
+        live={effectiveVoiceTuning.live ?? selectedVoice.voiceDefaults?.live ?? {}}
+        realtime={effectiveVoiceTuning.realtime ?? selectedVoice.voiceDefaults?.realtime ?? {}}
+        models={catalog?.transcriptionModels ?? []}
+        disabled={inCall || busy || submissionBlocked || !!grant}
+        onLive={(live) => updateVoiceTuning({ live })}
+        onRealtime={(realtime) => updateVoiceTuning({ realtime })}
+      />
+      {!!selectedVoice.voice.reasoning.length && <label>{t('实时语音推理档位')}
+        <select value={effectiveVoiceTuning.reasoningEffort ?? ''}
+          disabled={inCall || busy || submissionBlocked || !!grant}
+          onChange={(event) => updateVoiceTuning({
+            reasoningEffort: selectedVoice.voice?.reasoning.find((value) => value === event.target.value),
+          })}>
+          <option value="">{t('默认')}</option>
+          {selectedVoice.voice.reasoning.map((value) => <option key={value}>{value}</option>)}
+        </select>
+      </label>}
+      {selectedVoice.voice.protocol === 'realtime' && <label>{t('最多输出 Token')}
+        <input type="number" min={256} max={Math.min(4096, selectedVoice.maxOutputTokens ?? 4096)}
+          value={effectiveVoiceTuning.maxOutputTokens ?? ''}
+          placeholder={String(Math.min(4096, selectedVoice.maxOutputTokens ?? 4096))}
+          disabled={inCall || busy || submissionBlocked || !!grant}
+          onChange={(event) => updateVoiceTuning({
+            maxOutputTokens: event.target.value === '' ? undefined : Number(event.target.value),
+          })} />
+      </label>}
+    </div>
+  );
+  const voiceModeParameters = (translating || actualDelegation) && (
+  <LiveModeSettings
+    disabled={inCall || busy || submissionBlocked || !!grant}
+    mode={translating ? 'translation' : liveDelegation.type}
+    setMode={(value) => {
+      setLiveWebSearch(false);
+      setLiveDelegation(value === 'decisions'
+        ? { type: value, questions: [...defaultLiveDecisionQuestions] } : { type: value });
+    }}
+    delegation={liveDelegation}
+    setDelegation={setLiveDelegation}
+    translation={liveTranslation}
+    setTranslation={setLiveTranslation}
+    tiers={liveBackend?.responses?.tiers ?? []}
+    efforts={liveBackend?.responses?.reasoning ?? []}
+    verbosity={Boolean(liveBackend?.responses?.verbosity)}
+    maxOutputTokens={liveBackend?.maxOutputTokens ?? 2048}
+    webSearchAvailable={Boolean(liveBackend?.webSearch)}
+    webSearch={liveWebSearch}
+    setWebSearch={setLiveWebSearch}
+    backendPicker={actualDelegation?.type === 'responses' && <ModelChoice
+      label={t('委派模型')} ariaLabel={t('委派模型')} value={liveBackend?.id ?? ''}
+      placeholder={t('暂无可用模型')}
+      disabled={inCall || busy || submissionBlocked || !!grant}
+      options={nativeBackends.map((item) => ({ value: item.id, label: item.label }))}
+      onChange={(value) => {
+        setLiveBackendId(value);
+        setLiveWebSearch(false);
+        setLiveDelegation({ type: 'responses', prompt: actualDelegation.prompt });
+      }} />}
+  />
+);
   const voicePanel = (
     <div className={`assistant-call ${callState}`} data-motion="ai-status">
       <div className="voice-workspace-orb" data-muted={muted}>
@@ -2245,7 +2392,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           <span role="status">{voiceHeading}</span>
           {callState === 'active' && <time aria-label={t('通话时长')}>{voiceTime}</time>}
           {!inCall && catalog && (
-            <small>{!project ? t('选择项目后开始对话') : !catalog.voiceReady ? t('语音服务暂不可用')
+            <small>{!project ? t('正在准备个人助手空间') : !catalog.voiceReady ? t('语音服务暂不可用')
               : selectedVoice ? t('{v0} 服务点 · 最长 {v1} 秒', {
                 v0: selectedVoice.unitCost, v1: selectedVoice.maxSeconds,
               }) : t('暂无语音模型')}</small>
@@ -2253,10 +2400,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
         </div>
         {!inCall ? (
           <>
+            <IconButton className="voice-model-trigger" label={t('本次通话参数')}
+              aria-expanded={voiceParametersOpen} aria-controls={voiceParametersId}
+              disabled={!voices.length || busy || submissionBlocked || !!pendingVoiceSubmission || !!pendingTeamVoiceSubmission || !!grant}
+              onClick={() => setVoiceParametersOpen((open) => !open)}>
+              <SlidersHorizontal size={17} />
+            </IconButton>
             {voiceTools}
             <button ref={voiceStartButton} type="button" className="voice-start-button"
               aria-label={t('开始实时通话')} aria-disabled={!canStartVoice}
-              onClick={() => { if (canStartVoice) void startVoice(); }}>
+              onClick={() => { if (canStartVoice) { setVoiceParametersOpen(false); void startVoice(); } }}>
               <Microphone size={17} /><span>{t('开始实时通话')}</span>
             </button>
           </>
@@ -2334,7 +2487,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const showConversationEmpty =
     !messages.length && !remainingCandidates.length && mode === 'text' && !busy;
   const availabilityMessage = !project
-    ? t('选择项目后开始对话')
+    ? t('正在准备个人助手空间')
     : !catalog?.ready
       ? t(catalog || catalogError ? '助手暂不可用' : '正在读取可用模型…')
       : null;
@@ -2525,7 +2678,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
         if (event.key !== 'Escape' || event.defaultPrevented || event.nativeEvent.isComposing) return;
         event.preventDefault();
         event.stopPropagation();
-        if (voiceExtra) closeVoiceExtra();
+        if (voiceParametersOpen) setVoiceParametersOpen(false);
+        else if (voiceExtra) closeVoiceExtra();
         else if (voiceToolsOpen) {
           setVoiceToolsOpen(false);
           voiceToolsTrigger.current?.focus({ preventScroll: true });
@@ -2534,6 +2688,25 @@ export function LiveAssistant(props: LiveAssistantProps) {
     >
       <div className="voice-workspace-center">{voicePanel}</div>
       <div className="voice-workspace-footer">
+        {voiceParametersOpen && !inCall && (
+          <section id={voiceParametersId} className="voice-model-popout" aria-label={t('本次通话参数')}>
+            <header>
+              <span>{t('本次通话参数')}</span>
+              <IconButton label={t('完成参数设置')} onClick={() => setVoiceParametersOpen(false)}><X size={16} /></IconButton>
+            </header>
+            <div className="voice-model-content">
+              <ModelChoice label={t('语音模型')} ariaLabel={t('语音模型')} value={voiceId}
+                placeholder={t('暂无语音模型')} onChange={setVoiceId}
+                options={voices.map((item) => ({ value: item.id, label: item.label,
+                  description: t('{v0} 服务点 · 最长 {v1} 秒', { v0: item.unitCost, v1: item.maxSeconds }) }))} />
+              {!translating && voiceOptions.length > 1 && <ChoiceSelect label={t('语音音色')} value={voice}
+                onValueChange={setVoice} options={voiceOptions.map((value) => ({ value, label: value }))} />}
+              {voiceModelFields}
+              {voiceModeParameters}
+              {!voiceSettingsValid && <p role="alert">{t('语音参数与所选模型或当前预算不兼容')}</p>}
+            </div>
+          </section>
+        )}
         {(!catalog || showVoiceTranscript || toolStatus || voiceExtra === 'details' ||
           error || recoveryLabel) && (
           <div className="voice-workspace-details">
@@ -2589,7 +2762,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {(inCall || hasVoiceCaptions) && (
               <IconButton label={t(voiceCaptionsVisible ? '隐藏字幕' : '显示字幕')}
                 aria-pressed={voiceCaptionsVisible}
-                onClick={() => setVoiceCaptionsVisible((visible) => !visible)}>
+                onClick={() => setVoiceCaptionsOverride(!voiceCaptionsVisible)}>
                 <ClosedCaptioning size={17} />
               </IconButton>
             )}
@@ -2726,8 +2899,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 <span>{availabilityMessage}</span>
                 {availabilityDetails}
                 {!project && (
-                  <button type="button" onClick={onSave}>
-                    {t('选择项目')}
+                  <button type="button" onClick={props.onPreparePersonalAI}>
+                    {t('重试')}
                   </button>
                 )}
               </div>
@@ -2801,6 +2974,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
           className="assistant-composer assistant-reference-composer"
           data-ai-composer
           onKeyDown={(event) => {
+            if (event.key === 'Escape' && modelOptionsOpen && !event.nativeEvent.isComposing) {
+              event.preventDefault();
+              setModelOptionsOpen(false);
+              event.currentTarget.querySelector<HTMLButtonElement>('.assistant-parameter-trigger')?.focus();
+              return;
+            }
             if (event.key === 'Escape' && composerExpanded && !event.nativeEvent.isComposing) {
               event.preventDefault();
               setComposerExpanded(false);
@@ -2865,20 +3044,43 @@ export function LiveAssistant(props: LiveAssistantProps) {
               {t('请选择支持图片的模型，或移除附件。')}
             </small>
           )}
+          {modelOptionsOpen && selected?.responses && <AssistantTurnOptions
+            key={selected.id}
+            profile={selected.responses}
+            defaults={selected.responseDefaults}
+            price={selected.responsePrice}
+            maxOutputTokens={selected.maxOutputTokens ?? 2048}
+            label={selected.label}
+            value={activeTuning}
+            disabled={catalogSelectionLocked || submissionBlocked || !!grant}
+            onChange={updateTurnOptions}
+            onSchemaValid={(valid) => setInvalidSchemaModel(valid ? null : modelId)}
+            onClose={() => setModelOptionsOpen(false)}
+          />}
           <PromptBar className="assistant-reference-prompt" width={1200} inputRef={composerInput} sendOnEnter={false}
-            placeholder={inCall ? t('补充通话要求…') : t('输入调整要求…')}
+            placeholder={inCall ? t('补充通话要求…') : t('问点什么，或告诉我想怎么修图…')}
             value={prompt} onValueChange={setPrompt} maxLength={4000}
-            modelKey={modelId} onModelChange={setModelId}
-            models={models.map((model) => ({ key: model.id, name: model.label }))}
+            inlineModelConfiguration
+            modelKey={modelId} onModelChange={chooseComposerModel}
+            onMenuChange={(menu) => { if (menu) setModelOptionsOpen(false); }}
+            models={models.map((model) => ({
+              key: model.id,
+              name: model.label,
+              tag: t('{v0} 点', {
+                v0: assistantTurnPrice(model.unitCost, model.responsePrice, tuningByModel[model.id] ?? {}, model.responseDefaults)
+                  ?? model.unitCost,
+              }),
+            }))}
             efforts={[]}
             commands={[
               { key: 'settings', name: '/' + t('助手设置'), action: () => setOverlay('settings') },
+              { key: 'parameters', name: '/' + t('本轮模型参数'), action: () => setModelOptionsOpen(true) },
               { key: 'history', name: '/' + t('会话记录'), action: () => setOverlay('history') },
             ]}
             disabled={!isLoggedIn || !!pendingSubmission || !submissionReady}
             modelDisabled={busy || inCall || !!grant} sendDisabled={!canSend}
             busy={!!activeTurn} stopDisabled={!!activeTurn?.stopping}
-            onSend={() => void submit()} onStop={() => void stopActiveTurn()}
+            onSend={() => { setModelOptionsOpen(false); void submit(); }} onStop={() => void stopActiveTurn()}
             labels={{ input: t('向智能体描述修改需求'), attach: t('共享画面与参考素材'),
               chooseModel: t('选择助手模型与执行方式'), models: t('选择模型'),
               sources: t('共享画面与参考素材'), commands: t('助手操作'), empty: t('没有匹配的选项'),
@@ -2901,7 +3103,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   action: () => setShareImage((enabled) => !enabled),
                 }] : []),
               ]}
-            tools={<VoicePill className="assistant-voice-pill" size={34} reactive="external"
+            modelTools={selected?.responses && <IconButton className="assistant-parameter-trigger"
+                label={t('本轮模型参数')} aria-expanded={modelOptionsOpen}
+                disabled={catalogSelectionLocked || submissionBlocked || !!grant}
+                onClick={() => setModelOptionsOpen((open) => !open)}>
+                <SlidersHorizontal size={17} />
+              </IconButton>}
+            tools={
+              <VoicePill className="assistant-voice-pill" size={34} reactive="external"
               background={inCall ? 'var(--accent-soft)' : 'transparent'} accentColor="var(--accent-ink)" iconColor="var(--muted)"
               externalDisplay={inCall} externalActive={callState === 'active' && !muted}
               externalStream={client.current?.microphoneStream} elapsed={elapsed}
@@ -2923,7 +3132,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               </button>
             )}
             <span className="ai-price-summary">
-              {selected ? t('文字 {v0} 点 / 轮', { v0: selected.unitCost }) : t('点数待确认')}
+              {quote !== null ? t('文字 {v0} 点 / 轮', { v0: quote }) : t('点数待确认')}
             </span>
           </div>
         )}
@@ -2935,6 +3144,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
       >
         <div className="ai-options-content">
           <PanelSettings onClose={() => setOverlay(null)} />
+          {props.onAssistantPreferences && <button className="text-button assistant-personal-link" type="button"
+            disabled={inCall || busy} onClick={props.onAssistantPreferences}>{t('在个人中心设置助手默认值')} <ArrowRight size={16} /></button>}
           <RubberSegment
             label={t('交流方式')}
             className="assistant-mode"
@@ -2957,7 +3168,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               label={t('助手模型')}
               ariaLabel={t('助手模型')}
               value={modelId}
-              onChange={setModelId}
+              onChange={chooseTextModel}
               disabled={inCall || busy || submissionBlocked || !!grant}
               placeholder={t('暂无可用模型')}
               options={models.map((item) => ({
@@ -2966,24 +3177,6 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 description: `${t('{v0} 服务点 / 轮', { v0: item.unitCost })}${item.responses?.deprecated ? ` · ${t('已公告停用')}` : ''}`,
               }))}
             />
-            {mode === 'text' && !!selected?.responses?.reasoning.length && !selected.responseDefaults?.effortFixedForSampling && (
-              <ChoiceSelect label={t('本轮推理档位')} value={activeTuning.effort ?? ''}
-                disabled={catalogSelectionLocked || submissionBlocked} onValueChange={(value) =>
-                  setTuningByModel((old) => ({ ...old, [modelId]: { ...old[modelId], effort: (value || undefined) as AssistantResponseTuning['effort'] } }))}
-                options={[
-                  { value: '', label: `${t('默认')} · ${selected.responseDefaults?.effort ?? selected.responses.defaultEffort ?? '—'}` },
-                  ...selected.responses.reasoning.map((value) => ({ value, label: value })),
-                ]} />
-            )}
-            {mode === 'text' && selected?.responses?.verbosity && (
-              <ChoiceSelect label={t('回答详细度')} value={activeTuning.verbosity ?? ''}
-                disabled={catalogSelectionLocked || submissionBlocked} onValueChange={(value) =>
-                  setTuningByModel((old) => ({ ...old, [modelId]: { ...old[modelId], verbosity: (value || undefined) as AssistantResponseTuning['verbosity'] } }))}
-                options={[
-                  { value: '', label: `${t('默认')} · ${selected.responseDefaults?.verbosity ?? 'medium'}` },
-                  ...['low', 'medium', 'high'].map((value) => ({ value, label: value })),
-                ]} />
-            )}
             {mode === 'voice' && (
               <ModelChoice
                 label={t('语音模型')}
@@ -3005,38 +3198,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 placeholder={t('选择音色')}
                 options={voiceOptions.map((option) => ({ value: option, label: option }))} />
             )}
-            {mode === 'voice' && (translating || actualDelegation) && (
-              <LiveModeSettings
-                disabled={inCall || busy || submissionBlocked || !!grant}
-                mode={translating ? 'translation' : liveDelegation.type}
-                setMode={(value) => {
-                  setLiveWebSearch(false);
-                  setLiveDelegation(value === 'decisions'
-                    ? { type: value, questions: [...defaultLiveDecisionQuestions] } : { type: value });
-                }}
-                delegation={liveDelegation}
-                setDelegation={setLiveDelegation}
-                translation={liveTranslation}
-                setTranslation={setLiveTranslation}
-                tiers={liveBackend?.responses?.tiers ?? []}
-                efforts={liveBackend?.responses?.reasoning ?? []}
-                verbosity={Boolean(liveBackend?.responses?.verbosity)}
-                maxOutputTokens={liveBackend?.maxOutputTokens ?? 2048}
-                webSearchAvailable={Boolean(liveBackend?.webSearch)}
-                webSearch={liveWebSearch}
-                setWebSearch={setLiveWebSearch}
-                backendPicker={actualDelegation?.type === 'responses' && <ModelChoice
-                  label={t('委派模型')} ariaLabel={t('委派模型')} value={liveBackend?.id ?? ''}
-                  placeholder={t('暂无可用模型')}
-                  disabled={inCall || busy || submissionBlocked || !!grant}
-                  options={nativeBackends.map((item) => ({ value: item.id, label: item.label }))}
-                  onChange={(value) => {
-                    setLiveBackendId(value);
-                    setLiveWebSearch(false);
-                    setLiveDelegation({ type: 'responses', prompt: actualDelegation.prompt });
-                  }} />}
-              />
-            )}
+            {mode === 'voice' && voiceModeParameters}
             {mode === 'voice' && selectedVoice && (
               <p className="ai-selected-model-meta">
                 {t('{v0} 服务点 · 最长 {v1} 秒', {

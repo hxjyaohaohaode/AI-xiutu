@@ -84,6 +84,13 @@ test('OpenAI reasoning validation is model-specific and rejects an unverified pr
       ...configured,
       responses: { ...configured.responses, reasoningMode: 'pro', serviceTier: 'flex' },
     }),
+    'RESPONSES_PROFILE_MISMATCH',
+  );
+  assert.equal(
+    modelProfileError('gpt-6.1-terra', {
+      ...configured, reasoningEffort: 'medium',
+      responses: { reasoningMode: 'pro', serviceTier: 'flex' },
+    }),
     undefined,
   );
   assert.equal(

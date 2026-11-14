@@ -202,6 +202,7 @@ export function AIPanel({
   onSave,
   onExport,
   onTopUp,
+  onAssistantPreferences,
   voiceEntry = 0,
   onCreateProject,
   onOpenArtwork,
@@ -247,6 +248,7 @@ export function AIPanel({
   onSave: () => void;
   onExport?: () => void;
   onTopUp?: () => void;
+  onAssistantPreferences?: () => void;
   voiceEntry?: number;
   onCreateProject: () => void;
   onOpenArtwork: (id: string) => void;
@@ -462,9 +464,14 @@ export function AIPanel({
   taskChanged.current = onTaskChanged;
   const inputLocked = busy || !!pendingSubmission || (isLoggedIn && !recovery.ready);
   const selected = (modelResponse?.models ?? []).find((model) => model.id === modelId);
-  const eligible = (modelResponse?.models ?? []).filter(
+  const operationModels = (modelResponse?.models ?? []).filter(
     (model) => model.enabled !== false && (model.operations ?? ['edit-plan']).includes(operation),
   );
+  // Keep an announced legacy adapter reachable only if this task would otherwise
+  // have no working model (e.g. file narration has a different successor protocol).
+  const useCurrentModels = operationModels.some((model) =>
+    !model.shutdownDate && model.runtimeAvailable && model.runtimeOperations?.includes(operation));
+  const eligible = operationModels.filter((model) => !useCurrentModels || !model.shutdownDate);
   const modelReady = (model?: AIModel) =>
     model?.runtimeAvailable === true && model.runtimeOperations?.includes(operation) === true;
   const opStatus = modelResponse?.operationStatus?.[operation];
@@ -1269,6 +1276,8 @@ export function AIPanel({
             onSave={onSave}
             onExport={onExport}
             onTopUp={onTopUp}
+            onAssistantPreferences={onAssistantPreferences}
+            onPreparePersonalAI={onCreateProject}
             voiceEntry={voiceEntry}
             onPreview={onPreview}
             previewActive={previewActive}

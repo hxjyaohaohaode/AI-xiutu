@@ -191,6 +191,7 @@ function controlFixture({
         analyze(body: boolean) {
           actions.push(['analyze', body]);
         },
+        cancel() { actions.push(['cancel']); },
       },
       setActiveRegionId(id: string) {
         actions.push(['active', id]);
@@ -256,7 +257,7 @@ test('a portrait timeout offers a translated manual retry without starting it du
       retry.onClick!();
       assert.deepEqual(ui.actions, [['analyze', false]], 'one explicit action starts one analysis');
       const busy = controlFixture({ analysis: null, progress: '正在加载本地分析模型' });
-      assert.equal(busy.button(t('识别照片中的人物')).disabled, true);
+      assert.ok(busy.button(t('取消识别')), 'an in-flight automatic scan only offers cancellation');
       assert.deepEqual(busy.actions, []);
     }
   } finally {

@@ -57,3 +57,16 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.support-tier-picks { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.support-tier-picks button { display: grid; text-align: start; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; color: var(--ink); background: var(--surface); }
+.support-tier-picks button[aria-pressed="true"] { border-color: var(--accent-ink); background: var(--accent-soft); }
+.support-tier-picks button span, .support-task-estimates small { color: var(--muted); font-size: 12px; }
+.support-task-estimates { margin-top: 18px; }
+.support-task-estimates h3 { font-size: 14px; }
+.support-task-estimates summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; padding: 10px 0; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.support-task-estimates summary > span::before { content: "＋"; margin-inline-end: 6px; }
+.support-task-estimates details[open] summary > span::before { content: "−"; }
+.support-task-estimates ul { display: grid; gap: 6px; list-style: none; margin: 8px 0; padding: 0; }
+.support-task-estimates li { display: grid; gap: 3px; padding: 9px 10px; border-radius: 8px; background: var(--surface-secondary); font-size: 12px; overflow-wrap: anywhere; }
+@media (max-width: 360px) { .support-tier-picks { grid-template-columns: repeat(2,minmax(0,1fr)); } }

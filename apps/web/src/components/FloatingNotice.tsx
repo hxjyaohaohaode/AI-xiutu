@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowClockwise, X } from '@phosphor-icons/react';
 import { t } from '../i18n';
 
@@ -7,7 +7,23 @@ export function FloatingNotice({ message, onRetry, onDismiss, className, dismiss
   className?: string; dismissLabel?: string;
 }) {
   const [dismissed, setDismissed] = useState<string | null>(null);
-  useEffect(() => { if (!message) setDismissed(null); }, [message]);
+  const progress = useRef<HTMLDivElement>(null);
+  const dismissCallback = useRef(onDismiss);
+  dismissCallback.current = onDismiss;
+  useEffect(() => {
+    if (!message) { setDismissed(null); return; }
+    if (dismissed === message) return;
+    const animation = progress.current?.animate(
+      [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }],
+      { duration: 3000, fill: 'forwards' },
+    );
+    const timer = window.setTimeout(() => {
+      setDismissed(message);
+      dismissCallback.current?.();
+    }, 3000);
+    return () => { window.clearTimeout(timer); animation?.cancel(); };
+  }, [message, dismissed]);
+
   if (!message || dismissed === message) return null;
   return (
     <div className={['floating-notice', className].filter(Boolean).join(' ')} role="alert">
@@ -26,6 +42,7 @@ export function FloatingNotice({ message, onRetry, onDismiss, className, dismiss
       }}>
         <X size={17} />
       </button>
+      <div className="toast-countdown" ref={progress} aria-hidden />
     </div>
   );
 }

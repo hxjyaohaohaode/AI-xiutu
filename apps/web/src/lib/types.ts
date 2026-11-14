@@ -10,18 +10,19 @@ export type User = {
 };
 export type Space = { id: string; name: string; kind: 'personal' | 'team'; role: string };
 export type Session = { user: User | null; spaces: Space[] };
+export type SupportTier = { cents: number; points: number };
 export type SupportCatalog = {
+  version: number;
   qrUrl: '/v1/support/wechat-qr' | null;
   phoneVerified: boolean;
-  rates: {
-    asOf: string;
-    cnyPerUsd: number;
-    model: string;
-    inputUsdPerMillion: number;
-    outputUsdPerMillion: number;
-    inputShare: number;
-  };
-  tiers: { cents: number; points: number; usd: number; textTokens: number }[];
+  tiers: SupportTier[];
+};
+export type SupportSettings = {
+  version: number;
+  enabled: boolean;
+  tiers: SupportTier[];
+  qrSource: 'upload' | 'deployment' | null;
+  previewUrl: string | null;
 };
 export type PublicConfig = {
   brand: { name: string; tagline: string; logoAssetId?: string | null; logoUrl?: string | null };

@@ -1,0 +1,42 @@
+
+.assistant-turn-options { position: absolute; inset: auto auto calc(100% + 6px) 0; width: min(370px, 100%); z-index: 7; display: grid; gap: 8px; min-width: 0; max-height: min(54dvh, 400px); overflow: auto; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 14px; padding: 10px; background: var(--surface-raised, var(--surface)); box-shadow: 0 7px 24px #171b2021; animation: assistant-parameters-enter 140ms ease-out; }
+@keyframes assistant-parameters-enter { from { opacity: 0; translate: 0 5px; } to { opacity: 1; translate: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .assistant-turn-options { animation: none; } }
+.assistant-reference-composer { position: relative; }
+.assistant-turn-options header { display: flex; align-items: center; gap: 7px; color: var(--accent-ink); }
+.assistant-turn-options header > div { flex: 1; display: grid; gap: 2px; min-width: 0; }
+.assistant-turn-options header :is(strong,small) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.assistant-turn-options header small { color: var(--muted); }
+.assistant-turn-options header .icon-button { width: 34px; min-width: 34px; min-height: 34px; }
+.assistant-turn-fields, .assistant-turn-schema { display: grid; grid-template-columns: repeat(2,minmax(0, 1fr)); gap: 8px; }
+.assistant-turn-fields label { display: grid; gap: 3px; color: var(--muted); font-size: 12px; min-width: 0; }
+.assistant-turn-fields :is(select,input:not([type="checkbox"]),textarea) { width: 100%; min-width: 0; min-height: 35px; padding: 4px 6px; color: var(--ink); background: var(--surface-secondary); border: 1px solid var(--line); border-radius: 7px; }
+.assistant-turn-schema, .assistant-turn-schema label { grid-column: 1 / -1; }
+.assistant-turn-schema label.assistant-schema-strict { display: flex; align-items: center; }
+.assistant-turn-schema [role="alert"] { color: var(--danger); }
+.assistant-parameter-trigger { flex: none; width: 34px; min-width: 34px; min-height: 34px; border-radius: 7px; }
+.assistant-parameter-trigger[aria-expanded="true"] { color: var(--accent-ink); background: var(--accent-soft); }
+.assistant-personal-link { font-size: 12px; }
+.voice-model-popout {
+  pointer-events: auto;
+  max-block-size: min(46dvh, 350px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--voice-border);
+  border-radius: 13px;
+  padding: 8px 10px;
+  background: var(--surface-raised, var(--surface));
+  box-shadow: var(--shadow-md);
+}
+.voice-model-popout header, .voice-model-content { display: grid; gap: 8px; }
+.voice-model-popout header { grid-template-columns: minmax(0, 1fr) auto; align-items: center; color: var(--accent-ink); font-weight: 650; }
+.voice-model-popout header .icon-button { min-width: 32px; min-height: 32px; }
+.voice-model-popout [role='alert'] { color: var(--danger); margin: 0; font-size: 12px; }
+@media (min-width: 800px) {
+  .voice-model-popout { position: absolute; inset: auto calc(100% + 9px) 0 auto; width: 305px; }
+}
+@media (max-width: 759px) {
+  .assistant-turn-options { width: 100%; }
+  .assistant-parameter-trigger { width: 42px; min-width: 42px; min-height: 42px; }
+  .assistant-turn-fields :is(select,input,textarea) { font-size: 16px; }
+}

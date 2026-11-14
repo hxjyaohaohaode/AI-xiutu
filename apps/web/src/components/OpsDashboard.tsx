@@ -31,6 +31,7 @@ import { OPENAI_SPECIALIST_OPERATIONS, type OpenAISpecialistOperation } from '@a
 import type { AIOperation } from '../ai/types';
 import { specialistTaskLabels } from '../ai/SpecialistOptions';
 import { QuotaManager } from './QuotaManager';
+import { SupportOps } from './SupportOps';
 import { UsageDashboard } from '../usage/UsageDashboard';
 import { AssistantOpsPanel } from './AssistantOpsPanel';
 import { UnknownJobsPanel } from './UnknownJobsPanel';
@@ -42,6 +43,7 @@ type OpsTab =
   | 'overview'
   | 'users'
   | 'config'
+  | 'support'
   | 'plans'
   | 'models'
   | 'assistant'
@@ -138,6 +140,7 @@ const tabs: { id: OpsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'users', label: '用户管理', icon: <UsersThree size={19} /> },
   { id: 'config', label: '站点与注册', icon: <GearSix size={19} /> },
   { id: 'plans', label: '权益套餐', icon: <Stack size={19} /> },
+  { id: 'support', label: '赞赏与兑换', icon: <Receipt size={19} /> },
   { id: 'models', label: '模型能力', icon: <SlidersHorizontal size={19} /> },
   { id: 'assistant', label: '语音与协作模型', icon: <ChatCircleDots size={19} /> },
   { id: 'quota', label: '额度调整', icon: <Plus size={19} /> },
@@ -1291,6 +1294,7 @@ export function OpsDashboard({
                 )}
               </>
             )}
+            {tab === 'support' && <SupportOps onGrant={() => selectTab('quota')} />}
             {tab === 'quota' && <QuotaManager />}
             {tab === 'assistant' && <AssistantOpsPanel />}
             {tab === 'reconciliation' && <UnknownJobsPanel />}

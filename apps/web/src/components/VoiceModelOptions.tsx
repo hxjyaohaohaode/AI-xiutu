@@ -117,7 +117,7 @@ export function VoiceModelOptions({
             delay: transcriptionModel === 'gpt-realtime-whisper' ? realtime.delay : undefined,
           });
         },
-        '默认 gpt-4o-mini-transcribe',
+        '默认 gpt-transcribe',
       )}
       <label>
         {t('转写语言（ISO 639-1）')}

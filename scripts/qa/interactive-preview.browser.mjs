@@ -234,8 +234,8 @@ async function verifyLocalMaskAndLiquify(input) {
     const localFrames = await page.evaluate(() => window.warpPaints);
     assert.ok(localFrames.length > 0);
     assert.ok(
-      localFrames.some(({ width, height }) => width * height <= 307_200),
-      'the changing local frame is bounded while the pointer is held',
+      localFrames.every(({ width, height }) => width === source.width && height === source.height),
+      'every changing local frame retains the settled preview resolution while the pointer is held',
     );
     await page.mouse.up();
     await settled();
@@ -1301,6 +1301,8 @@ try {
         JSON.stringify(test),
       );
       assert.ok(test.maxFrameGapMs !== null && test.maxFrameGapMs < 350, JSON.stringify(test));
+      assert.equal(test.liveRasterPixels?.minimum, test.liveRasterPixels?.settled, JSON.stringify(test));
+      assert.equal(test.liveRasterPixels?.maximum, test.liveRasterPixels?.settled, JSON.stringify(test));
     }
   }
   if (

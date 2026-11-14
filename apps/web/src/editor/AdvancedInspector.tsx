@@ -35,6 +35,7 @@ export function AdvancedInspector({
   canvasOverlay,
   group,
   mobileOpen,
+  onContentHeight,
   onClose,
   pickedColor = '#34372EFF',
   onColorChange,
@@ -64,6 +65,21 @@ export function AdvancedInspector({
   }, [group]);
   const [error, setError] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
+  const activeToolBody = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = activeToolBody.current;
+    const scrolled = scroller.current;
+    if (!fixed || !onContentHeight || !node || !scrolled) return;
+    const measure = () => {
+      const chrome = Math.max(0, node.getBoundingClientRect().top - scrolled.getBoundingClientRect().top + scrolled.scrollTop);
+      onContentHeight(Math.ceil(chrome + node.getBoundingClientRect().height + 7));
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    if (node.parentElement) observer.observe(node.parentElement);
+    measure();
+    return () => observer.disconnect();
+  }, [fixed, onContentHeight, group]);
   const scrollOffsets = useRef<Partial<Record<typeof group, number>>>({});
   useLayoutEffect(() => {
     if (scroller.current) scroller.current.scrollTop = fixed ? 0 : scrollOffsets.current[group] ?? 0;
@@ -208,6 +224,7 @@ export function AdvancedInspector({
                         Activity pauses hidden effects and focus targets while preserving
                         subcategories, selected controls, disclosures and unfinished inputs. */}
                     <div
+                      ref={group === id ? activeToolBody : undefined}
                       className="inspector-tool-content"
                       data-tool-family={id}
                       data-portrait-tool={id === 'beauty' ? portraitTool ?? undefined : undefined}

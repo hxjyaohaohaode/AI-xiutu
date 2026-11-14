@@ -1,3 +1,4 @@
+import { openAIModelShutdown } from '@ai-xiutu/contracts';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -473,6 +474,7 @@ export function createMultimodalService(
     const checked = modelSchema.safeParse(value);
     if (
       !checked.success ||
+      (checked.data.provider === 'openai' && openAIModelShutdown(job.model_id)) ||
       !checked.data.operations.includes(job.operation) ||
       checked.data.provider !==
         (job.operation === 'generate-image'
@@ -703,6 +705,7 @@ export function createMultimodalService(
         const checked = modelSchema.safeParse(setting?.config);
         if (
           !checked.success ||
+          (checked.data.provider === 'openai' && openAIModelShutdown(input.modelId)) ||
           !checked.data.operations.includes(input.operation) ||
           (input.operation === 'generate-image'
             ? !['ark', 'openai'].includes(checked.data.provider)

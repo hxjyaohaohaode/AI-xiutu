@@ -27,8 +27,8 @@ async function finalizeAsset(db: Database) {
        FROM assets a JOIN projects p ON p.id=a.project_id
        LEFT JOIN media_sources m ON m.asset_id=a.id AND m.released_at IS NULL
        LEFT JOIN animation_assets g ON g.asset_id=a.id
-       WHERE a.purged_at IS NULL AND a.trash_token IS NOT NULL AND a.${due}
-       ORDER BY a.deleted_at,a.trash_token LIMIT 1 FOR UPDATE OF a SKIP LOCKED`,
+       WHERE a.purged_at IS NULL AND a.trash_token IS NOT NULL AND (a.purge_requested_at IS NOT NULL OR a.${due})
+       ORDER BY COALESCE(a.purge_requested_at,a.deleted_at),a.trash_token LIMIT 1 FOR UPDATE OF a SKIP LOCKED`,
     )).rows[0];
     if (!asset) return false;
     if (asset.object_id) {

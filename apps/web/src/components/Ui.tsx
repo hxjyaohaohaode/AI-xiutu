@@ -106,41 +106,19 @@ export function Toast({
   dismiss: () => void;
   container?: HTMLElement | null;
 }) {
-  const [hovered, setHovered] = useState(false);
-  const [focused, setFocused] = useState(false);
-  const [pageHidden, setPageHidden] = useState(
-    () => typeof document !== 'undefined' && document.hidden,
-  );
   const dismissRef = useRef(dismiss);
   dismissRef.current = dismiss;
-  const clock = useRef<{ notice: Notice | null; remaining: number }>({
-    notice: null,
-    remaining: 5000,
-  });
+  const progress = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const update = () => setPageHidden(document.hidden);
-    document.addEventListener('visibilitychange', update);
-    return () => document.removeEventListener('visibilitychange', update);
-  }, []);
-  useEffect(() => {
-    if (!notice) {
-      setHovered(false);
-      setFocused(false);
-    }
-  }, [notice]);
-  useEffect(() => {
-    if (clock.current.notice !== notice) clock.current = { notice, remaining: 5000 };
-    // Errors remain available until explicitly dismissed. Pointer, keyboard and
-    // hidden-page pauses share the same remaining time, rather than restarting it.
-    if (!notice || notice.tone === 'error' || hovered || focused || pageHidden) return;
-    const current = clock.current;
-    const started = performance.now();
-    const timer = setTimeout(() => dismissRef.current(), current.remaining);
-    return () => {
-      clearTimeout(timer);
-      current.remaining = Math.max(0, current.remaining - (performance.now() - started));
-    };
-  }, [notice, hovered, focused, pageHidden]);
+    if (!notice) return;
+    const duration = 3000;
+    const animation = progress.current?.animate(
+      [{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }],
+      { duration, fill: 'forwards' },
+    );
+    const timer = window.setTimeout(() => dismissRef.current(), duration);
+    return () => { window.clearTimeout(timer); animation?.cancel(); };
+  }, [notice, container]);
   const retained = useRef(notice);
   if (notice) retained.current = notice;
   const presence = usePresence(!!notice, 'notice');
@@ -154,12 +132,6 @@ export function Toast({
       data-motion-state={presence.phase}
       inert={!notice}
       aria-hidden={!notice}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onFocusCapture={() => setFocused(true)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false);
-      }}
     >
       {visible.tone === 'info' ? (
         <Info size={20} aria-hidden />
@@ -170,6 +142,7 @@ export function Toast({
       <IconButton label={t('关闭提示')} onClick={dismiss}>
         <X size={16} />
       </IconButton>
+      <div ref={progress} className="toast-countdown" aria-hidden />
     </div>
   );
   return container ? createPortal(content, container) : content;

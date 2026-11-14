@@ -124,11 +124,10 @@ async function changeView(page, id, label) {
   } else await tab.click();
 }
 async function openSavedWork(page, assetId, title) {
-  const card = page.locator(`.asset-library:visible .library-reference-masonry [data-id="${assetId}"]`);
-  await card.locator('.library-masonry-more').click();
-  await page.locator('dialog.library-asset-menu .library-version-links').getByRole('button', {
-    name: title,
-  }).click();
+  const card = page.locator('.asset-library:visible .saved-work-open')
+    .filter({ has: page.getByText(title, { exact: true }) });
+  await card.click();
+  assert.ok(assetId);
 }
 async function openCollaborationPanel(page) {
   const status = page.locator('.collaboration-summary');
@@ -963,7 +962,9 @@ try {
         assert.equal(await panel.getAttribute('data-attached'), 'true');
         assert.equal(await panel.locator('.panel-resize-edge, .panel-layout-trigger').count(), 0);
         assert.equal(normal.panel.width, size.width);
-        assert.equal(normal.panel.height, size.height <= 500 ? 104 : 146);
+        assert.ok(normal.panel.height >= (size.height <= 500 ? 104 : 146));
+        assert.ok(await panel.locator('.inspector-scroll').evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
+          'the measured inspector fits the active adjustment without vertical scrolling');
         const dock = page.locator('[data-dock-tool="light"]');
         await dock.click();
         await panel.waitFor({ state: 'hidden' });
@@ -1018,6 +1019,7 @@ try {
       assert.ok(portraitOwner);
       const bodyTab = inspector.getByRole('button', { name: '身形', exact: true });
       await bodyTab.click();
+      if (viewport.width < 760) await portrait.locator('.portrait-extras > summary').click();
       const portraitHelp = portrait.locator('summary').filter({ hasText: '选区与抠图' });
       await portraitHelp.click();
       await tool(page, '构图');
@@ -1162,6 +1164,7 @@ try {
         );
         const headerLayouts = [];
         if (viewport.width < 760) {
+          await page.getByRole('button', { name: '展开顶部工具', exact: true }).click();
           headerLayouts.push(await cloudRecoveryHeaderEvidence(page, '精修'));
           for (const [locale, label] of [
             ['zh-TW', '精修'],

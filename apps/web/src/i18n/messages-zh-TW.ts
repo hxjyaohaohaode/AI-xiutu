@@ -1,3 +1,4 @@
+import { launchTraditional } from './launch-messages';
 import { navigationAiV2Traditional } from './navigation-ai-v2-messages';
 import { reviewTraditional } from './review-messages';
 import { nativeGradeTraditionalChinese } from './native-grade-messages';
@@ -27,6 +28,7 @@ export const traditional: Readonly<Record<string, string>> = {
   "填写操作依据后可限制或恢复普通账号。账号管理员还可以调整运营权限或注销账号。": "填寫操作依據後即可限制或恢復一般帳號。帳號管理員也可以調整營運權限或註銷帳號。",
   "将为 {name}（{phone}）{action}。该账号需要重新登录。": "將為 {name}（{phone}）{action}。此帳號需要重新登入。",
   "确认注销 {name}（{phone}）？账号将无法恢复。会话和共享权限会撤销，历史作品与账务记录将保留。": "確認註銷 {name}（{phone}）？帳號將無法恢復。登入狀態和共享權限會撤銷，歷史作品與帳務記錄將保留。",
+  ...launchTraditional,
   ...openAITraditional,
   '画布批注': '畫布註解',
   '圆点标记': '圓點標記',

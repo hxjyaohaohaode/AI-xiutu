@@ -81,6 +81,64 @@ test('Responses estimates separate GPT-6 cache writes and leave older unpriced r
   assert.equal(historic.meters.find(({ meter }) => meter === 'input')?.rate, null);
 });
 
+test('assistant freezes supported turn controls and the exact quote before dispatch', { skip: !databaseUrl }, async () => {
+  const received: Record<string, any>[] = [];
+  const f = await fixture({
+    fetcher: async (_url, options) => {
+      received.push(JSON.parse(String(options?.body)));
+      return new Response(JSON.stringify({
+        status: 'completed', service_tier: 'flex', output: [outputText('{"answer":"已完成"}')],
+        usage: { input_tokens: 40, output_tokens: 10, total_tokens: 50 },
+      }), { headers: { 'content-type': 'application/json', 'x-request-id': 'local-quote-proof' } });
+    },
+  });
+  try {
+    const modelId = 'gpt-5.4-mini';
+    const config = { ...f.settings, reasoningEffort: 'none', responseTierUnits: { flex: 8 } };
+    for (const id of [modelId, 'gpt-5-mini'])
+      await f.db.query(
+        'INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config',
+        [id, JSON.stringify(config)],
+      );
+    const catalog = (await f.call('GET', '/v1/assistant/models')).json();
+    assert.ok(catalog.models.some((model: { id: string }) => model.id === modelId));
+    assert.ok(!catalog.models.some((model: { id: string }) => model.id === 'gpt-5-mini'));
+    const personal = (await f.call('PUT', '/v1/me/creative-project', {})).json().project;
+    const endpoint = '/v1/projects/' + personal.id + '/assistant-turns';
+    const baseline = { ...f.turn(), modelId, context: undefined, scope: undefined };
+    assert.equal((await f.call('POST', endpoint, { ...baseline, modelId: 'gpt-5-mini' })).statusCode, 503);
+    const tuning = { maxOutputTokens: 512, effort: 'none', verbosity: 'low', temperature: 0.2,
+      topP: 0.9, serviceTier: 'flex', format: { type: 'json_object' } };
+    const stale = await f.call('POST', endpoint, { ...baseline, expectedUnits: 7, responseTuning: tuning });
+    assert.equal(stale.json().error.code, 'ASSISTANT_QUOTE_CHANGED');
+    const bad = await f.call('POST', endpoint, { ...baseline, expectedUnits: 8,
+      responseTuning: { ...tuning, effort: 'high' } });
+    assert.equal(bad.json().error.code, 'RESPONSES_PROFILE_MISMATCH');
+    assert.equal(received.length, 0);
+    await transaction(f.db, (tx) => adjustUnits(tx, {
+      spaceId: personal.spaceId, actorId: f.actors.operator.id, units: 20, reason: 'isolated quote test',
+      idempotencyKey: randomUUID(), requestHash: randomUUID(),
+    }));
+    const body = { ...baseline, expectedUnits: 8, responseTuning: tuning };
+    const accepted = await f.call('POST', endpoint, body);
+    assert.equal(accepted.statusCode, 202, accepted.body);
+    const id = accepted.json().id;
+    const result = await until(() => f.readTurn(id), (turn) => turn.state !== 'running');
+    assert.equal(result.state, 'completed');
+    assert.equal(received.length, 1);
+    assert.equal(received[0]!.max_output_tokens, 512);
+    assert.equal(received[0]!.temperature, 0.2);
+    assert.equal(received[0]!.top_p, 0.9);
+    assert.equal(received[0]!.service_tier, 'flex');
+    assert.equal(received[0]!.reasoning.effort, 'none');
+    assert.deepEqual(received[0]!.text, { verbosity: 'low', format: { type: 'json_object' } });
+    assert.equal((await f.db.query('SELECT h.units FROM quota_holds h JOIN assistant_turns a ON a.hold_id=h.id WHERE a.id=$1', [id])).rows[0]!.units, 8);
+    assert.equal((await f.call('POST', endpoint, body)).json().id, id);
+    assert.equal(received.length, 1);
+    await f.db.query('DELETE FROM assistant_model_configs WHERE id=$1', ['gpt-5-mini']);
+  } finally { await f.close(); }
+});
+
 test(
   'research graph and exact provider estimate link to authorized service-credit movements',
   { skip: !databaseUrl },
@@ -291,7 +349,7 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
     context,
     scope,
   });
-  const prepare = (model = 'gpt-live-1', actor: 'owner' | 'editor' = 'owner') =>
+  const prepare = (model = 'gpt-live-1', actor: 'owner' | 'editor' = 'owner', overrides: Record<string, unknown> = {}) =>
     f.call(
       'POST',
       `/v1/projects/${f.projectId}/voice-sessions`,
@@ -302,6 +360,7 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
         voice: 'marin',
         context,
         scope,
+        ...overrides,
       },
       actor,
     );
@@ -2591,8 +2650,8 @@ test(
     );
     const appOrigin = await f.app.listen({ port: 0, host: '127.0.0.1' });
     const wsBase = appOrigin.replace('http:', 'ws:');
-    async function openVoice(model = 'gpt-live-1', actor: 'owner' | 'editor' = 'owner') {
-      const prepared = await f.prepare(model, actor);
+    async function openVoice(model = 'gpt-live-1', actor: 'owner' | 'editor' = 'owner', overrides: Record<string, unknown> = {}) {
+      const prepared = await f.prepare(model, actor, overrides);
       assert.equal(prepared.statusCode, 200, prepared.body);
       const data = prepared.json();
       const ws = new WebSocket(`${wsBase}${data.websocketPath}`, ['xiutu-voice', data.ticket], {
@@ -2784,7 +2843,31 @@ test(
       await t.test(
         'Realtime uses its own protocol and streams audio without recording upload',
         async () => {
-          const stream = await openVoice('gpt-realtime-2.1');
+          const tuning = {
+            maxOutputTokens: 512,
+            reasoningEffort: 'medium',
+            realtime: {
+              transcriptionModel: 'gpt-transcribe',
+              language: 'zh',
+              outputSpeed: 1.2,
+              noiseReduction: null,
+              turnDetection: { type: 'semantic_vad', eagerness: 'low' },
+            },
+          };
+          const stale = await f.prepare('gpt-realtime-2.1', 'editor', { expectedUnits: 999, tuning });
+          assert.equal(stale.statusCode, 409, stale.body);
+          assert.equal(stale.json().error.code, 'ASSISTANT_QUOTE_CHANGED');
+          const fromOtherProtocol = await f.prepare('gpt-realtime-2.1', 'editor', { tuning: { live: { opening: '你好' } } });
+          assert.equal(fromOtherProtocol.statusCode, 400, fromOtherProtocol.body);
+          assert.equal(fromOtherProtocol.json().error.code, 'VOICE_PROFILE_MISMATCH');
+          const stream = await openVoice('gpt-realtime-2.1', 'owner', { tuning });
+          const update = await until<any>(async () => received.findLast((event) => event.type === 'session.update'), Boolean);
+          assert.equal(update.session.max_output_tokens, 512);
+          assert.deepEqual(update.session.reasoning, { effort: 'medium' });
+          assert.deepEqual(update.session.audio.input.transcription, { model: 'gpt-transcribe', language: 'zh' });
+          assert.equal(update.session.audio.input.noise_reduction, null);
+          assert.equal(update.session.audio.input.turn_detection.eagerness, 'low');
+          assert.equal(update.session.audio.output.speed, 1.2);
           const image = await sharp({
             create: { width: 24, height: 16, channels: 3, background: '#8e7449' },
           })

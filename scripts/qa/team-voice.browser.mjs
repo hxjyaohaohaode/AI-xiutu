@@ -308,8 +308,8 @@ try {
       .getByRole('button', { name: 'V4 project', exact: true })
       .click();
     await page
-      .locator('.library-reference-masonry')
-      .getByRole('button', { name: 'Collaborative portrait', exact: true })
+      .locator('.saved-works-grid')
+      .locator('.saved-work-open').filter({ hasText: 'Collaborative portrait' })
       .click();
     await page.locator('.collaboration-status[data-state="ready"]').waitFor();
     await page.locator('.collaboration-summary').click();

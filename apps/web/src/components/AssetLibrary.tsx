@@ -28,6 +28,7 @@ import { AnimationDialog, AssetRecognitionDialog, ProjectAssetTools } from './As
 import { RestorationDialog } from '../restoration/RestorationDialog';
 import { StudioGlyph } from './StudioGlyph';
 import { MotionDetails } from '../motion/Presence';
+import { SavedWorks } from '../resources/SavedWorks';
 import { AssetThumbnail } from '../resources/AssetThumbnail';
 import { resourceExperienceCopy } from '../resources/experience-copy';
 import { dateFolderRange, LibraryFolders, libraryFolders } from '../resources/LibraryFolders';
@@ -291,6 +292,9 @@ export function AssetLibrary({
   withdrawnArtworks,
   refreshToken,
   onOpen,
+  onTrashArtwork,
+  deletingArtwork,
+  compactScreen,
   onOpenAsset,
   replacementTarget,
   replacementHasDraft,
@@ -319,6 +323,9 @@ export function AssetLibrary({
   withdrawnArtworks: ReadonlySet<string>;
   refreshToken: number;
   onOpen: (artwork: Artwork) => void;
+  onTrashArtwork: (artwork: Artwork) => void;
+  deletingArtwork: boolean;
+  compactScreen: boolean;
   onOpenAsset: (asset: Asset) => void;
   replacementTarget?: Artwork | null;
   replacementHasDraft?: boolean;
@@ -347,12 +354,14 @@ export function AssetLibrary({
   const filters = filterState.key === scopeKey ? filterState.value : initialLibraryFilters(defaultProject);
   const { query, source, period, projectId: projectFilter, scope, spaceId: spaceFilter, groupBy, folder } = filters;
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [projectItems, setProjectItems] = useState<'works' | 'assets'>('works');
+  const showingWorks = tab === 'project' && projectItems === 'works';
   const [editing, setEditing] = useState<Asset | null>(null);
   const [memoryEditor, setMemoryEditor] = useState<ResourceItem | null>(null);
   const accessKey = JSON.stringify([actorId, accessRevision, ...spaces.map((item) => `${item.id}:${item.role}`).sort(),
     ...projects.map((item) => `${item.id}:${item.role}`).sort()]);
   const enabled = !!actorId && (resources || !!(space || project));
-  const collection = useLibraryCollection({ tab, enabled, active, filters,
+  const collection = useLibraryCollection({ tab, enabled, active: active && !showingWorks, filters,
     spaceId: resources ? undefined : space?.id, accessKey, refreshToken });
   const { cursor, loading, loadingMore, error, folderError } = collection;
   const entries = useMemo(
@@ -389,16 +398,6 @@ export function AssetLibrary({
   } | null>(null);
   const [projectTools, setProjectTools] = useState(false);
   const [actionAssetId, setActionAssetId] = useState<string | null>(null);
-  const artworkByAsset = useMemo(() => {
-    const byAsset = new Map<string, Artwork>();
-    for (const work of artworks) {
-      if (withdrawnArtworks.has(work.id)) continue;
-      const latest = byAsset.get(work.assetId);
-      if (!latest || Date.parse(work.updatedAt ?? work.createdAt ?? '') > Date.parse(latest.updatedAt ?? latest.createdAt ?? ''))
-        byAsset.set(work.assetId, work);
-    }
-    return byAsset;
-  }, [artworks, withdrawnArtworks]);
   const [expandedAssetDetails, setExpandedAssetDetails] = useState<Set<string>>(() => new Set());
   const scopedProjects = externalProject
     ? [project!]
@@ -417,17 +416,16 @@ export function AssetLibrary({
     setExpandedAssetDetails(new Set());
   }, [scopeKey, accessKey, active]);
   const cards = useMemo(() => entries.map(({ asset, resource }) => {
-    const work = asset.projectId === project?.id ? artworkByAsset.get(asset.id) : undefined;
-    const description = work ? 'V' + work.headVersion : t(SOURCE_LABELS[asset.source ?? 'unknown']);
+    const description = t(SOURCE_LABELS[asset.source ?? 'unknown']);
     return {
       id: asset.id,
       img: asset.thumbnailUrl ?? '/v1/assets/' + asset.id + '/thumbnail',
       width: asset.width,
       height: asset.height,
-      title: resource?.memory?.title || work?.title || asset.annotations?.title || asset.name,
+      title: resource?.memory?.title || asset.annotations?.title || asset.name,
       description: resource ? `${resource.space.name} · ${resource.project.title}` : description,
     };
-  }), [entries, project?.id, artworkByAsset, locale]);
+  }), [entries, locale]);
   function folderLabel(key: string) {
     if (groupBy === 'project') return collection.folderProjects?.find((item) => item.id === key)?.title
       ?? scopedProjects.find((item) => item.id === key)?.title ?? t('已授权项目');
@@ -445,13 +443,13 @@ export function AssetLibrary({
   const resetFilters = () => setFilterState({ key: scopeKey, value: initialLibraryFilters(defaultProject) });
   return (
     <section className={`library-view-body library-density-${density}`}
-      data-library-scope={tab} hidden={!active} inert={!active}
+      data-library-scope={tab} data-project-items={showingWorks ? "works" : undefined} hidden={!active} inert={!active}
       aria-label={t(tab === 'project' ? '项目作品' : tab === 'all' ? '跨空间查找' : '长期素材')}>
       <header className="library-scope-heading">
         <div className="library-scope-name">
           <strong>{resources ? t(tab === 'memory' ? '长期素材' : '跨空间查找') : project?.title ?? space?.name ?? t('项目作品')}</strong>
           {externalProject && !resources && <span className="library-shared-label">{t('受邀共享项目')}</span>}
-          {enabled && (
+          {enabled && !showingWorks && (
             <span className="library-result-count" role="status">
               {entries.length || !loading ? <><strong>{entries.length}</strong> {c.results}</> : t('读取中')}
               {cursor && ` · ${c.more}`}
@@ -504,6 +502,10 @@ export function AssetLibrary({
           </button>
         </div>
       </header>
+      {!resources && enabled && <div className="library-item-kind" role="group" aria-label={t('图库内容')}>
+        <button type="button" aria-pressed={showingWorks} onClick={() => setProjectItems('works')}>{t('已保存作品')}</button>
+        <button type="button" aria-pressed={!showingWorks} onClick={() => setProjectItems('assets')}>{t('项目原图')}</button>
+      </div>}
       {!resources && project && !['owner', 'admin', 'editor'].includes(project.role) && (
         <p className="studio-access-note">
           <Eye size={16} />
@@ -521,6 +523,17 @@ export function AssetLibrary({
             </button>
           }
         />
+      ) : showingWorks ? (
+        <div className="library-work-browser">
+          <label className="library-work-search">
+            <span className="sr-only">{t('搜索作品')}</span>
+            <input placeholder={t('搜索作品')} maxLength={100} value={query}
+              onChange={(event) => changeFilters({ query: event.target.value })} />
+          </label>
+          <SavedWorks active={active} spaceId={space?.id} projectId={project?.id}
+            actorId={actorId} query={query} refreshToken={refreshToken} withdrawn={withdrawnArtworks}
+            onOpen={onOpen} onTrash={onTrashArtwork} deleting={deletingArtwork} />
+        </div>
       ) : (
         <>
           <LibraryToolbar
@@ -600,7 +613,7 @@ export function AssetLibrary({
           </LibraryToolbar>
           <FloatingNotice message={error ?? folderError ?? collection.moreError ?? null} onRetry={collection.refresh} />
           <div className="library-explorer">
-            <LibraryFolders key={groupBy} by={groupBy} folders={folders} selected={folder}
+            <LibraryFolders key={groupBy} by={groupBy} folders={folders} selected={folder} compact={compactScreen}
               onSelect={(folder) => changeFilters({ folder })} />
             <div className="library-results" aria-busy={loading} inert={!active}>
               {loading && !entries.length && (
@@ -625,13 +638,11 @@ export function AssetLibrary({
               {entries.length > 0 && (
                 <section className="library-group" inert={collection.provisional}>
                   {folder && <h2>{folderLabel(folder)}</h2>}
-                  <LibraryMasonry items={cards} density={density}
+                  <LibraryMasonry items={cards} density={density} compactScreen={compactScreen}
                     onOpen={({ id }) => {
                       const entry = entries.find(({ asset }) => asset.id === id);
                       if (!entry) return;
-                      const work = entry.asset.projectId === project?.id ? artworkByAsset.get(entry.asset.id) : undefined;
-                      if (work) onOpen(work);
-                      else onOpenAsset(entry.asset);
+                      onOpenAsset(entry.asset);
                     }}
                     onDetails={setActionAssetId} />
               {active && entries.filter(({ asset }) => asset.id === actionAssetId).map(({ asset, resource }) => {

@@ -92,6 +92,7 @@ export type AIModel = {
   runtimeAvailable?: boolean;
   runtimeOperations?: AIOperation[];
   runtimeReason?: string | null;
+  shutdownDate?: string;
   parameterCapabilities?: ImageCapabilities;
   batchLimits?: { maxTotalPixels: number; maxTotalBytes: number };
   maxOutputs?: number;

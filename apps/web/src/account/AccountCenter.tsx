@@ -18,6 +18,7 @@ import {
   DownloadSimple,
   FolderPlus,
   Info,
+  GearSix,
   LockKey,
   ShieldCheck,
   SignOut,
@@ -32,6 +33,7 @@ import { DialogMotionContext } from '../components/Ui';
 import { AccountPageFrame } from './AccountPageFrame';
 import { AccountIdentityCard, AccountLanyard } from './AccountIdentityCard';
 import { PlanCatalog } from './PlanCatalog';
+import { AccountAssistantPreferences } from './AccountAssistantPreferences';
 import { QuotaWallet } from './QuotaWallet';
 import { api, ApiError, errorMessage } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
@@ -79,6 +81,7 @@ const tabs = [
   { id: 'overview', label: '概览', icon: UserCircle },
   { id: 'security', label: '安全', icon: ShieldCheck },
   { id: 'billing', label: '额度', icon: Wallet },
+  { id: 'assistant', label: '助手偏好', icon: GearSix },
   { id: 'data', label: '数据与退出', icon: SignOut },
 ] as const;
 
@@ -610,6 +613,7 @@ export function AccountCenter({
               </>
             )}
 
+            {tab === 'assistant' && <AccountAssistantPreferences key={user.id} actorId={user.id} />}
             {tab === 'data' && (
               <>
                 <header className="account-panel-heading">

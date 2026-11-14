@@ -130,8 +130,8 @@ async function selectProject(target) {
 async function openProject(target, selectModel = true) {
   await selectProject(target);
   await target
-    .locator('.library-reference-masonry')
-    .getByRole('button', { name: 'Collaborative portrait', exact: true })
+    .locator('.saved-works-grid')
+    .locator('.saved-work-open').filter({ hasText: 'Collaborative portrait' })
     .click();
   await target.locator('.collaboration-status[data-state="ready"]').waitFor();
   await target.locator('[data-dock-tool="ai"]:visible').click();

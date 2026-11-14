@@ -85,16 +85,17 @@ export function LibraryToolbar({
   );
 }
 
-export function LibraryMasonry({ items, density, onOpen, onDetails }: {
+export function LibraryMasonry({ items, density, compactScreen, onOpen, onDetails }: {
   items: MasonryItem[];
   density: LibraryDensity;
+  compactScreen?: boolean;
   onOpen: (item: MasonryItem) => void;
   onDetails: (id: string) => void;
 }) {
   const c = resourceExperienceCopy(useLocale());
   return (
     <Suspense fallback={<FeatureSkeleton profile="gallery" label={t('读取当前授权范围')} compact />}>
-      <Masonry className="library-reference-masonry" columnWidth={density === 'compact' ? 168 : 238}
+      <Masonry className="library-reference-masonry" columnWidth={compactScreen ? (density === 'compact' ? 92 : 112) : density === 'compact' ? 168 : 238}
         animateFrom="none" revealOnScroll={false} captions="hover" hoverEffect="lift" lightbox={false} draggable={false}
         items={items} onItemClick={onOpen}
         renderActions={(item) => (

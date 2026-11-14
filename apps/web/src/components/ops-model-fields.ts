@@ -25,6 +25,8 @@ export function opsModelFields(
 }
 
 export const auditLabels: Record<string, string> = {
+  'operator.support_config': '更新赞赏档位',
+  'operator.support_qr_updated': '更新赞赏码',
   'operator.quota_view': '查看空间权益',
   'operator.user_invite': '创建用户邀请',
   'operator.user_status': '更新用户状态',

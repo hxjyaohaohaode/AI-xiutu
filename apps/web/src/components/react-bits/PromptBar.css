@@ -564,7 +564,7 @@
 }
 .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__send) { width: 34px; }
 .assistant-reference-prompt :is(.prompt-bar__tool, .prompt-bar__pick):disabled { opacity: .55; cursor: default; }
-.assistant-reference-prompt .prompt-bar__pick { min-width: 0; flex: 0 1 auto; }
+.assistant-reference-prompt .prompt-bar__pick { min-width: 0; flex: 0 1 auto; border: 1px solid var(--line); border-radius: 8px; }
 .assistant-reference-prompt .prompt-bar__pick > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .assistant-reference-prompt .prompt-bar__pick > svg { flex: none; }
 .assistant-reference-prompt .prompt-bar__send { background: var(--surface-hover); border-radius: 10px; }

@@ -1,14 +1,9 @@
-import { responseEfforts } from './assistant.js';
+import { responseEfforts, responseSummaries, responseTiers } from './assistant.js';
+import { openAIShutdownDate } from './openai-lifecycle.js';
 
 export const RESPONSES_REASONING = responseEfforts;
-export const RESPONSES_SERVICE_TIERS = [
-  'default',
-  'fast',
-  'priority',
-  'ultrafast',
-  'flex',
-] as const;
-export const RESPONSES_SUMMARIES = ['auto', 'detailed', 'concise'] as const;
+export const RESPONSES_SERVICE_TIERS = responseTiers;
+export const RESPONSES_SUMMARIES = responseSummaries;
 export const RESPONSES_VERIFIED_AT = '2026-11-13';
 export const RESPONSES_SOURCES = [
   'https://developers.openai.com/api/reference/resources/responses/methods/create',
@@ -192,6 +187,8 @@ export const RESPONSES_MODELS = Object.freeze(
   definitions.flatMap(([baseModel, profile, ...snapshots]) =>
     [baseModel, ...snapshots].map((id) => ({
       ...profile,
+      deprecated: Boolean(openAIShutdownDate(id)),
+      shutdownDate: openAIShutdownDate(id),
       id,
       baseModel,
       source: `https://developers.openai.com/api/docs/models/${baseModel}`,

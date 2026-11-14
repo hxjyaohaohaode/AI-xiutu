@@ -1,5 +1,7 @@
 # OpenAI 模型、接口和参数核对
 
+新对话根据[官方停用清单](https://developers.openai.com/api/docs/deprecations)隐藏公告停用的模型，历史名称和回执仍保留。文字参数在输入框的模型参数面板调整；语音在通话前按协议显示对应的选项，通话转写默认使用 `gpt-transcribe`。模型档位报价、参数组合和预算仍由服务端核验。独立文字转语音暂时保留仍可调用的已公告型号，因为当前的 `/audio/speech` 接口没有兼容替代；实际停服后服务端禁止派发。
+
 核对日期 2026-11-13。以 AI-xiutu 项目在 OpenAI Playground 中显示的选项、项目密钥请求 `GET /v1/models` 的返回、官方模型说明及真实请求回执为依据。测试项目返回 96 个 ID，均有对应的应用适配器。`运营 → 语音与协作模型 → OpenAI 项目模型清单` 可重新读取当前服务器所用项目。启用模型和设置服务点由运营完成。模型会更新、下线或按项目限流。[官方模型目录](https://developers.openai.com/api/docs/models) · [项目模型查询](https://developers.openai.com/api/reference/resources/models/methods/list) · [退役公告](https://developers.openai.com/api/docs/deprecations)
 
 ## Responses

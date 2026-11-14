@@ -1520,9 +1520,10 @@ async function supplementalViews(config) {
     await changeView(page, 'works');
     const library = page.locator('.asset-library:visible');
     await library.getByText(projectName, { exact: true }).first().waitFor();
-    const items = library.locator('.library-reference-masonry [role="listitem"]');
+    const items = library.locator('.saved-works-grid > li');
     await items.nth(1).waitFor();
     assert.equal(await items.count(), 2);
+    await library.getByRole('button', { name: '项目原图', exact: true }).click();
     for (const [id, title] of [['coast', 'Lake study'], ['portrait', 'Portrait study']]) {
       const source = stored.find((item) => item.id === id);
       await library.locator(`[data-id="${source.assetId}"] .library-masonry-more`).click();
@@ -1531,8 +1532,11 @@ async function supplementalViews(config) {
       await detail.getByRole('button', { name: '关闭窗口', exact: true }).click();
       await detail.waitFor({ state: 'hidden' });
     }
+    await library.getByRole('button', { name: '已保存作品', exact: true }).click();
+    await items.nth(1).waitFor();
     await layout(page, 'isolated project gallery');
     await verificationCapture(page, 'views/works.png', 'works', 'Actual isolated project library with two real public photographs and their saved versions');
+    await library.getByRole('button', { name: '项目原图', exact: true }).click();
     const restoration = { state: 'unavailable', quoteVerified: false, createdDerivedAssets: 0 };
     const derivePath = '/v1/projects/' + projectId + '/derived-assets';
     let quoteResponse;
@@ -1752,7 +1756,7 @@ async function businessScreens(locale) {
     try {
       await openFixtureProject(page);
       await changeView(page, 'works');
-      const cards = page.locator('.asset-library:visible .library-reference-masonry [data-card]');
+      const cards = page.locator('.asset-library:visible .saved-works-grid > li');
       await cards.nth(1).waitFor();
       await page.locator('.asset-library:visible img').evaluateAll(async nodes => { await Promise.all(nodes.map(node => node.decode())); });
       await layout(page, locale + suffix + ': real project library');

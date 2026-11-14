@@ -760,3 +760,54 @@
     height: 34px;
   }
 }
+
+/* Compact default while a photo is open; the overflow button expands the utilities. */
+.studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .floating-topbar .workspace-identity > .workspace-home-link,
+.studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .floating-topbar .workspace-top-actions > :is(.studio-search-trigger, .theme-toggle, .focus-toggle, .studio-account, .workspace-settings-trigger) {
+  display: none;
+}
+.studio-workspace[data-immersive-editor] .floating-topbar .workspace-project-title .workspace-save-state { display: none; }
+.studio-workspace[data-immersive-editor] .floating-topbar .workspace-top-actions > .mobile-chrome-toggle { color: var(--muted); }
+.studio-workspace[data-immersive-editor] .floating-topbar .workspace-top-actions > .mobile-chrome-toggle[aria-expanded="true"] { color: var(--accent-ink); }
+.studio-workspace[data-immersive-editor] .canvas-stage :is(.image-viewport, .image-frame, .image-frame canvas) { filter: none; backdrop-filter: none; }
+.studio-workspace .free-panel[data-fixed-inspector] .inspector-scroll:has(.inspector-tool-content[data-tool-family]) {
+  overscroll-behavior: contain;
+}
+.studio-workspace .free-panel[data-fixed-inspector] .inspector-scroll:has(.inspector-tool-content:is([data-tool-family='light'],[data-tool-family='color'],[data-tool-family='detail'],[data-tool-family='curves']):not([hidden])) {
+  scrollbar-width: none;
+}
+.studio-workspace .free-panel[data-fixed-inspector] .portrait-source-actions:not([open]) > summary { min-height: 30px; padding-block: 2px; }
+
+
+.studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar .workspace-top-actions > .studio-account { display: inline-grid; }
+.studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar .workspace-top-actions > .workspace-settings-trigger { display: inline-grid; }
+@media (max-width: 759px) {
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar .workspace-top-actions > :is(.studio-search-trigger, .theme-toggle, .focus-toggle),
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar .workspace-top-actions:has(.cloud-status-trigger) > .studio-account {
+    display: none;
+  }
+}
+.studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions {
+  position: static;
+  display: inline-flex;
+  flex: none;
+  padding: 0;
+  gap: 0;
+  background: none;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions > button {
+  min-inline-size: 34px;
+  min-block-size: 38px;
+  padding: 0;
+}
+.studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions > button > span { display: none; }
+.studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .canvas-tools-dock > :is(.image-action-strip, .canvas-tools-settings) {
+  display: none;
+}
+.studio-workspace .free-panel[data-fixed-inspector] .portrait-controls-v3:has(.parameter-shelf) > .portrait-person-select {
+  display: none;
+}
+.studio-workspace .free-panel[data-fixed-inspector] .portrait-extras > summary { min-height: 30px; padding-block: 2px; }

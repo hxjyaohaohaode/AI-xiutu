@@ -1,0 +1,19 @@
+
+.support-ops { display: grid; gap: 16px; }
+.support-ops-heading { display: flex; gap: 12px 20px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+.support-ops h2, .support-ops h3, .support-ops p { margin: 0; }
+.support-ops p, .support-ops small { color: var(--muted); }
+.support-ops .support-ops-notice { color: var(--accent-ink); }
+.support-ops-heading p { margin-top: 6px; }
+.support-ops-grid { display: grid; grid-template-columns: minmax(0,.9fr) minmax(0,1.2fr); gap: 16px; align-items: start; }
+.support-ops-form { display: grid; gap: 12px; min-width: 0; }
+.support-ops-form h3, .ops-layout .support-ops-form label.support-ops-enable { display: flex; gap: 8px; align-items: center; justify-content: flex-start; }
+.ops-layout .support-ops-enable input[type='checkbox'] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 0; }
+.support-ops-code { min-height: 140px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+.support-ops-code img { display: block; width: auto; max-width: 100%; max-height: 220px; object-fit: contain; border-radius: 4px; }
+.support-ops-form input[type="file"] { min-width: 0; max-width: 100%; }
+.support-ops-tiers { display: grid; gap: 7px; }
+.support-ops-tier, .support-ops-tier-labels { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr) 40px; gap: 8px; align-items: center; }
+.support-ops-tier input { min-width: 0; width: 100%; }
+.support-ops-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 920px) { .support-ops-grid { grid-template-columns: minmax(0,1fr); } }

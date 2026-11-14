@@ -51,13 +51,15 @@ export function workspaceSize(view: Viewport): { width: number; height: number }
 }
 
 /** The phone inspector is an attached tool shelf. Stored panel geometry applies to desktop. */
-export function phoneInspectorLayout(view: Viewport): { rect: PanelRectangle; insets: CanvasInsets } {
+export function phoneInspectorLayout(view: Viewport, contentHeight?: number): { rect: PanelRectangle; insets: CanvasInsets } {
   const body = workspaceSize(view);
   const bottom = view.bucket === 'phone'
     ? panelBottomOffset(view)
     : Math.max(48, finite(view.toolShelfHeight ?? 44, 44) + 12);
   const landscape = view.width > view.height && view.height <= 500;
-  const height = Math.min(landscape ? 104 : 146, Math.max(0, body.height - bottom));
+  const baseHeight = landscape ? 104 : 146;
+  const maxHeight = Math.max(0, body.height - bottom - (contentHeight === undefined ? 0 : (landscape ? 84 : 132)));
+  const height = Math.min(Math.max(baseHeight, contentHeight ?? 0), maxHeight);
   return {
     rect: { x: 0, y: Math.max(0, body.height - bottom - height), width: body.width, height },
     insets: { left: 0, right: 0, bottom: height + bottom },

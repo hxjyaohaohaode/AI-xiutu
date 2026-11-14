@@ -13,6 +13,7 @@ import {
   UsersThree,
   ArrowRight,
   ArrowLeft,
+  DotsThree,
   ShieldCheck,
   PencilSimple,
   CornersOut,
@@ -360,7 +361,7 @@ export function App({
   const authCompleted = useRef(false);
   const postAuthDialog = useRef<Dialog>(null);
   const [accountEntry, setAccountEntry] = useState<{
-    tab: 'overview' | 'security' | 'billing' | 'data';
+    tab: 'overview' | 'security' | 'billing' | 'assistant' | 'data';
     key: number;
   }>({ tab: 'overview', key: 0 });
   const [loggingOut, setLoggingOut] = useState(false);
@@ -508,6 +509,10 @@ export function App({
   const projectRefresh = useRef(0);
   const saveAfterProject = useRef(false);
   const saveLock = useRef(false);
+  const personalProjectLoad = useRef<{ actor: string; promise: Promise<Project> } | null>(null);
+  const [personalAIProject, setPersonalAIProject] = useState<{ actor: string; project: Project } | null>(null);
+  const aiProject = project && ['owner', 'admin', 'editor'].includes(project.role) ? project
+    : personalAIProject?.actor === session.user?.id ? personalAIProject?.project ?? null : null;
   const projectIdRef = useRef<string | null>(null);
   projectIdRef.current = project?.id ?? null;
   const notify = useCallback(
@@ -677,6 +682,7 @@ export function App({
     setSharedProjects([]);
     setEntitlements(null);
     setProject(null);
+    setPersonalAIProject(null);
     setAssets([]);
     setArtworks([]);
     setArtwork(null);
@@ -956,6 +962,14 @@ export function App({
     };
   }, [session.user?.id, session.spaces, refreshToken]);
   useEffect(() => {
+    if (!session.user?.id) return;
+    const resume = () => {
+      if (document.visibilityState === 'visible') setRefreshToken((value) => value + 1);
+    };
+    document.addEventListener('visibilitychange', resume);
+    return () => document.removeEventListener('visibilitychange', resume);
+  }, [session.user?.id]);
+  useEffect(() => {
     if (!session.user || !spaceId) return;
     const controller = new AbortController();
     let cursor = 0;
@@ -977,6 +991,8 @@ export function App({
             markPhotoWithdrawn('asset', event.entityId, event.type === 'asset.deleted');
           if (event.type === 'artwork.deleted' || event.type === 'artwork.restored')
             markPhotoWithdrawn('artwork', event.entityId, event.type === 'artwork.deleted');
+          if (event.type === 'project.deleted')
+            setPersonalAIProject((value) => value?.project.id === event.entityId ? null : value);
         }
         if (result.events.length) setRefreshToken((t) => t + 1);
         timer = setTimeout(poll, 500);
@@ -1429,66 +1445,63 @@ export function App({
   }
 
   const originalPhoto = cloudBaseSources.current.get(sourceIdentity);
-  const cloudPhoto = originalPhoto && asset?.id === originalPhoto.id ? artwork ?? asset : null;
-  const canRemovePhoto = !originalPhoto ||
-    (!!cloudPhoto && project?.id === cloudPhoto.projectId &&
-      ['owner', 'admin', 'editor'].includes(project.role));
+  const cloudPhoto = artwork ?? (originalPhoto && asset?.id === originalPhoto.id ? asset : null);
+  const photoProject = [project, ...projects, ...sharedProjects].find((item) => item?.id === cloudPhoto?.projectId);
+  const canRemovePhoto = !cloudPhoto ? !originalPhoto
+    : !!photoProject && ['owner', 'admin', 'editor'].includes(photoProject.role);
   const deletePhotoLabel = cloudPhoto && 'headVersion' in cloudPhoto ? '删除作品' : '删除照片';
 
-  async function trashCurrentPhoto() {
+  async function movePhotoToTrash(savedWork?: Artwork) {
+    if (!readyToLeavePhoto()) return;
     const file = editor.file;
-    if (!file || !canRemovePhoto || !readyToLeavePhoto()) return;
-    const savedWork = cloudPhoto && 'headVersion' in cloudPhoto ? cloudPhoto : null;
+    if (!savedWork && (!file || !canRemovePhoto)) return;
+    const target = savedWork ?? cloudPhoto;
+    if (target && 'headVersion' in target) savedWork = target;
+    const owner = sessionFence.snapshot();
+    const source = editor.getSourceIdentity();
+    const beforeConfirm = editor.getRecipe();
+    const editingTarget = savedWork ? artworkRef.current?.id === savedWork.id : true;
+    const stillHere = () => editingTarget && sessionFence.isCurrent(owner) &&
+      editor.getSourceIdentity() === source &&
+      (!savedWork || artworkRef.current?.id === savedWork.id);
     const description = savedWork
       ? t('作品和已保存的版本将进入回收站，48 小时内可以恢复。项目里的原图仍可使用。')
-      : cloudPhoto
+      : target
         ? t('原图将进入回收站，48 小时内可以恢复。仍被作品引用的原图需要保留。')
         : t('这张照片和当前编辑将进入本机回收站，48 小时内可以恢复。');
-    const warning = cloudPhoto && isEditorDirty() ? '\n' + t('本次未保存的修改将丢失。') : '';
+    const warning = target && editingTarget && isEditorDirty() ? '\n' + t('本次未保存的修改将丢失。') : '';
     if (!(await confirmNavigation(description + warning, {
-      title: t(deletePhotoLabel), confirmLabel: t('移入回收站'), tone: 'danger',
-    })) || !readyToLeavePhoto()) return;
-    const owner = sessionFence.snapshot();
-    const scope = createSourceLoadGuard(() => ({
-      context: projectRequest.current, source: editor.getSourceIdentity(), recipe: editor.getRecipe(),
-    }));
-    const stillHere = () =>
-      sessionFence.isCurrent(owner) && scope.isCurrent() && navigationScope.current.view === 'editor';
+      title: t(savedWork ? '删除作品' : '删除照片'), confirmLabel: t('移入回收站'), tone: 'danger',
+    })) || !sessionFence.isCurrent(owner) || !readyToLeavePhoto() ||
+      (editingTarget && (!stillHere() || (target && editor.getRecipe() !== beforeConfirm)))) return;
     saveLock.current = true;
     setRemovingPhoto(true);
     let released = false;
     let moved = false;
     try {
-      if (savedWork && collaboration.enabled) {
+      if (savedWork && editingTarget && collaboration.enabled) {
         await collaboration.beforeExternalWrite();
         released = true;
       }
-      if (!stillHere()) return;
-      if (savedWork) {
-        await api(`/artworks/${savedWork.id}?expectedVersion=${savedWork.headVersion}`, jsonRequest('DELETE'));
-      } else if (cloudPhoto) {
-        await api(`/assets/${cloudPhoto.id}`, jsonRequest('DELETE'));
-      } else {
-        try {
-          await storeLocalPhoto(localPhotoOwner, file, editor.getRecipe(), rawEditor.getLayerFiles());
-        } catch {
-          throw new Error(t('本机回收站写入失败，照片仍在编辑器中。'));
-        }
-      }
+      if (!sessionFence.isCurrent(owner) || (editingTarget && !stillHere())) return;
+      if (savedWork)
+        await api('/artworks/' + savedWork.id + '?expectedVersion=' + savedWork.headVersion, jsonRequest('DELETE'));
+      else if (target) await api('/assets/' + target.id, jsonRequest('DELETE'));
+      else await storeLocalPhoto(localPhotoOwner, file!, editor.getRecipe(), rawEditor.getLayerFiles());
       moved = true;
       if (!sessionFence.isCurrent(owner)) return;
-      if (savedWork) setArtworks((items) => items.filter((item) => item.id !== savedWork.id));
-      else if (cloudPhoto) setAssets((items) => items.filter((item) => item.id !== cloudPhoto.id));
-      if (cloudPhoto) {
-        markPhotoWithdrawn(savedWork ? 'artwork' : 'asset', cloudPhoto.id, true);
+      if (target) {
+        markPhotoWithdrawn(savedWork ? 'artwork' : 'asset', target.id, true);
+        if (savedWork) setArtworks((items) => items.filter((item) => item.id !== savedWork?.id));
+        else setAssets((items) => items.filter((item) => item.id !== target.id));
         ++projectRefresh.current;
         setRefreshToken((value) => value + 1);
       }
-      // Keep a newer canvas or edits that arrived while the delete was in flight.
-      if (stillHere()) finishPhotoEditing();
+      if (stillHere() && (savedWork || navigationScope.current.view === 'editor')) finishPhotoEditing();
       notify(t('已移入回收站，可在 48 小时内恢复。'), 'success');
     } catch (error) {
-      if (sessionFence.isCurrent(owner)) notify(errorMessage(error), 'error');
+      if (sessionFence.isCurrent(owner))
+        notify(target ? errorMessage(error) : t('本机回收站写入失败，照片仍在编辑器中。'), 'error');
     } finally {
       saveLock.current = false;
       setRemovingPhoto(false);
@@ -1585,6 +1598,9 @@ export function App({
         `/artworks/${id}`,
       );
       if (!load.isCurrent()) return load.abandoned();
+      const workProject = project?.id === data.artwork.projectId ? null
+        : await api<{ project: Project; assets: Asset[]; artworks: Artwork[] }>('/projects/' + data.artwork.projectId);
+      if (!load.isCurrent()) return load.abandoned();
       assertRevisionSourceBinding({
         artworkId: id,
         projectId: data.artwork.projectId,
@@ -1611,6 +1627,13 @@ export function App({
       for (const sourceId of layerReferences.keys())
         layerOwners.current.set(sourceId, data.artwork.projectId);
       cloudBaseSources.current.set(editor.getSourceIdentity(), data.asset);
+      if (workProject) {
+        setProject(workProject.project);
+        if (sessionRef.current.spaces.some((space) => space.id === workProject.project.spaceId))
+          setSpaceId(workProject.project.spaceId);
+        setAssets(workProject.assets);
+        setArtworks(workProject.artworks);
+      }
       setArtwork(data.artwork);
       setAsset(data.asset);
       setRevision(data.revision);
@@ -2115,7 +2138,22 @@ export function App({
       );
     }
   }
-  function save() {
+  async function ensurePersonalCreativeProject() {
+    const owner = sessionFence.snapshot();
+    if (!owner.actor || sessionFence.busy) throw new Error(t('请先登录'));
+    if (personalProjectLoad.current?.actor === owner.actor) return personalProjectLoad.current.promise;
+    const promise = api<{ project: Project }>('/me/creative-project', jsonRequest('PUT', {}))
+      .then(({ project: result }) => {
+        if (!sessionFence.isCurrent(owner)) throw new Error(t('账号已改变，请重试。'));
+        setPersonalAIProject({ actor: owner.actor!, project: result });
+        return result;
+      });
+    personalProjectLoad.current = { actor: owner.actor, promise };
+    try { return await promise; }
+    finally { if (personalProjectLoad.current?.promise === promise) personalProjectLoad.current = null; }
+  }
+
+  async function save() {
     if (editor.isLoading() || opening) {
       notify(t('图片正在准备中，请加载完成后再保存。'));
       return;
@@ -2128,12 +2166,27 @@ export function App({
       openAuth();
       return;
     }
-    if (!project) {
-      saveAfterProject.current = true;
-      setDialog('project');
+    if (project && ['owner', 'admin', 'editor'].includes(project.role)) {
+      await saveToProject(project);
       return;
     }
-    void saveToProject(project);
+    if (saveLock.current || saving) return;
+    const owner = sessionFence.snapshot();
+    const source = editor.getSourceIdentity();
+    const context = projectRequest.current;
+    setSaving(true);
+    try {
+      const target = await ensurePersonalCreativeProject();
+      if (!sessionFence.isCurrent(owner) || editor.getSourceIdentity() !== source ||
+          projectRequest.current !== context || saveLock.current) return;
+      setProject(target);
+      setSpaceId(target.spaceId);
+      await saveToProject(target);
+    } catch (error) {
+      if (sessionFence.isCurrent(owner)) notify(errorMessage(error), 'error');
+    } finally {
+      if (!saveLock.current) setSaving(false);
+    }
   }
   async function openCreateProject() {
     if (saveLock.current) {
@@ -2479,9 +2532,30 @@ export function App({
     (workspaceLayout.view.width < 1000 &&
       workspaceLayout.view.height <= 500 &&
       navigator.maxTouchPoints > 0);
-  const phoneInspector = phoneEditor ? phoneInspectorLayout(workspaceLayout.view) : null;
+  const [inspectorContentHeight, setInspectorContentHeight] = useState<number>();
+  const [mobileChromeExpanded, setMobileChromeExpanded] = useState(false);
+  useEffect(() => setMobileChromeExpanded(false), [view, editor.file]);
+  const phoneInspector = phoneEditor ? phoneInspectorLayout(workspaceLayout.view, inspectorContentHeight) : null;
   const floatingVoice = activePanelId === 'ai' && aiActivity.callVisible;
   const mobileAssistantOpen = phoneEditor && activePanelId === 'ai' && !floatingVoice;
+  const immersiveEditor = phoneEditor && view === 'editor' && !!editor.file && !mobileAssistantOpen;
+  const photoSessionActions = (
+    <div className="image-action-strip photo-session-actions">
+      <button type="button" data-action="exit-photo" aria-label={t('退出编辑')}
+        disabled={removingPhoto || saving || opening || editor.loading}
+        onClick={() => void exitPhotoEditing()}>
+        <ArrowLeft size={17} aria-hidden />
+        <span>{t('退出编辑')}</span>
+      </button>
+      {canRemovePhoto && <button type="button" data-action="trash-photo"
+        aria-label={t(deletePhotoLabel)} title={t(deletePhotoLabel)}
+        disabled={removingPhoto || saving || opening || editor.loading}
+        onClick={() => void movePhotoToTrash()}>
+        <Trash size={17} aria-hidden />
+        <span>{t(deletePhotoLabel)}</span>
+      </button>}
+    </div>
+  );
   const inspectorPresence = usePresence(activePanelId === 'inspector', 'panel-frame');
   const aiPresence = usePresence(activePanelId === 'ai', 'panel-frame');
   const collaborationPresence = usePresence(
@@ -2602,6 +2676,10 @@ export function App({
     showAI();
     return true;
   };
+  useEffect(() => {
+    if (aiOpen && session.user && !aiProject) void ensurePersonalCreativeProject()
+      .catch((error) => notify(errorMessage(error), 'error'));
+  }, [aiOpen, session.user?.id, aiProject?.id]);
   const closeAI = () => {
     setAiOpen(false);
     setCollageHandoff(null);
@@ -2890,6 +2968,8 @@ export function App({
           <div
             className={`app-shell canvas-workspace studio-workspace ${editingWithAI ? 'editing-with-ai' : ''} view-${view} theme-${studioTheme.theme} ${workspaceLayout.focused ? 'is-focused' : ''}`}
             data-has-image={!!editor.file}
+            data-mobile-chrome-expanded={mobileChromeExpanded || undefined}
+            data-immersive-editor={immersiveEditor || undefined}
             data-mobile-ai-page={mobileAssistantOpen || undefined}
             data-fixed-inspector-open={fixedInspectorOpen || undefined}
           >
@@ -3001,6 +3081,13 @@ export function App({
                   }
                 />
                 <div className="workspace-top-actions">
+                  {immersiveEditor && !mobileChromeExpanded && photoSessionActions}
+                  {immersiveEditor &&
+                    <IconButton label={t(mobileChromeExpanded ? '收起顶部工具' : '展开顶部工具')}
+                      className="mobile-chrome-toggle" aria-expanded={mobileChromeExpanded}
+                      onClick={() => setMobileChromeExpanded((value) => !value)}>
+                      <DotsThree size={20} />
+                    </IconButton>}
                   {cloudError && cloudNoticeDismissed && (
                     <IconButton
                       label={interactionText('showCloud')}
@@ -3162,21 +3249,7 @@ export function App({
                         }}
                       >
                         {editor.file && <CanvasTools layout={canvasTools} focused={workspaceLayout.focused}
-                          fixedActions={<div className="image-action-strip photo-session-actions">
-                            <button type="button" data-action="exit-photo" aria-label={t('退出编辑')}
-                              disabled={removingPhoto || saving || opening || editor.loading}
-                              onClick={() => void exitPhotoEditing()}>
-                              <ArrowLeft size={17} aria-hidden />
-                              <span>{t('退出编辑')}</span>
-                            </button>
-                            {canRemovePhoto && <button type="button" data-action="trash-photo"
-                              aria-label={t(deletePhotoLabel)} title={t(deletePhotoLabel)}
-                              disabled={removingPhoto || saving || opening || editor.loading}
-                              onClick={() => void trashCurrentPhoto()}>
-                              <Trash size={17} aria-hidden />
-                              <span>{t(deletePhotoLabel)}</span>
-                            </button>}
-                          </div>}
+                          fixedActions={immersiveEditor && !mobileChromeExpanded ? undefined : photoSessionActions}
                           actions={<div className="image-action-strip" data-motion="canvas-toolbar">
                             <IconButton
                               label={t('打开另一张图片')}
@@ -3354,6 +3427,9 @@ export function App({
                           replacementHasDraft={dirty}
                           onReplaceSource={replaceCurrentSource}
                           onOpen={(item) => void openArtwork(item)}
+                          onTrashArtwork={(item) => void movePhotoToTrash(item)}
+                          deletingArtwork={removingPhoto}
+                          compactScreen={phoneEditor}
                           onImport={() => void importFile()}
                           onCreate={openCreateProject}
                           onCopy={() => setDialog('copy')}
@@ -3462,6 +3538,7 @@ export function App({
                               target={commandTarget}
                               onPortraitTool={setPortraitCanvasTool}
                               canvasOverlay={fixedInspectorOpen ? canvasToolOverlay : null}
+                              onContentHeight={phoneEditor ? setInspectorContentHeight : undefined}
                               onGroupChange={selectInspectorTool}
                               onCutout={createCutout}
                               onFlattenLayers={flattenLayers}
@@ -3496,7 +3573,7 @@ export function App({
                         </div>
                       ) : (
                         <AIPanelFeature
-                          key={(session.user?.id ?? 'local') + ':' + (project?.id ?? 'none')}
+                          key={(session.user?.id ?? 'local') + ':' + (aiProject?.id ?? 'none')}
                           visible={activePanelId === 'ai'}
                           mobilePage={phoneEditor}
                           generationRequest={collageReturn?.request}
@@ -3519,15 +3596,15 @@ export function App({
                           onActivityChange={setAiActivity}
                           userId={session.user?.id ?? null}
                           spaces={session.spaces}
-                          projectAssets={assets}
-                          currentAsset={asset}
+                          projectAssets={aiProject?.id === project?.id ? assets : []}
+                          currentAsset={asset?.projectId === aiProject?.id ? asset : null}
                           referenceSource={referenceSource}
                           onReferenceFile={(file, source) => {
                             setReferenceFile(file);
                             setReferenceSource(source);
                           }}
-                          project={project}
-                          artwork={artwork}
+                          project={aiProject}
+                          artwork={artwork?.projectId === aiProject?.id ? artwork : null}
                           recipe={editor.recipe}
                           previewActive={editor.hasUncommittedPreview}
                           onConfirmPreview={() => editor.commitCurrent(t('确认 AI 调整'))}
@@ -3605,7 +3682,7 @@ export function App({
                           referenceFile={referenceFile}
                           onClearReference={() => setReferenceFile(null)}
                           onDraw={() => setDialog('drawing')}
-                          onCreateProject={openCreateProject}
+                          onCreateProject={() => void ensurePersonalCreativeProject().catch((error) => notify(errorMessage(error), 'error'))}
                           onOpenArtwork={(id) => {
                             void openArtwork(id).then((opened) => {
                               if (opened) closeAIToEditor();
@@ -3625,6 +3702,7 @@ export function App({
                           onSave={save}
                           onExport={editor.file && !opening && !editor.loading ? () => setDialog('export') : undefined}
                           onTopUp={() => openAccount('billing')}
+                          onAssistantPreferences={() => openAccount('assistant')}
                           voiceEntry={voiceEntry}
                           isLoggedIn={!!session.user}
                           onAuth={() => openAuth()}
@@ -3757,6 +3835,7 @@ export function App({
         {renderedDialog === 'photoTrash' && (
           <PhotoTrashDialog key={localPhotoOwner} owner={localPhotoOwner} actorId={session.user?.id ?? null}
             refreshToken={refreshToken} onClose={closeDialog} onLocalRestore={restoreLocalPhoto}
+            onCloudPurged={() => setRefreshToken((value) => value + 1)}
             onCloudRestored={(photo) => {
               markPhotoWithdrawn(photo.kind, photo.id, false);
               setRefreshToken((value) => value + 1);

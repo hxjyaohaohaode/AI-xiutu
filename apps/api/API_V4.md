@@ -227,12 +227,13 @@ that an external account or network route has passed a live paid test.
 
 ### 6.1 Scope, context and ordinary turns
 
-- `GET /v1/assistant/models` requires login and returns `{ready,voiceReady,reason,models,voiceProfiles,verifiedAt,sources}`. Public entries contain model labels, allowed operations, service-unit cost and application budgets, never credentials. Voice profiles describe the protocol adapter; use the model-specific voice list supported by the request validator.
-- `POST /v1/projects/:projectId/assistant-turns` accepts `{idempotencyKey:UUID,modelId,prompt,context?,visualAttachment?,scope?,parentTurnId?}`. Prompt is 1..4000 characters. Returns202 while running, otherwise200, with `{id,state,modelId,output,errorCode,createdAt}`. A current verified owner/admin/editor is required. Reference-only grants and platform-operator status do not grant assistant execution rights.
+- `GET /v1/assistant/models` requires login. Model entries describe current operations, defaults, model capabilities, point rates and application budgets. Announced retired models are hidden from new selections; prior receipts remain readable. Voice defaults omit operator prompts.
+- `POST /v1/projects/:projectId/assistant-turns` accepts `{idempotencyKey:UUID,modelId,prompt,context?,visualAttachment?,scope?,parentTurnId?,responseTuning?,expectedUnits?}`. Tuning may include reasoning, response length, sampling, format and service tier according to that model. Nonempty tuning needs a matching `expectedUnits`; incompatible settings and changed quotes are rejected before reservation. Parameters and quote are bound to idempotency and provider input. Prompt is 1..4000 characters. Returns 202 while running, otherwise 200. A current verified owner/admin/editor is required. Readers may open a separate personal conversation with `PUT /v1/me/creative-project`; reference-only grants and platform-operator status do not grant editing or assistant execution rights on the shared project.
 - `GET /v1/assistant-turns/:turnId` returns that DTO while the actor retains project edit and referenced resource access. It includes `stopRequested`. Turn states are running, completed, failed, unknown and stopped.
 - `POST /v1/assistant-turns/:turnId/stop` accepts an empty object and idempotently records the owner's stop. It returns `{id,state,stopRequested}`. An in-flight dispatch stays running while the server reads the receipt. Verified receipts settle, an unsent hold releases, and ambiguous outcomes remain unknown. The stop blocks new tool actions and candidate publication.
 - `GET /v1/projects/:projectId/assistant-turns?conversationId=UUID` returns `{turns}`: the actor's most recent30 turns within that stable root, including prompt/output and current candidate decisions. Without a conversation filter it returns recent project history. This is a bounded view, not a fully paginated archive.
 - `GET /v1/projects/:projectId/assistant-conversations` returns the actor's most recent100 conversation roots. `conversationId` is assigned by the server; a child inherits its authorized parent's root.
+- `GET /v1/me/assistant-preferences` returns the signed-in actor's `{actorId,version,value}`. `PATCH` accepts that actor ID and a partial `patch` over `{textModel,voiceModel,mode,captions}` and merges just those fields. The optional `initialize` flag lets an existing browser import its old defaults only if no server defaults have been saved. Model defaults grant no model access, and no preference can authorize automatic edits.
 - `GET /v1/assistant-turns/:turnId/events?after=N` streams persisted sequence events. `Last-Event-ID` also resumes the cursor. This endpoint is read-only: reconnecting never resubmits or charges. Connections rotate after25seconds with actor/process concurrency limits and current access checks.
 - `GET /v1/assistant-turns/:turnId/context` exposes the actor-authorized context manifest, including original/retained token estimates and archived turn sources.
 
@@ -367,7 +368,7 @@ existing candidate/reference IDs; they cannot run arbitrary HTML or commands.
 ### 6.3 Voice preparation and application WebSocket
 
 `POST /v1/projects/:projectId/voice-sessions` accepts
-`{idempotencyKey:UUID,modelId,backendModelId?,voice,context?,scope?,delegation?,translation?}` and returns
+`{idempotencyKey:UUID,modelId,backendModelId?,voice,context?,scope?,delegation?,translation?,tuning?,expectedUnits?}` and returns
 `{id,ticket,websocketPath,maxSeconds,reservedUnits,billing}`. It reserves one
 configured, time-limited voice service-unit block. Backend delegations share that
 declared block; provider token/second receipts are separate metadata. Limits are
@@ -375,6 +376,8 @@ one prepared/connecting/active voice session per actor and12 preparations per
 hour. Same-key preparation returns409 `VOICE_ALREADY_PREPARED`, without another
 hold or automatic reconnect. A lost ticket is not reissued; unconnected preparation
 expires after60seconds and is safely released during maintenance.
+
+Personal Live calls accept `tuning.live` (delivery style, opening and delegation acknowledgement delay); Realtime calls accept `tuning.realtime`, `tuning.reasoningEffort` and `tuning.maxOutputTokens`. The server checks protocol, model and budget before admission, moderates prompt fields and freezes the options. A supplied stale quote returns 409 before reservation.
 
 For `gpt-live-1`, `delegation.type` selects `client`, `responses` or `decisions`. A Responses session requires an enabled `backendModelId` and accepts `prompt`, `maxOutputTokens` (16 to the configured/model limit), `serviceTier`, `effort` and `verbosity` when the backend supports those values. Decisions uses `gpt-6-luna`, accepts typed `questions` and an optional `trigger:input|output`. Native sessions receive current conversation inputs and may return `delegated-result`. They accept no editor snapshot, private references, personal memory or execution grant.
 
@@ -520,6 +523,7 @@ master remains accessible through the media export endpoint in section 5.
 - `DELETE /v1/artworks/:id?expectedVersion=N` moves the saved work and its version history into the recycle bin. The source asset stays available independently. Active editing leases conflict with this command.
 - `DELETE /v1/assets/:id` moves an unreferenced original into the recycle bin. A source referenced by an active or recoverable work, its version history, or an image layer returns `ASSET_IN_USE`. Both commands return `{ok,item}`.
 - `GET /v1/photo-trash?limit=50&cursor=...` returns `{items,nextCursor}` within current owner, admin or editor memberships. `POST /v1/photo-trash/:kind/:id/restore` accepts `{token}` from the item and restores it to the original project. The server rejects stale tokens and returns `PHOTO_TRASH_EXPIRED` after 48 hours.
+- `GET /v1/photo-trash/:kind/:id/thumbnail?token=UUID` provides a private preview during retention. `DELETE /v1/photo-trash/:kind/:id?token=UUID` permanently removes that item from recovery and schedules eligible source bytes for cleanup. Both recheck current membership and the deletion token; purge never removes bytes still referenced by another asset.
 - The API sweeps expired entries at startup and every 30 seconds. Capacity remains reserved during the recovery window. After expiry, the API releases eligible capacity and retries private file cleanup independently of the expiry transaction. Copies retain shared bytes while any retained asset uses them. Immutable audit and revision records remain internal. The policy applies to deletions made through the recycle-bin commands.
 
 ## Asset processing and provider usage

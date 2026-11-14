@@ -23,6 +23,8 @@ type Settings = {
   provider: 'openai';
   operations: string[];
   unitCost: number;
+  responseTierUnits?: Partial<Record<NonNullable<ResponsesOptions['serviceTier']>, number>>;
+  responseProExtraUnits?: number;
   maxSeconds: number;
   maxDelegations: number;
   maxOutputTokens: number;
@@ -622,7 +624,7 @@ export function AssistantOpsPanel() {
                       />
                     </label>
                   )}
-                  {responseProfile && (
+                  {responseProfile && (<>
                     <ResponsesModelOptions
                       key={responseProfile.id}
                       profile={responseProfile}
@@ -631,7 +633,30 @@ export function AssistantOpsPanel() {
                       disabled={busy}
                       onChange={(responses) => setSettings({ ...settings, responses })}
                     />
-                  )}
+                    <details className="ops-response-prices">
+                      <summary>{t('本轮可选档位报价')}</summary>
+                      <p>{t('填写点数后，用户才能在对话中切换该档位。留空沿用当前默认档位。')}</p>
+                      {responseProfile?.tiers.map((tier) => (
+                        <label key={tier}>{tier}
+                          <input type="number" min={1} max={100000} step={1} disabled={busy}
+                            value={settings.responseTierUnits?.[tier] ?? ''}
+                            onChange={(event) => {
+                              const values = { ...settings.responseTierUnits };
+                              if (event.target.value) values[tier] = Number(event.target.value);
+                              else delete values[tier];
+                              setSettings({ ...settings, responseTierUnits: values });
+                            }} />
+                        </label>
+                      ))}
+                      {responseProfile?.reasoningMode && <label>{t('Pro 模式附加点数')}
+                        <input type="number" min={1} max={100000} step={1} disabled={busy}
+                          value={settings.responseProExtraUnits ?? ''}
+                          onChange={(event) => setSettings({ ...settings,
+                            responseProExtraUnits: event.target.value ? Number(event.target.value) : undefined,
+                          })} />
+                      </label>}
+                    </details>
+                  </>)}
                 </>
               )}
               {voice && !!profile?.reasoning?.length && (

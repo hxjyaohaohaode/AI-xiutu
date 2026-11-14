@@ -128,18 +128,22 @@ export function PortraitControls({
   const analysisCurrent = portraitSelectionMatchesSource(state.analysis, editor.getSourceFrame());
   const automaticAnalysis = useRef(new Set<string>());
   useEffect(() => {
-    if (mode !== 'auto' || category === 'makeup' || !editor.sourceHash || state.progress) return;
+    if (mode !== 'auto' || !editor.sourceHash || !editor.getSourceFrame() || editor.isLoading() || state.progress) return;
     const key = sourceIdentity + ':' + kind;
     if ((analysisCurrent && (kind === 'face' || target)) || automaticAnalysis.current.has(key))
       return;
-    automaticAnalysis.current.add(key);
-    void state.analyze(kind === 'body');
+    const timer = window.setTimeout(() => {
+      automaticAnalysis.current.add(key);
+      void state.analyze(kind === 'body');
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [
     mode,
     category,
     sourceIdentity,
     kind,
     editor.sourceHash,
+    editor.loading,
     state.progress,
     state.analyze,
     analysisCurrent,
@@ -605,6 +609,143 @@ export function PortraitControls({
       />
     </div>
   );
+  const portraitExtras = (
+    <>
+      {target && (
+        <MotionDetails className="advanced-disclosure">
+          <summary>{t('识别与手动修正说明')}</summary>
+          {target.kind === 'body' && (
+            <button
+              className="text-button"
+              type="button"
+              aria-pressed={state.showLandmarks}
+              onClick={() => state.setShowLandmarks((show) => !show)}
+            >
+              {t(state.showLandmarks ? '隐藏身形定位' : '显示身形定位')}
+            </button>
+          )}
+          {target.kind === 'face' && (
+            <div className="advanced-row portrait-review-actions">
+              <button
+                type="button"
+                className="text-button"
+                aria-pressed={state.showLandmarks}
+                onClick={() => state.setShowLandmarks((show) => !show)}
+              >
+                {t(state.showLandmarks ? '隐藏人脸关键点' : '显示人脸关键点')}
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => state.focusFace(target.id)}
+              >
+                {t('放大检查当前人脸')}
+              </button>
+            </div>
+          )}
+          <p className="control-note">
+            {t(
+              '自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。',
+            )}
+          </p>
+          {state.analysis?.warnings.map((warning) => (
+            <p key={t(warning)} className="control-note">
+              {t(warning)}
+            </p>
+          ))}
+        </MotionDetails>
+      )}
+      <MotionDetails className="advanced-disclosure portrait-source-actions">
+        <summary>{t('选区与抠图')}</summary>
+        {target && !state.error && analyzeAction}
+        {sourceActions}
+      </MotionDetails>
+      <MotionDetails className="advanced-disclosure">
+        <summary>{t('人物标注与分析接入')}</summary>
+        <input
+          hidden
+          ref={annotationInput}
+          type="file"
+          accept="application/json,.json"
+          onChange={async (event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = '';
+            if (!file) return;
+            setAnnotationBusy(true);
+            setAnnotationStatus(null);
+            try {
+              await state.importAnalysis(file);
+              setAnnotationStatus(t('人物标注已导入，请检查人物和范围后再调节。'));
+              report(null);
+            } catch (failure) {
+              report(errorMessage(failure));
+            } finally {
+              setAnnotationBusy(false);
+            }
+          }}
+        />
+        <div className="advanced-row">
+          <button
+            className="text-button"
+            disabled={annotationBusy || !!state.progress || !editor.sourceHash}
+            onClick={() => annotationInput.current?.click()}
+          >
+            {annotationBusy ? t('校验标注中') : t('导入人物标注')}
+          </button>
+          <button
+            className="text-button"
+            disabled={!state.analysis || annotationBusy || !!state.progress}
+            onClick={() => {
+              try {
+                state.exportAnalysis();
+                setAnnotationStatus(t('人物标注下载已发起。'));
+              } catch (failure) {
+                report(errorMessage(failure));
+              }
+            }}
+          >
+            {t('导出人物标注')}
+          </button>
+        </div>
+        {annotationStatus && (
+          <p className="control-note" role="status">
+            {t(annotationStatus)}
+          </p>
+        )}
+        <p className="control-note">
+          {t(
+            '仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。',
+          )}
+        </p>
+      </MotionDetails>
+      <div className="portrait-manual-actions" data-motion="portrait-manual">
+        <button
+          className="text-button"
+          disabled={!onGroupChange}
+          onClick={() => openManual('paint')}
+        >
+          <PaintBrush size={16} />
+          {hasAutomatic ? t('转为独立涂妆与细修') : t('手动涂妆与细修')}
+        </button>
+        <button
+          className="text-button"
+          disabled={!onGroupChange}
+          onClick={() => openManual('clone')}
+        >
+          <ArrowsClockwise size={16} />
+          {t('瑕疵克隆修补')}
+        </button>
+        <button
+          className="text-button"
+          disabled={!onGroupChange}
+          onClick={() => openManual('liquify')}
+        >
+          <HandPointing size={16} />
+          {t('手动塑形与保护')}
+        </button>
+      </div>
+    </>
+  );
   return (
     <section className="advanced-tool-family portrait-controls-v3" data-motion="portrait-controls">
       {headerTarget ? createPortal(portraitToolbar, headerTarget) : portraitToolbar}
@@ -671,7 +812,7 @@ export function PortraitControls({
         <AutomaticMakeupControls controller={controller} />
       ) : (
         <>
-          {(!target || state.error) && analyzeAction}
+          {!state.progress && state.error && analyzeAction}
           {state.progress && (
             <div className="portrait-analysis-progress">
               <Busy label={state.progress} />
@@ -789,139 +930,14 @@ export function PortraitControls({
                   )}
                 </div>
               )}
-              <MotionDetails className="advanced-disclosure">
-                <summary>{t('识别与手动修正说明')}</summary>
-                {target.kind === 'body' && (
-                  <button
-                    className="text-button"
-                    type="button"
-                    aria-pressed={state.showLandmarks}
-                    onClick={() => state.setShowLandmarks((show) => !show)}
-                  >
-                    {t(state.showLandmarks ? '隐藏身形定位' : '显示身形定位')}
-                  </button>
-                )}
-                {target.kind === 'face' && (
-                  <div className="advanced-row portrait-review-actions">
-                    <button
-                      type="button"
-                      className="text-button"
-                      aria-pressed={state.showLandmarks}
-                      onClick={() => state.setShowLandmarks((show) => !show)}
-                    >
-                      {t(state.showLandmarks ? '隐藏人脸关键点' : '显示人脸关键点')}
-                    </button>
-                    <button
-                      type="button"
-                      className="text-button"
-                      onClick={() => state.focusFace(target.id)}
-                    >
-                      {t('放大检查当前人脸')}
-                    </button>
-                  </div>
-                )}
-                <p className="control-note">
-                  {t(
-                    '自动位置是可编辑的起点。美肤生成局部调色区，美妆生成带范围的绘制层，塑形生成可撤销的液化笔画。先转为独立精修，再到“局部、绘制、液化”修改，避免后续自动调参重建手工细节。',
-                  )}
-                </p>
-                {state.analysis?.warnings.map((warning) => (
-                  <p key={t(warning)} className="control-note">
-                    {t(warning)}
-                  </p>
-                ))}
-              </MotionDetails>
             </>
           )}
-          <MotionDetails className="advanced-disclosure portrait-source-actions">
-            <summary>{t('选区与抠图')}</summary>
-            {target && !state.error && analyzeAction}
-            {sourceActions}
-          </MotionDetails>
-          <MotionDetails className="advanced-disclosure">
-            <summary>{t('人物标注与分析接入')}</summary>
-            <input
-              hidden
-              ref={annotationInput}
-              type="file"
-              accept="application/json,.json"
-              onChange={async (event) => {
-                const file = event.currentTarget.files?.[0];
-                event.currentTarget.value = '';
-                if (!file) return;
-                setAnnotationBusy(true);
-                setAnnotationStatus(null);
-                try {
-                  await state.importAnalysis(file);
-                  setAnnotationStatus(t('人物标注已导入，请检查人物和范围后再调节。'));
-                  report(null);
-                } catch (failure) {
-                  report(errorMessage(failure));
-                } finally {
-                  setAnnotationBusy(false);
-                }
-              }}
-            />
-            <div className="advanced-row">
-              <button
-                className="text-button"
-                disabled={annotationBusy || !!state.progress || !editor.sourceHash}
-                onClick={() => annotationInput.current?.click()}
-              >
-                {annotationBusy ? t('校验标注中') : t('导入人物标注')}
-              </button>
-              <button
-                className="text-button"
-                disabled={!state.analysis || annotationBusy || !!state.progress}
-                onClick={() => {
-                  try {
-                    state.exportAnalysis();
-                    setAnnotationStatus(t('人物标注下载已发起。'));
-                  } catch (failure) {
-                    report(errorMessage(failure));
-                  }
-                }}
-              >
-                {t('导出人物标注')}
-              </button>
-            </div>
-            {annotationStatus && (
-              <p className="control-note" role="status">
-                {t(annotationStatus)}
-              </p>
-            )}
-            <p className="control-note">
-              {t(
-                '仅接受当前同一张原图的兼容标注，文件需通过来源、尺寸、方向、结构和版本校验。导入是显式提供标注，不代表浏览器自动识别成功；导入后仍需检查并可转为独立精修。',
-              )}
-            </p>
-          </MotionDetails>
-          <div className="portrait-manual-actions" data-motion="portrait-manual">
-            <button
-              className="text-button"
-              disabled={!onGroupChange}
-              onClick={() => openManual('paint')}
-            >
-              <PaintBrush size={16} />
-              {hasAutomatic ? t('转为独立涂妆与细修') : t('手动涂妆与细修')}
-            </button>
-            <button
-              className="text-button"
-              disabled={!onGroupChange}
-              onClick={() => openManual('clone')}
-            >
-              <ArrowsClockwise size={16} />
-              {t('瑕疵克隆修补')}
-            </button>
-            <button
-              className="text-button"
-              disabled={!onGroupChange}
-              onClick={() => openManual('liquify')}
-            >
-              <HandPointing size={16} />
-              {t('手动塑形与保护')}
-            </button>
-          </div>
+          {compact ? (
+            <MotionDetails className="advanced-disclosure portrait-extras">
+              <summary>{t('更多人像工具')}</summary>
+              {portraitExtras}
+            </MotionDetails>
+          ) : portraitExtras}
         </>
       )}
     </section>

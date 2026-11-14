@@ -1,3 +1,4 @@
+import { openAIModelShutdown, openAIShutdownDate } from '@ai-xiutu/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import multipart from '@fastify/multipart';
@@ -371,10 +372,11 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   app.get('/v1/models', async () => ({
     models: (
       await db.query("SELECT * FROM model_configs WHERE (config->>'enabled')::boolean ORDER BY id")
-    ).rows.map((row) => {
+    ).rows.filter((row) => row.config?.provider !== 'openai' || !openAIModelShutdown(row.id)).map((row) => {
       const model = modelDto(row);
       return {
         ...model,
+        ...(model.provider === 'openai' ? { shutdownDate: openAIShutdownDate(model.id) } : {}),
         ...(ai?.describeModel?.(model.id, model) ?? {
           runtimeAvailable: false,
           runtimeReason: '执行适配器尚未配置',
@@ -486,7 +488,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerSupport(app, db, supportQr);
   registerSpaces(app, db);
   registerProjects(app, db, storage);
-  registerPhotoTrash(app, db);
+  registerPhotoTrash(app, db, storage);
   startPhotoTrashCleanup(app, db, storage);
   registerRevisionRender(app, db, storage);
   registerCollaboration(app, db);

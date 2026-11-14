@@ -1,3 +1,5 @@
+import { openAIShutdownDate, openAIModelShutdown, realtimeOptionsSchema } from '@ai-xiutu/contracts';
+import { tuneAssistantTurn } from '@ai-xiutu/assistant/models';
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
@@ -188,7 +190,7 @@ export function createAssistantService(
   const reason = ready
     ? null
     : '智能体未启用：需要服务器 API 密钥、文字与图像审核服务，以及启用开关。';
-  async function model(db: Queryable, modelId: string, operation: string, lock = false) {
+  async function model(db: Queryable, modelId: string, operation: string, lock = false, admit = false) {
     const row = (
       await db.query(
         `SELECT config FROM assistant_model_configs WHERE id=$1${lock ? ' FOR SHARE' : ''}`,
@@ -197,6 +199,7 @@ export function createAssistantService(
     ).rows[0];
     const parsed = assistantModelConfigSchema.safeParse(row?.config);
     if (
+      openAIModelShutdown(modelId) || (admit && openAIShutdownDate(modelId)) ||
       !parsed.success ||
       !parsed.data.enabled ||
       !parsed.data.operations.includes(operation) ||
@@ -701,7 +704,17 @@ export function createAssistantService(
         return this.getTurn(actorId, replay.id);
       }
       await validateScope(db, actorId, body.scope);
-      const requestedModel = await model(db, body.modelId, 'assistant-turn');
+      const requestedModel = await model(db, body.modelId, 'assistant-turn', false, true);
+      validateTurnQuote(requestedModel);
+      function validateTurnQuote(config: AssistantModelConfig) {
+        const result = tuneAssistantTurn(body.modelId, config, body.responseTuning, allowTestModel);
+        if (!result) throw new HttpError(400, 'RESPONSES_PROFILE_MISMATCH', '此参数与所选模型或当前运营配置不兼容');
+        if (body.expectedUnits !== undefined && body.expectedUnits !== result.units)
+          throw new HttpError(409, 'ASSISTANT_QUOTE_CHANGED', '本轮点数已变更，请刷新报价后再发送');
+        if (body.expectedUnits === undefined && result.units > config.unitCost)
+          throw new HttpError(409, 'ASSISTANT_QUOTE_CHANGED', '请确认本轮点数后再发送');
+        return result;
+      }
       if (body.visualAttachment && !requestedModel.imageInput)
         throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
       const context = await currentContext(actorId, projectId, body.context);
@@ -833,23 +846,10 @@ export function createAssistantService(
         const priorResourceCards = [...priorCards.values()]
           .filter((item) => cardScope.has(item.assetId))
           .slice(0, 8);
-        const settings = await model(tx, body.modelId, 'assistant-turn', true);
+        const settings = await model(tx, body.modelId, 'assistant-turn', true, true);
         const responseTuning = body.responseTuning;
-        const turnSettings = responseTuning
-          ? {
-              ...settings,
-              ...(responseTuning.effort ? { reasoningEffort: responseTuning.effort } : {}),
-              ...(responseTuning.verbosity
-                ? { responses: { ...settings.responses, verbosity: responseTuning.verbosity } }
-                : {}),
-            }
-          : settings;
-        if (responseTuning && modelProfileError(body.modelId, turnSettings, allowTestModel))
-          throw new HttpError(
-            400,
-            'RESPONSES_PROFILE_MISMATCH',
-            '此参数与所选模型或当前运营配置不兼容',
-          );
+        const quote = validateTurnQuote(settings);
+        const turnSettings = quote.config;
         if (visualAttachment && !settings.imageInput)
           throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
         const webBranches = (body.research ?? []).filter((branch) => branch.kind === 'web');
@@ -890,13 +890,13 @@ export function createAssistantService(
             key: `turn:${body.idempotencyKey}`,
             action: 'assistant-turn',
             modelId: body.modelId,
-            units: settings.unitCost,
+            units: quote.units,
           });
         const hold = await charge(
           tx,
           actorId,
           projectId,
-          settings.unitCost,
+          quote.units,
           requestHash,
           `assistant:${body.idempotencyKey}`,
         );
@@ -916,7 +916,7 @@ export function createAssistantService(
               hold.id,
               JSON.stringify({
                 ...settings,
-                ...(responseTuning ? { responseTuning } : {}),
+                ...(responseTuning ? { responseTuning, effectiveResponses: turnSettings.responses, effectiveMaxOutputTokens: turnSettings.maxOutputTokens } : {}),
                 historyScope,
                 ...(body.research ? { research: body.research } : {}),
               }),
@@ -1319,11 +1319,36 @@ export function createAssistantService(
       const requestHash = hash(JSON.stringify(teamArtworkId ? { ...body, teamArtworkId } : body));
       const context = await currentContext(actorId, projectId, body.context);
       await validateScope(db, actorId, body.scope);
-      const reviewedVoice = await model(db, body.modelId, 'realtime-voice');
+      const reviewedVoice = await model(db, body.modelId, 'realtime-voice', false, true);
+      function tuneVoice(base: AssistantModelConfig): AssistantModelConfig {
+        if (body.expectedUnits !== undefined && body.expectedUnits !== base.unitCost)
+          throw new HttpError(409, 'ASSISTANT_QUOTE_CHANGED', '本轮点数已变更，请刷新报价后再发送');
+        const tuning = body.tuning;
+        if (!tuning) return base;
+        const realtime = tuning.realtime ? {
+          ...tuning.realtime,
+          prompt: tuning.realtime.prompt ?? (tuning.realtime.transcriptionModel !== 'gpt-realtime-whisper' &&
+            tuning.realtime.transcriptionModel === base.realtime?.transcriptionModel ? base.realtime?.prompt : undefined),
+        } : base.realtime;
+        if ((tuning.live && profile.protocol !== 'live') ||
+            ((tuning.realtime || tuning.reasoningEffort || tuning.maxOutputTokens !== undefined) && profile.protocol !== 'realtime') ||
+            (tuning.reasoningEffort && !(profile.reasoning as readonly string[]).includes(tuning.reasoningEffort)) ||
+            (tuning.maxOutputTokens !== undefined && tuning.maxOutputTokens > base.maxOutputTokens) ||
+            (realtime && !realtimeOptionsSchema.safeParse(realtime).success) ||
+            (tuning.realtime?.transcriptionModel && openAIShutdownDate(tuning.realtime.transcriptionModel)))
+          throw new HttpError(400, 'VOICE_PROFILE_MISMATCH', '语音参数与所选模型或当前预算不兼容');
+        return {
+          ...base, realtime,
+          live: tuning.live ? { ...base.live, ...tuning.live } : base.live,
+          voiceReasoningEffort: tuning.reasoningEffort ?? base.voiceReasoningEffort,
+          maxOutputTokens: tuning.maxOutputTokens ?? base.maxOutputTokens,
+        };
+      }
+      const tuned = tuneVoice(reviewedVoice);
       const promptInputs = [
-        reviewedVoice.live?.prompt,
-        reviewedVoice.live?.opening,
-        reviewedVoice.realtime?.prompt,
+        tuned.live?.prompt,
+        tuned.live?.opening,
+        tuned.realtime?.prompt,
         body.delegation?.type === 'responses' ? body.delegation.prompt : undefined,
         body.delegation?.type === 'decisions' ? JSON.stringify(body.delegation.questions) : undefined,
       ].filter((value): value is string => !!value);
@@ -1358,11 +1383,11 @@ export function createAssistantService(
         // Sorted model locks avoid a backend/voice configuration cycle.
         for (const modelId of [...new Set([body.modelId, backendModelId])].sort())
           await tx.query('SELECT id FROM assistant_model_configs WHERE id=$1 FOR SHARE', [modelId]);
-        const voiceConfig = await model(tx, body.modelId, 'realtime-voice');
+        const voiceConfig = await model(tx, body.modelId, 'realtime-voice', false, true);
         if (JSON.stringify(voiceConfig) !== JSON.stringify(reviewedVoice))
           throw new HttpError(409, 'ASSISTANT_MODEL_CHANGED', '语音配置已变化，请重新确认');
         const backendConfig = body.translation || body.delegation?.type === 'decisions'
-          ? voiceConfig : await model(tx, backendModelId, 'assistant-turn');
+          ? voiceConfig : await model(tx, backendModelId, 'assistant-turn', false, true);
         if (body.delegation?.type === 'responses' &&
           (backendConfig.responses?.temperature !== undefined || backendConfig.responses?.topP !== undefined))
           throw new HttpError(400, 'LIVE_RESPONSES_SAMPLING_UNSUPPORTED', '原生委派接口未公开采样字段');
@@ -1410,7 +1435,7 @@ export function createAssistantService(
         );
         const settings = {
           voice: body.voice,
-          voiceModel: voiceConfig,
+          voiceModel: tuneVoice(voiceConfig),
           backendModel: backendConfig,
           ...(body.delegation ? { delegation: body.delegation } : {}),
           ...(body.translation ? { translation: body.translation } : {}),

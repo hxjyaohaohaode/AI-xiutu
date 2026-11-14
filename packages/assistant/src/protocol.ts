@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { OPENAI_DECISIONS_MODEL, OPENAI_TRANSLATION_MODEL,
+import { DEFAULT_CALL_TRANSCRIPTION_MODEL, OPENAI_DECISIONS_MODEL, OPENAI_TRANSLATION_MODEL, openAIShutdownDate,
   type LiveDelegationOptions, type LiveTranslationOptions, type VoiceServerEvent } from '@ai-xiutu/contracts';
 import { responsesParameters, voiceModel, type AssistantModelConfig, type LiveOptions } from './models.js';
 import type { HistoryMessage } from './context-budget.js';
@@ -145,6 +145,10 @@ export function voiceStartEvent(
   }
   const realtime = options?.realtime;
   const vad = realtime?.turnDetection;
+  const transcriber = realtime?.transcriptionModel;
+  const transcriptionModel = transcriber && !openAIShutdownDate(transcriber)
+    ? transcriber
+    : DEFAULT_CALL_TRANSCRIPTION_MODEL;
   return {
     type: 'session.update',
     session: {
@@ -158,10 +162,14 @@ export function voiceStartEvent(
         input: {
           format: { type: 'audio/pcm', rate: 24000 },
           transcription: {
-            model: realtime?.transcriptionModel ?? 'gpt-4o-mini-transcribe',
-            ...(realtime?.language ? { language: realtime.language } : {}),
-            ...(realtime?.prompt ? { prompt: realtime.prompt } : {}),
-            ...(realtime?.delay ? { delay: realtime.delay } : {}),
+            model: transcriptionModel,
+            ...(realtime?.language
+              ? transcriptionModel === 'gpt-live-transcribe'
+                ? { languages: [realtime.language] }
+                : { language: realtime.language }
+              : {}),
+            ...(realtime?.prompt && transcriptionModel !== 'gpt-realtime-whisper' ? { prompt: realtime.prompt } : {}),
+            ...(realtime?.delay && transcriptionModel === 'gpt-realtime-whisper' ? { delay: realtime.delay } : {}),
           },
           ...(realtime?.noiseReduction !== undefined
             ? {

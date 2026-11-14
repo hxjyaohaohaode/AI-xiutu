@@ -91,13 +91,64 @@ export const responseEfforts = [
   'xhigh',
   'max',
 ] as const;
+export const responseSummaries = ['auto', 'detailed', 'concise'] as const;
+export const responseTiers = ['default', 'fast', 'priority', 'ultrafast', 'flex'] as const;
+export const responseFormatSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('text') }).strict(),
+  z.object({ type: z.literal('json_object') }).strict(),
+  z.object({
+    type: z.literal('json_schema'),
+    name: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/),
+    schema: z.record(z.string(), z.unknown()).refine((value) => {
+      if (value.type !== 'object' || JSON.stringify(value).length > 12_000) return false;
+      function bounded(node: unknown, depth: number): boolean {
+        if (depth > 16) return false;
+        if (Array.isArray(node)) return node.every((item) => bounded(item, depth + 1));
+        if (!node || typeof node !== 'object') return true;
+        return Object.entries(node).every(([key, item]) =>
+          key === '$ref'
+            ? typeof item === 'string' && (item === '#' || item.startsWith('#/'))
+            : bounded(item, depth + 1),
+        );
+      }
+      return bounded(value, 0);
+    }, 'Use a bounded object JSON Schema with local references'),
+    strict: z.boolean().default(true),
+  }).strict(),
+]);
 export const assistantResponseTuning = z
   .object({
     effort: z.enum(responseEfforts).optional(),
     verbosity: z.enum(['low', 'medium', 'high']).optional(),
+    reasoningMode: z.enum(['standard', 'pro']).optional(),
+    reasoningSummary: z.enum(responseSummaries).optional(),
+    maxOutputTokens: z.number().int().min(256).max(8192).optional(),
+    format: responseFormatSchema.optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    topP: z.number().min(0).max(1).optional(),
+    serviceTier: z.enum(responseTiers).optional(),
   })
   .strict();
 export type AssistantResponseTuning = z.infer<typeof assistantResponseTuning>;
+export type AssistantResponsePricing = {
+  defaultTier: (typeof responseTiers)[number];
+  tierUnits: Partial<Record<(typeof responseTiers)[number], number>>;
+  /** Additional units when switching a standard model to pro mode. */
+  proExtraUnits?: number;
+};
+export function assistantTurnPrice(
+  base: number, pricing: AssistantResponsePricing | undefined,
+  tuning: AssistantResponseTuning, defaults?: AssistantResponseTuning,
+) {
+  const tier = tuning.serviceTier ?? pricing?.defaultTier ?? 'default';
+  const units = pricing?.tierUnits[tier] ?? (tier === (pricing?.defaultTier ?? 'default') ? base : null);
+  if (units === null || !Number.isSafeInteger(units) || units <= 0) return null;
+  const addsPro = tuning.reasoningMode === 'pro' && defaults?.reasoningMode !== 'pro';
+  if (!addsPro) return units;
+  const extra = pricing?.proExtraUnits;
+  return extra !== undefined && Number.isSafeInteger(extra) && extra >= 0 && Number.isSafeInteger(units + extra)
+    ? units + extra : null;
+}
 export const assistantTurnSchema = z
   .object({
     idempotencyKey: z.uuid(),
@@ -114,8 +165,92 @@ export const assistantTurnSchema = z
     parentTurnId: z.uuid().optional(),
     research: assistantResearchPlan.optional(),
     responseTuning: assistantResponseTuning.optional(),
+    expectedUnits: z.number().int().positive().max(200_000).optional(),
   })
   .strict();
+export const REALTIME_REASONING = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+const preferenceModelId = z.string().regex(/^(?:[a-zA-Z0-9._:-]{1,128})?$/);
+export const assistantPreferencesSchema = z.object({
+  textModel: preferenceModelId,
+  voiceModel: preferenceModelId,
+  mode: z.enum(['suggest', 'confirm']),
+  captions: z.boolean(),
+}).strict();
+export type AssistantPreferences = z.infer<typeof assistantPreferencesSchema>;
+export const defaultAssistantPreferences: Readonly<AssistantPreferences> = Object.freeze({
+  textModel: '', voiceModel: '', mode: 'confirm', captions: true,
+});
+export const assistantPreferencesPatchSchema = assistantPreferencesSchema.partial()
+  .refine((patch) => Object.keys(patch).length > 0);
+export const DEFAULT_CALL_TRANSCRIPTION_MODEL = 'gpt-transcribe';
+export const CALL_TRANSCRIPTION_MODELS = [
+  DEFAULT_CALL_TRANSCRIPTION_MODEL,
+  'gpt-live-transcribe',
+  'gpt-realtime-whisper',
+  'gpt-4o-transcribe',
+  'gpt-4o-mini-transcribe',
+  'gpt-4o-mini-transcribe-2025-03-20',
+  'gpt-4o-mini-transcribe-2025-12-15',
+  'whisper-1',
+] as const;
+export const realtimeOptionsSchema = z
+  .object({
+    transcriptionModel: z.enum(CALL_TRANSCRIPTION_MODELS).optional(),
+    language: z
+      .string()
+      .regex(/^[a-z]{2}$/)
+      .optional(),
+    prompt: z.string().trim().min(1).max(800).optional(),
+    delay: z.enum(REALTIME_REASONING).optional(),
+    noiseReduction: z.enum(['near_field', 'far_field']).nullable().optional(),
+    outputSpeed: z.number().min(0.25).max(1.5).optional(),
+    turnDetection: z
+      .discriminatedUnion('type', [
+        z
+          .object({
+            type: z.literal('server_vad'),
+            threshold: z.number().min(0).max(1).optional(),
+            prefixPaddingMs: z.number().int().min(0).max(3000).optional(),
+            silenceDurationMs: z.number().int().min(100).max(3000).optional(),
+          })
+          .strict(),
+        z
+          .object({
+            type: z.literal('semantic_vad'),
+            eagerness: z.enum(['auto', 'low', 'medium', 'high']).optional(),
+          })
+          .strict(),
+      ])
+      .optional(),
+  })
+  .strict()
+  .refine(
+    (options) =>
+      options.transcriptionModel === 'gpt-realtime-whisper' ? !options.prompt : !options.delay,
+    'Transcription delay is available only with Realtime Whisper, which does not accept a prompt',
+  );
+export const liveOptionsSchema = z
+  .object({
+    prompt: z.string().trim().min(1).max(1200).optional(),
+    opening: z
+      .string()
+      .trim()
+      .min(1)
+      .refine((value) => new TextEncoder().encode(value).length <= 350)
+      .optional(),
+    acknowledgementDelayMs: z.number().int().min(0).max(800).optional(),
+  })
+  .strict();
+export type RealtimeOptions = z.infer<typeof realtimeOptionsSchema>;
+export type LiveOptions = z.infer<typeof liveOptionsSchema>;
+
+export const personalVoiceTuningSchema = z.object({
+  live: liveOptionsSchema.optional(),
+  realtime: realtimeOptionsSchema.optional(),
+  reasoningEffort: z.enum(REALTIME_REASONING).optional(),
+  maxOutputTokens: z.number().int().min(256).max(4096).optional(),
+}).strict();
+export type PersonalVoiceTuning = z.infer<typeof personalVoiceTuningSchema>;
 export const voiceSessionFields = z
   .object({
     idempotencyKey: z.uuid(),
@@ -139,6 +274,8 @@ export const voiceSessionFields = z
     context: assistantContextSchema.optional(),
     delegation: liveDelegationSchema.optional(),
     translation: liveTranslationSchema.optional(),
+    tuning: personalVoiceTuningSchema.optional(),
+    expectedUnits: z.number().int().positive().max(100_000).optional(),
     scope: assistantScopeSchema.default({
       spaceIds: [],
       referenceAssetIds: [],

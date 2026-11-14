@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { PHOTO_TRASH_HOURS, type PhotoTrashKind } from '@ai-xiutu/contracts';
-import { transaction, audit, emit, type Database, type Queryable } from '@ai-xiutu/db';
+import { transaction, audit, emit, lockAssetStorageKeys, type Database, type Queryable } from '@ai-xiutu/db';
+import type { LocalPrivateStorage } from './storage.js';
 import { HttpError, id, requireUser, hash, lockProjectMutation, assertVersion } from './core.js';
 
 export const photoTrashRetention = `interval '${PHOTO_TRASH_HOURS} hours'`;
@@ -9,6 +10,8 @@ const kind = z.enum(['asset', 'artwork']);
 const cursorSchema = z.object({ at: z.string().datetime({ offset: true }), token: id }).strict();
 const tableFor = (kind: PhotoTrashKind) => kind === 'asset' ? 'assets' : 'artworks';
 const nameFor = (kind: PhotoTrashKind) => kind === 'asset' ? 'name' : 'title';
+const retained = (kind: PhotoTrashKind, alias = '') =>
+  alias + 'purged_at IS NULL' + (kind === 'asset' ? ' AND ' + alias + 'purge_requested_at IS NULL' : '');
 const unavailable = () => new HttpError(404, 'PHOTO_NOT_FOUND', '照片或作品不存在或无权访问');
 const expired = () => new HttpError(410, 'PHOTO_TRASH_EXPIRED', '已超过 48 小时恢复期限');
 const windowOpen = `deleted_at > clock_timestamp() - ${photoTrashRetention}`;
@@ -17,6 +20,7 @@ function entryDto(kind: PhotoTrashKind, row: Record<string, any>, projectTitle: 
   return {
     kind, id: row.id, token: row.trash_token,
     title: row[nameFor(kind)], projectId: row.project_id, projectTitle,
+    thumbnailUrl: '/v1/photo-trash/' + kind + '/' + row.id + '/thumbnail?token=' + row.trash_token,
     deletedAt: row.deleted_at, expiresAt: row.expires_at,
   };
 }
@@ -53,7 +57,7 @@ async function checkOriginalReferences(tx: Queryable, assetId: string) {
     throw new HttpError(409, 'ASSET_IN_USE', '作品、历史版本或合成图层仍引用这张原图');
 }
 
-export function registerPhotoTrash(app: FastifyInstance, db: Database) {
+export function registerPhotoTrash(app: FastifyInstance, db: Database, storage: LocalPrivateStorage) {
   app.get('/v1/photo-trash', async (req) => {
     const user = requireUser(req);
     const options = z.object({
@@ -71,7 +75,7 @@ export function registerPhotoTrash(app: FastifyInstance, db: Database) {
     const { rows } = await db.query(
       `WITH recycled AS (
         SELECT 'asset' AS kind,id,name AS label,project_id,deleted_at,trash_token
-          FROM assets WHERE trash_token IS NOT NULL AND purged_at IS NULL AND ${windowOpen}
+          FROM assets WHERE trash_token IS NOT NULL AND purge_requested_at IS NULL AND purged_at IS NULL AND ${windowOpen}
         UNION ALL
         SELECT 'artwork' AS kind,id,title AS label,project_id,deleted_at,trash_token
           FROM artworks WHERE deleted_at IS NOT NULL AND purged_at IS NULL AND ${windowOpen}
@@ -109,7 +113,7 @@ export function registerPhotoTrash(app: FastifyInstance, db: Database) {
         );
         if (row.deleted_at) {
           if (!row.trash_token) throw unavailable();
-          if (row.purged_at || !row.recoverable) throw expired();
+          if (row.purged_at || row.purge_requested_at || !row.recoverable) throw expired();
           return { ok: true, item: entryDto(itemKind, row, project.title) };
         }
         if (expectedVersion !== undefined) {
@@ -139,6 +143,58 @@ export function registerPhotoTrash(app: FastifyInstance, db: Database) {
     });
   }
 
+  app.get('/v1/photo-trash/:kind/:id/thumbnail', async (req, reply) => {
+    const user = requireUser(req);
+    const params = z.object({ kind, id }).parse(req.params);
+    const { token } = z.object({ token: id }).strict().parse(req.query);
+    const read = async () => {
+      const row = (await db.query(
+        `SELECT src.storage_key FROM ${tableFor(params.kind)} r
+        JOIN projects p ON p.id=r.project_id AND p.deleted_at IS NULL
+        JOIN memberships m ON m.space_id=p.space_id AND m.user_id=$3 AND m.role IN ('owner','admin','editor')
+        JOIN assets src ON src.id=${params.kind === 'asset' ? 'r.id' : 'r.asset_id'}
+          AND src.project_id=p.id AND src.purged_at IS NULL
+        WHERE r.id=$1 AND r.trash_token=$2 AND ${retained(params.kind, 'r.')}
+          AND r.deleted_at > clock_timestamp() - ${photoTrashRetention}`,
+        [params.id, token, user.id],
+      )).rows[0];
+      if (!row) throw unavailable();
+      return String(row.storage_key);
+    };
+    const key = await read();
+    const thumb = await storage.thumbnail(key, (publish) =>
+      transaction(db, async (tx) => {
+        await lockAssetStorageKeys(tx, [key]);
+        if (!(await tx.query('SELECT 1 FROM assets WHERE storage_key=$1 AND purged_at IS NULL LIMIT 1', [key])).rowCount)
+          throw unavailable();
+        await publish();
+      }),
+    );
+    if (await read() !== key) throw unavailable();
+    return reply.type(thumb.mime).header('Cache-Control', 'private, no-store')
+      .send(storage.thumbnailStream(key));
+  });
+
+  app.delete('/v1/photo-trash/:kind/:id', async (req) => {
+    const user = requireUser(req);
+    const params = z.object({ kind, id }).parse(req.params);
+    const { token } = z.object({ token: id }).strict().parse(req.query);
+    return transaction(db, async (tx) => {
+      const { project, row } = await lockPhoto(
+        tx, params.kind, params.id, user.id, hash(req.cookies.xiutu_session ?? ''),
+      );
+      if (!row.deleted_at || row.trash_token !== token)
+        throw new HttpError(409, 'PHOTO_TRASH_CHANGED', '回收站条目已变化，请刷新后重试');
+      if (row.purged_at || row.purge_requested_at) return { ok: true, projectId: project.id };
+      if (params.kind === 'asset') await checkOriginalReferences(tx, row.id);
+      const field = params.kind === 'asset' ? 'purge_requested_at' : 'purged_at';
+      await tx.query(`UPDATE ${tableFor(params.kind)} SET ${field}=clock_timestamp() WHERE id=$1`, [row.id]);
+      await audit(tx, user.id, `${params.kind}.purge`, params.kind, row.id);
+      await emit(tx, project.space_id, project.id, `${params.kind}.purged`, row.id);
+      return { ok: true, projectId: project.id };
+    });
+  });
+
   app.post('/v1/photo-trash/:kind/:id/restore', async (req) => {
     const user = requireUser(req);
     const params = z.object({ kind, id }).parse(req.params);
@@ -149,7 +205,7 @@ export function registerPhotoTrash(app: FastifyInstance, db: Database) {
       );
       if (!row.deleted_at || row.trash_token !== body.token)
         throw new HttpError(409, 'PHOTO_TRASH_CHANGED', '回收站条目已变化，请刷新后重试');
-      if (row.purged_at || !row.recoverable) throw expired();
+      if (row.purged_at || row.purge_requested_at || !row.recoverable) throw expired();
       const restored = await tx.query(
         `UPDATE ${tableFor(params.kind)} SET deleted_at=NULL,trash_token=NULL
          WHERE id=$1 AND purged_at IS NULL AND ${windowOpen} RETURNING id`,

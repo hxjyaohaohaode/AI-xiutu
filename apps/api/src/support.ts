@@ -1,37 +1,92 @@
 import { open } from 'node:fs/promises';
 import type { FastifyInstance } from 'fastify';
+import sharp from 'sharp';
 import { MAX_HEADER_BYTES, readImageHeader } from '@ai-xiutu/editor';
-import { adjustUnits, audit, getEntitlements, transaction, type Database } from '@ai-xiutu/db';
+import { adjustUnits, audit, getEntitlements, transaction, type Database, type Queryable } from '@ai-xiutu/db';
 import { z } from 'zod';
-import { hash, HttpError, id, requireOperator, requireUser } from './core.js';
+import { hash, HttpError, id, lockActiveSession, requireOperator, requireUser } from './core.js';
 
-const supportRates = {
-  asOf: '2026-11-13',
-  cnyPerUsd: 6.7152,
-  model: 'gpt-5.4-mini',
-  inputUsdPerMillion: 0.75,
-  outputUsdPerMillion: 4.5,
-  inputShare: 0.75,
+const MAX_QR_BYTES = 2 * 1024 * 1024;
+const MAX_QR_PIXELS = 4096 * 4096;
+const tierSchema = z.object({
+  cents: z.number().int().min(1).max(10_000_000),
+  points: z.number().int().min(1).max(100_000),
+}).strict();
+const settingsSchema = z.object({
+  expectedVersion: z.number().int().positive(),
+  enabled: z.boolean(),
+  tiers: z.array(tierSchema).min(1).max(24)
+    .refine((rows) => new Set(rows.map((row) => row.cents)).size === rows.length, 'Amounts must be unique'),
+}).strict();
+const defaultTiers = [199, 999, 1999, 4999, 9999, 14999].map((cents) => ({
+  cents,
+  points: Math.round(cents / 10),
+}));
+const versionQuery = z.object({ expectedVersion: z.coerce.number().int().positive() }).strict();
+const qrPath = '/v1/support/wechat-qr';
+type SupportConfigRow = {
+  version: number;
+  enabled: boolean;
+  tiers: z.infer<typeof tierSchema>[] | null;
+  has_upload: boolean;
 };
-const supportTiers = [199, 999, 1999, 4999, 9999, 14999].map((cents) => {
-  const usd = cents / 100 / supportRates.cnyPerUsd;
-  const rate =
-    supportRates.inputShare * supportRates.inputUsdPerMillion +
-    (1 - supportRates.inputShare) * supportRates.outputUsdPerMillion;
+const configFields = 'version,enabled,tiers,qr_png IS NOT NULL AS has_upload';
+const tiersFor = (row: SupportConfigRow) => row.tiers ?? defaultTiers;
+const hasQr = (row: SupportConfigRow, fallback: Buffer | null) => row.has_upload || Boolean(fallback);
+
+async function readConfig(db: Queryable, lock = false) {
+  const result = await db.query<SupportConfigRow>(
+    'SELECT ' + configFields + ' FROM site_support_config WHERE id=true' + (lock ? ' FOR SHARE' : ''),
+  );
+  return result.rows[0]!;
+}
+
+async function lockSupportOperator(tx: Queryable, actor: string, token: string) {
+  const authorized = await tx.query(
+    "SELECT o.user_id FROM operator_users o JOIN users u ON u.id=o.user_id WHERE o.user_id=$1 AND u.status='active' FOR SHARE OF u,o",
+    [actor],
+  );
+  if (!authorized.rowCount) throw new HttpError(403, 'OPERATOR_REQUIRED', '需要运营权限');
+  await lockActiveSession(tx, actor, hash(token));
+}
+
+function settingsDto(row: SupportConfigRow, fallback: Buffer | null) {
   return {
-    cents,
-    points: Math.round(cents / 10),
-    usd,
-    textTokens: Math.floor((usd * 1_000_000) / rate),
+    version: row.version,
+    enabled: row.enabled,
+    tiers: tiersFor(row),
+    qrSource: row.has_upload ? 'upload' : fallback ? 'deployment' : null,
+    previewUrl: hasQr(row, fallback) ? '/v1/ops/support/qr?v=' + row.version : null,
   };
-});
+}
+
+function configChanged() {
+  return new HttpError(409, 'SUPPORT_CONFIG_CHANGED', '赞赏设置已被更新，请读取当前版本后重试');
+}
+
+async function normalizeSupportQr(bytes: Buffer) {
+  try {
+    const header = readImageHeader(bytes.subarray(0, MAX_HEADER_BYTES));
+    if (!['png', 'jpeg', 'webp'].includes(header.format) || header.animated ||
+        header.width < 64 || header.height < 64 || header.width > 4096 || header.height > 4096)
+      throw new Error('INVALID_QR_SOURCE');
+    const image = sharp(bytes, { failOn: 'warning', limitInputPixels: MAX_QR_PIXELS });
+    const metadata = await image.metadata();
+    if ((metadata.pages ?? 1) !== 1) throw new Error('INVALID_QR_SOURCE');
+    const png = await image.autoOrient().flatten({ background: '#fff' }).png().toBuffer();
+    if (png.length > MAX_QR_BYTES) throw new Error('INVALID_QR_OUTPUT');
+    return png;
+  } catch {
+    throw new HttpError(400, 'SUPPORT_QR_INVALID', '请使用清晰的静态 PNG、JPEG 或 WebP 赞赏码（最大 2 MB）');
+  }
+}
 
 export async function loadSupportQr(file: string | undefined): Promise<Buffer | null> {
   if (!file) return null;
   const handle = await open(file, 'r');
   try {
     const info = await handle.stat();
-    if (!info.isFile() || info.size < 32 || info.size > 2 * 1024 * 1024)
+    if (!info.isFile() || info.size < 32 || info.size > MAX_QR_BYTES)
       throw new Error('SUPPORT_QR_INVALID');
     const bytes = Buffer.alloc(info.size + 1);
     let offset = 0;
@@ -51,32 +106,92 @@ export async function loadSupportQr(file: string | undefined): Promise<Buffer | 
   }
 }
 
-export function registerSupport(app: FastifyInstance, db: Database, qr: Buffer | null) {
+export function registerSupport(app: FastifyInstance, db: Database, fallback: Buffer | null) {
   app.get('/v1/support', async (req, reply) => {
     const user = requireUser(req);
     reply.header('Cache-Control', 'private, no-store');
-    const account = (await db.query('SELECT phone_verified_at FROM users WHERE id=$1', [user.id]))
-      .rows[0];
+    const [config, account] = await Promise.all([
+      readConfig(db),
+      db.query('SELECT phone_verified_at FROM users WHERE id=$1', [user.id]),
+    ]);
     return {
-      qrUrl: qr ? '/v1/support/wechat-qr' : null,
-      phoneVerified: Boolean(account?.phone_verified_at),
-      rates: supportRates,
-      tiers: supportTiers,
+      version: config.version,
+      qrUrl: config.enabled && hasQr(config, fallback) ? qrPath : null,
+      phoneVerified: Boolean(account.rows[0]?.phone_verified_at),
+      tiers: tiersFor(config),
     };
   });
-  app.get('/v1/support/wechat-qr', async (req, reply) => {
+
+  async function readQr(preview: boolean) {
+    const row = (await db.query('SELECT enabled,qr_png FROM site_support_config WHERE id=true')).rows[0];
+    if (!preview && !row?.enabled) return null;
+    return (row?.qr_png as Buffer | null) ?? fallback;
+  }
+  app.get(qrPath, async (req, reply) => {
     requireUser(req);
+    const qr = await readQr(false);
     if (!qr) throw new HttpError(404, 'SUPPORT_QR_UNAVAILABLE', '微信赞赏暂未开放');
     return reply.header('Cache-Control', 'private, no-store').type('image/png').send(qr);
   });
+  app.get('/v1/ops/support', async (req) => {
+    requireOperator(req);
+    return settingsDto(await readConfig(db), fallback);
+  });
+  app.get('/v1/ops/support/qr', async (req, reply) => {
+    requireOperator(req);
+    const qr = await readQr(true);
+    if (!qr) throw new HttpError(404, 'SUPPORT_QR_UNAVAILABLE', '尚未设置赞赏码');
+    return reply.header('Cache-Control', 'private, no-store').type('image/png').send(qr);
+  });
+  app.patch('/v1/ops/support', async (req) => {
+    const operator = requireOperator(req);
+    const { expectedVersion, enabled, tiers } = settingsSchema.parse(req.body);
+    return transaction(db, async (tx) => {
+      await lockSupportOperator(tx, operator.id, req.cookies.xiutu_session ?? '');
+      const row = (await tx.query<SupportConfigRow>(
+        'UPDATE site_support_config SET enabled=$2,tiers=$3,version=version+1,updated_at=clock_timestamp() WHERE id=true AND version=$1 RETURNING ' + configFields,
+        [expectedVersion, enabled, JSON.stringify(tiers.sort((a, b) => a.cents - b.cents))],
+      )).rows[0];
+      if (!row) throw configChanged();
+      await audit(tx, operator.id, 'operator.support_config', 'support_config', null, {
+        version: row.version, enabled, tiers,
+      });
+      return settingsDto(row, fallback);
+    });
+  });
+  app.put('/v1/ops/support/qr', async (req) => {
+    const operator = requireOperator(req);
+    const { expectedVersion } = versionQuery.parse(req.query);
+    if ((await readConfig(db)).version !== expectedVersion) throw configChanged();
+    const files = req.parts({ limits: { files: 1, fields: 0, fileSize: MAX_QR_BYTES, parts: 2 } });
+    let png: Buffer | undefined;
+    for await (const part of files) {
+      if (part.type !== 'file' || part.fieldname !== 'file' || png)
+        throw new HttpError(400, 'SUPPORT_QR_INVALID', '请上传一张赞赏码图片');
+      png = await normalizeSupportQr(await part.toBuffer());
+    }
+    if (!png) throw new HttpError(400, 'SUPPORT_QR_INVALID', '请上传一张赞赏码图片');
+    return transaction(db, async (tx) => {
+      await lockSupportOperator(tx, operator.id, req.cookies.xiutu_session ?? '');
+      const row = (await tx.query<SupportConfigRow>(
+        'UPDATE site_support_config SET qr_png=$2,version=version+1,updated_at=clock_timestamp() WHERE id=true AND version=$1 RETURNING ' + configFields,
+        [expectedVersion, png],
+      )).rows[0];
+      if (!row) throw configChanged();
+      await audit(tx, operator.id, 'operator.support_qr_updated', 'support_config', null, {
+        version: row.version,
+      });
+      return settingsDto(row, fallback);
+    });
+  });
   app.post('/v1/ops/support-grants', async (req) => {
     const operator = requireOperator(req);
-    if (!qr) throw new HttpError(503, 'SUPPORT_QR_UNAVAILABLE', '微信赞赏暂未开放');
     const input = z
       .object({
         userId: id,
-        cents: z.number().int().positive(),
-        expectedPoints: z.number().int().positive(),
+        cents: tierSchema.shape.cents,
+        expectedPoints: tierSchema.shape.points,
+        expectedVersion: z.number().int().positive().optional(),
         reference: z
           .string()
           .trim()
@@ -84,13 +199,11 @@ export function registerSupport(app: FastifyInstance, db: Database, qr: Buffer |
       })
       .strict()
       .parse(req.body);
-    const tier = supportTiers.find((item) => item.cents === input.cents);
-    if (!tier || tier.points !== input.expectedPoints)
-      throw new HttpError(409, 'SUPPORT_TIER_CHANGED', '参考点数已变更，请重新读取后再发放');
     // Only the fingerprint is retained. Operators use a unique WeChat record number
     // or the stable reference assigned to that record during reconciliation.
     const reference = `support:wechat:${hash(input.reference.toLowerCase())}`;
     return transaction(db, async (tx) => {
+      await lockSupportOperator(tx, operator.id, req.cookies.xiutu_session ?? '');
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [reference]);
       const target = (
         await tx.query(
@@ -103,7 +216,7 @@ export function registerSupport(app: FastifyInstance, db: Database, qr: Buffer |
       if (!target)
         throw new HttpError(409, 'SUPPORT_ACCOUNT_UNAVAILABLE', '仅可向已验证且正常使用的账号发放');
       const requestHash = hash(
-        JSON.stringify({ userId: input.userId, cents: tier.cents, points: tier.points }),
+        JSON.stringify({ userId: input.userId, cents: input.cents, points: input.expectedPoints }),
       );
       const existing = (
         await tx.query(
@@ -116,11 +229,19 @@ export function registerSupport(app: FastifyInstance, db: Database, qr: Buffer |
           throw new HttpError(409, 'SUPPORT_RECORD_ALREADY_USED', '该核对编号已用于其他权益发放');
         return {
           adjustmentId: existing.id,
-          points: tier.points,
+          points: input.expectedPoints,
           replayed: true,
           entitlements: await getEntitlements(tx, target.id),
         };
       }
+      const config = await readConfig(tx, true);
+      // An operator may reconcile money already received even after hiding the public QR.
+      if (!hasQr(config, fallback))
+        throw new HttpError(503, 'SUPPORT_QR_UNAVAILABLE', '尚未设置赞赏码');
+      const tier = tiersFor(config).find((item) => item.cents === input.cents);
+      if (!tier || tier.points !== input.expectedPoints ||
+          (input.expectedVersion !== undefined && input.expectedVersion !== config.version))
+        throw new HttpError(409, 'SUPPORT_TIER_CHANGED', '参考点数已变更，请重新读取后再发放');
       const adjustment = await adjustUnits(tx, {
         spaceId: target.id,
         actorId: operator.id,

@@ -46,7 +46,14 @@ test('photo trash enforces project access and the 48-hour deadline and reclaims 
     assert.equal((await f.call('DELETE', workDelete)).json().error.code, 'COLLABORATION_LOCKED');
     await f.call('DELETE', branch + '/collaboration/sessions/' + session.id, undefined, 'editor');
 
+    const collection = '/v1/artworks?spaceId=' + f.teamId;
+    assert.deepEqual((await f.call('GET', collection)).json().items.map((item: { id: string }) => item.id), [work.id]);
+    assert.equal((await f.call('GET', collection, undefined, 'operator')).statusCode, 403);
     const removedWork = await trash(workDelete);
+    assert.deepEqual((await f.call('GET', collection)).json().items, []);
+    assert.equal((await f.call('GET', removedWork.thumbnailUrl!)).statusCode, 200);
+    assert.equal((await f.call('GET', removedWork.thumbnailUrl!, undefined, 'viewer')).statusCode, 404);
+    assert.equal((await f.call('GET', removedWork.thumbnailUrl!, undefined, 'operator')).statusCode, 404);
     const removedPrivate = await trash(privateDelete);
     assert.equal((await f.call('DELETE', workDelete)).json().item.token, removedWork.token);
     assert.equal((await f.call('GET', branch)).statusCode, 404);
@@ -90,8 +97,13 @@ test('photo trash enforces project access and the 48-hour deadline and reclaims 
     const later = await trash(workDelete);
     assert.notEqual(later.token, removedWork.token);
     assert.equal((await restore(removedWork)).statusCode, 409);
-    await expire(later);
-    await sweepPhotoTrash(f.db, f.storage);
+    const purge = (item: PhotoTrashEntry) => list + '/' + item.kind + '/' + item.id + '?token=' + item.token;
+    assert.equal((await f.call('DELETE', purge(removedWork))).statusCode, 409);
+    assert.equal((await f.call('DELETE', purge(later), undefined, 'viewer')).statusCode, 403);
+    assert.equal((await f.call('DELETE', purge(later))).statusCode, 200);
+    assert.equal((await f.call('GET', later.thumbnailUrl!)).statusCode, 404);
+    assert.equal((await f.call('DELETE', purge(later))).statusCode, 200);
+    assert.equal((await f.call('GET', sourceDelete + '/file')).statusCode, 200);
     assert.equal((await restore(later)).statusCode, 410);
     assert.equal((await f.db.query('SELECT id FROM revisions WHERE id=$1', [f.artwork.revision.id])).rowCount, 1);
 
@@ -115,7 +127,8 @@ test('photo trash enforces project access and the 48-hour deadline and reclaims 
         [f.assetId, gif, 'a'.repeat(64)]);
     });
     const originalTrash = await trash(sourceDelete);
-    await expire(originalTrash);
+    assert.equal((await f.call('DELETE', purge(originalTrash))).statusCode, 200);
+    assert.equal((await restore(originalTrash)).statusCode, 410);
     await Promise.all([sweepPhotoTrash(f.db, f.storage), sweepPhotoTrash(f.db, f.storage)]);
     for (const path of [sharedPath, gifPath, originalPath])
       await assert.rejects(access(path), { code: 'ENOENT' });
@@ -127,4 +140,22 @@ test('photo trash enforces project access and the 48-hour deadline and reclaims 
   } finally {
     await f.close();
   }
+});
+
+test('two simultaneous entries create one personal project and exclude platform operators', { skip: !databaseUrl }, async () => {
+  const f = await collaborationFixture(databaseUrl!);
+  try {
+    const [a, b] = await Promise.all([
+      f.call('PUT', '/v1/me/creative-project', {}),
+      f.call('PUT', '/v1/me/creative-project', {}),
+    ]);
+    assert.equal(a.statusCode, 200, a.body);
+    assert.equal(b.statusCode, 200, b.body);
+    const project = a.json().project;
+    assert.equal(project.id, b.json().project.id);
+    assert.equal(project.spaceId, f.actors.owner.spaceId);
+    assert.equal((await f.call('GET', '/v1/projects/' + project.id, undefined, 'operator')).statusCode, 404);
+    const other = await f.call('PUT', '/v1/me/creative-project', {}, 'operator');
+    assert.notEqual(other.json().project.id, project.id);
+  } finally { await f.close(); }
 });

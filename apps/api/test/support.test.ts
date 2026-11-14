@@ -103,6 +103,45 @@ test(
         ).statusCode,
         409,
       );
+
+      const settingsPath = '/v1/ops/support';
+      assert.equal((await f.call('GET', settingsPath)).statusCode, 403);
+      const old = (await f.call('GET', settingsPath, undefined, 'operator')).json();
+      assert.equal(old.qrSource, 'deployment');
+      const upload = (bytes: Buffer, actor: 'owner' | 'operator', version: number) => {
+        const boundary = 'xiutu-test-' + randomUUID();
+        const payload = Buffer.concat([
+          Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="support.jpg"\r\nContent-Type: image/jpeg\r\n\r\n'),
+          bytes, Buffer.from('\r\n--' + boundary + '--\r\n'),
+        ]);
+        return f.app.inject({
+          method: 'PUT', url: settingsPath + '/qr?expectedVersion=' + version, payload,
+          headers: { origin: f.origin, cookie: f.actors[actor].cookie, 'content-type': 'multipart/form-data; boundary=' + boundary },
+        });
+      };
+      const nextImage = await sharp({ create: { width: 80, height: 72, channels: 3, background: '#fff' } }).jpeg().toBuffer();
+      assert.equal((await upload(nextImage, 'owner', old.version)).statusCode, 403);
+      assert.equal((await upload(Buffer.from('invalid image'), 'operator', old.version)).statusCode, 400);
+      const uploaded = await upload(nextImage, 'operator', old.version);
+      assert.equal(uploaded.statusCode, 200, uploaded.body);
+      assert.equal(uploaded.json().qrSource, 'upload');
+      const nowQr = await f.call('GET', info.qrUrl);
+      assert.equal((await sharp(nowQr.rawPayload).metadata()).width, 80);
+      const plan = { enabled: false, tiers: [{ cents: 999, points: 125 }] };
+      assert.equal((await f.call('PATCH', settingsPath, { ...plan, expectedVersion: old.version }, 'operator')).statusCode, 409);
+      const updated = await f.call('PATCH', settingsPath, { ...plan, expectedVersion: uploaded.json().version }, 'operator');
+      assert.equal(updated.statusCode, 200, updated.body);
+      assert.equal((await f.call('GET', info.qrUrl)).statusCode, 404);
+      assert.equal((await f.call('GET', '/v1/support')).json().tiers[0].points, 125);
+      assert.equal((await f.call('POST', path, { ...data, expectedVersion: old.version }, 'operator')).json().replayed, true);
+      const freshReference = { ...data, reference: randomUUID() };
+      assert.equal((await f.call('POST', path, freshReference, 'operator')).json().error.code, 'SUPPORT_TIER_CHANGED');
+      const settled = await f.call('POST', path, {
+        ...freshReference, expectedVersion: updated.json().version, expectedPoints: 125,
+      }, 'operator');
+      assert.equal(settled.statusCode, 200, settled.body);
+      assert.equal(settled.json().points, 125);
+      await f.db.query('UPDATE site_support_config SET qr_png=NULL,tiers=NULL,enabled=true,version=version+1');
     } finally {
       await f.close();
     }

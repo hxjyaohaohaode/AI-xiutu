@@ -1,25 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
-import { ArrowCounterClockwise, FileImage, Trash } from '@phosphor-icons/react';
+import { ArrowCounterClockwise, Trash } from '@phosphor-icons/react';
 import type { PhotoTrashEntry, PhotoTrashPage } from '@ai-xiutu/contracts';
 import { ApiError, api, errorMessage, formatDate, jsonRequest } from '../lib/api';
 import { t } from '../i18n';
 import { Busy, EmptyState, InlineError, Modal } from '../components/Ui';
-import { listLocalPhotoTrash, type LocalPhotoTrashEntry } from './localPhotoTrash';
+import { useConfirmation } from '../components/ConfirmationDialog';
+import { AssetThumbnail } from './AssetThumbnail';
+import { removeLocalPhoto, listLocalPhotoTrash, type LocalPhotoTrashEntry } from './localPhotoTrash';
 
 type TrashRow =
   | { kind: 'local'; id: string; expiresAt: number; photo: LocalPhotoTrashEntry }
   | { kind: 'cloud'; id: string; expiresAt: number; photo: PhotoTrashEntry };
 
 export function PhotoTrashDialog({
-  owner, actorId, onClose, onCloudRestored, onLocalRestore, refreshToken,
+  owner, actorId, onClose, onCloudRestored, onCloudPurged, onLocalRestore, refreshToken,
 }: {
   owner: string;
   actorId: string | null;
   onClose: () => void;
   onCloudRestored: (photo: PhotoTrashEntry) => void;
+  onCloudPurged?: () => void;
   onLocalRestore: (photo: LocalPhotoTrashEntry) => Promise<boolean>;
   refreshToken: number;
 }) {
+  const confirmation = useConfirmation();
   const [local, setLocal] = useState<LocalPhotoTrashEntry[]>([]);
   const [cloud, setCloud] = useState<PhotoTrashPage>({ items: [], nextCursor: null });
   const [localError, setLocalError] = useState<string | null>(null);
@@ -140,7 +144,39 @@ export function PhotoTrashDialog({
     }
   }
 
-  return (
+  async function purge(row: TrashRow) {
+    if (restoring.current) return;
+    const title = row.kind === 'local' ? row.photo.file.name : row.photo.title;
+    if (!(await confirmation.confirm({
+      title: '永久删除',
+      description: t('永久删除「{title}」后无法恢复。', { title }),
+      confirmLabel: '永久删除', tone: 'danger',
+    })) || !active.current || restoring.current) return;
+    restoring.current = true;
+    setPending(row.id);
+    setActionError(null);
+    try {
+      if (row.kind === 'local') {
+        await removeLocalPhoto(owner, row.id);
+        if (active.current) setLocal((items) => items.filter((item) => item.id !== row.id));
+      } else {
+        await api('/photo-trash/' + row.photo.kind + '/' + row.photo.id + '?token=' + row.photo.token,
+          jsonRequest('DELETE'));
+        if (!active.current) return;
+        setCloud((page) => ({ ...page, items: page.items.filter((item) => item.token !== row.id) }));
+        onCloudPurged?.();
+      }
+    } catch (error) {
+      if (!active.current) return;
+      setActionError(errorMessage(error));
+      if (error instanceof ApiError && [403, 404, 409, 410].includes(error.status)) setReload((value) => value + 1);
+    } finally {
+      restoring.current = false;
+      if (active.current) setPending(null);
+    }
+  }
+
+  return (<>
     <Modal title={t('回收站')} subtitle={t('删除后保留 48 小时，到期自动清理。')}
       profile="detail" className="photo-trash-dialog"
       canClose={() => !restoring.current} onClose={onClose}>
@@ -160,18 +196,24 @@ export function PhotoTrashDialog({
         <ul className="photo-trash-list">
           {rows.map((row) => (
             <li key={row.id}>
-              {row.kind === 'cloud' && row.photo.kind === 'artwork' ? <Trash size={17} aria-hidden /> : <FileImage size={19} aria-hidden />}
+              {row.kind === 'local' ? <LocalThumbnail file={row.photo.file} />
+                : <AssetThumbnail src={row.photo.thumbnailUrl ?? null} />}
               <div>
                 <strong>{row.kind === 'local' ? row.photo.file.name : row.photo.title}</strong>
                 <small>{row.kind === 'local' ? t('本机照片') : row.photo.projectTitle + ' · ' +
                   t(row.photo.kind === 'artwork' ? '作品' : '原图')}</small>
                 <small>{t('{v0} 到期', { v0: formatDate(new Date(row.expiresAt).toISOString()) })}</small>
               </div>
-              <button type="button" className="button button-secondary" disabled={!!pending}
-                onClick={() => void restore(row)}>
-                {pending === row.id ? <Busy label="" /> : <ArrowCounterClockwise size={16} aria-hidden />}
-                {t('恢复')}
-              </button>
+              <div className="trash-card-actions">
+                <button type="button" className="button button-secondary" disabled={!!pending}
+                  onClick={() => void restore(row)}>
+                  {pending === row.id ? <Busy label="" /> : <ArrowCounterClockwise size={16} aria-hidden />}
+                  {t('恢复')}
+                </button>
+                <button type="button" className="icon-button trash-card-purge" disabled={!!pending}
+                  aria-label={t('永久删除') + ' · ' + (row.kind === 'local' ? row.photo.file.name : row.photo.title)}
+                  title={t('永久删除')} onClick={() => void purge(row)}><Trash size={17} /></button>
+              </div>
             </li>
           ))}
         </ul>
@@ -183,5 +225,16 @@ export function PhotoTrashDialog({
         </button>
       )}
     </Modal>
-  );
+    {confirmation.dialog}
+  </>);
+}
+
+function LocalThumbnail({ file }: { file: File }) {
+  const [url, setUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const value = URL.createObjectURL(file);
+    setUrl(value);
+    return () => URL.revokeObjectURL(value);
+  }, [file]);
+  return <AssetThumbnail src={url} />;
 }

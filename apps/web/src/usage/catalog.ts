@@ -1,3 +1,4 @@
+import { assistantTurnPrice, type AssistantResponsePricing } from '@ai-xiutu/contracts';
 import { t } from '../i18n';
 import { knownNumber } from './model';
 
@@ -34,6 +35,7 @@ export type UsageAssistantCatalog = {
     operations: string[];
     unitCost: number;
     maxSeconds?: number;
+    responsePrice?: AssistantResponsePricing;
   }[];
 };
 export type UsageQuote = {
@@ -100,11 +102,13 @@ export function usageQuotes(
         modelId: model.id,
         label: model.label || model.id,
         operation,
-        points: price(model.unitCost),
+        points: voice ? price(model.unitCost) : assistantTurnPrice(model.unitCost, model.responsePrice, {}),
         per: voice ? '次通话' : '轮',
         available,
         reason: available ? null : assistant?.reason || '当前暂不可用',
-        qualities: [],
+        qualities: voice ? [] : Object.entries(model.responsePrice?.tierUnits ?? {})
+          .filter(([name]) => name !== model.responsePrice?.defaultTier)
+          .map(([name, points]) => ({ name, points: price(points) })),
         maxSeconds: voice ? price(model.maxSeconds) : null,
       });
     }

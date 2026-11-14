@@ -190,6 +190,7 @@ export type ToolInspectorProps = {
   canvasOverlay?: HTMLElement | null;
   group: ToolGroup;
   mobileOpen: boolean;
+  onContentHeight?: (height: number) => void;
   onClose: () => void;
   pickedColor?: string;
   onColorChange?: (value: string) => void;

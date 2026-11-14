@@ -1,3 +1,5 @@
+import { openAIShutdownDate } from '@ai-xiutu/contracts';
+import { responseDefaults, responsePricing } from '@ai-xiutu/assistant/models';
 import { z } from 'zod';
 import { join } from 'node:path';
 import {
@@ -46,6 +48,7 @@ import {
 } from '@ai-xiutu/contracts';
 import { registerAssistantEvents } from './events.js';
 import { registerAssistantMemory } from './memory.js';
+import { registerAssistantPreferences } from './preferences.js';
 import {
   assistantReconciliationFilters,
   listUnknownAssistantRecords,
@@ -60,6 +63,7 @@ export function registerAssistant(
 ) {
   registerAssistantEvents(app, db);
   registerAssistantMemory(app, db);
+  registerAssistantPreferences(app, db);
   const storage = new LocalPrivateStorage(config);
   const service = createAssistantService(
     db,
@@ -100,7 +104,7 @@ export function registerAssistant(
           [body.modelIds],
         )
       ).rows;
-      if (new Set(known.map((item) => item.id)).size !== new Set(body.modelIds).size)
+      if (body.modelIds.some((value) => openAIShutdownDate(value)) || new Set(known.map((item) => item.id)).size !== new Set(body.modelIds).size)
         throw new HttpError(400, 'GRANT_MODEL_UNAVAILABLE', '请为本次授权选择已启用的模型');
       const row = (
         await tx.query(
@@ -158,6 +162,7 @@ export function registerAssistant(
       models: rows.flatMap((row) => {
         const parsed = assistantModelConfigSchema.safeParse(row.config);
         if (
+          openAIShutdownDate(row.id) ||
           !parsed.success ||
           !parsed.data.enabled ||
           modelProfileError(row.id, parsed.data, service.allowTestModel)
@@ -181,22 +186,33 @@ export function registerAssistant(
             webSearch: model.webSearch,
             webImageSearch: model.webSearch && model.webImageSearch === true,
             voice: VOICE_MODELS.find((voice) => voice.id === row.id) ?? null,
+            voiceDefaults: {
+              live: model.live && { acknowledgementDelayMs: model.live.acknowledgementDelayMs },
+              realtime: model.realtime && {
+                language: model.realtime.language,
+                transcriptionModel: model.realtime.transcriptionModel && !openAIShutdownDate(model.realtime.transcriptionModel)
+                  ? model.realtime.transcriptionModel : undefined,
+                noiseReduction: model.realtime.noiseReduction, outputSpeed: model.realtime.outputSpeed,
+                delay: model.realtime.delay, turnDetection: model.realtime.turnDetection,
+              },
+              reasoningEffort: model.voiceReasoningEffort,
+            },
             responses: responsesModel(row.id) ?? null,
+            responsePrice: responsePricing(model),
             responseDefaults: {
-              effort: model.reasoningEffort,
-              verbosity: model.responses?.verbosity,
+              ...responseDefaults(model),
               effortFixedForSampling:
                 model.responses?.temperature !== undefined || model.responses?.topP !== undefined,
             },
           },
         ];
       }),
-      voiceProfiles: VOICE_MODELS,
-      responsesProfiles: RESPONSES_MODELS,
+      voiceProfiles: VOICE_MODELS.filter((profile) => !openAIShutdownDate(profile.id)),
+      responsesProfiles: RESPONSES_MODELS.filter((profile) => !profile.deprecated),
       verifiedAt: VOICE_VERIFIED_AT,
       responsesVerifiedAt: RESPONSES_VERIFIED_AT,
       sources: [...VOICE_DOCS, ...RESPONSES_SOURCES],
-      transcriptionModels: CALL_TRANSCRIPTION_MODELS,
+      transcriptionModels: CALL_TRANSCRIPTION_MODELS.filter((id) => !openAIShutdownDate(id)),
     };
   });
   app.get('/v1/projects/:projectId/assistant-conversations', async (req) => {
@@ -649,6 +665,8 @@ export function registerAssistant(
       !VOICE_MODELS.some((voice) => voice.id === modelId)
     )
       throw new HttpError(400, 'VOICE_PROFILE_UNKNOWN', '语音模型尚无经过核验的协议适配器');
+    if (settings.enabled && openAIShutdownDate(modelId))
+      throw new HttpError(400, 'OPENAI_MODEL_DEPRECATED', '该模型已公告退役，请改选可用型号');
     const incompatible = modelProfileError(modelId, settings, service.allowTestModel);
     if (incompatible && settings.enabled) {
       if (incompatible === 'RESPONSES_PROFILE_UNKNOWN')

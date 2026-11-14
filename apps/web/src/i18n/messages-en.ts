@@ -1,3 +1,4 @@
+import { launchEnglish } from './launch-messages';
 import { navigationAiV2English } from './navigation-ai-v2-messages';
 import { reviewEnglish } from './review-messages';
 import { nativeGradeEnglish } from './native-grade-messages';
@@ -20,6 +21,7 @@ import { editorEnglish } from './editor-messages';
 
 /** Application-authored copy only. Source keys keep migration reviewable. */
 export const english: Readonly<Record<string, string>> = {
+  ...launchEnglish,
   '画布批注': 'Canvas comments',
   '圆点标记': 'Round marker',
   '菱形标记': 'Diamond marker',

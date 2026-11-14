@@ -467,7 +467,10 @@ export function CanvasStage({
     !comparing &&
     !cropEditing &&
     !previews.remote &&
-    (group !== 'liquify' || editor.liveFrame?.quality === 'warp')
+    (group !== 'liquify' || editor.liveFrame?.quality === 'warp') &&
+    (!editor.rendered || !editor.liveFrame || !editor.renderedRecipe ||
+      editorGeometryKey(editor.liveFrame.recipe) !== editorGeometryKey(editor.renderedRecipe) ||
+      editor.liveFrame.image.width * editor.liveFrame.image.height >= editor.rendered.width * editor.rendered.height)
       ? editor.liveFrame
       : null;
   const image = comparing
