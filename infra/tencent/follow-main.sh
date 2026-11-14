@@ -157,7 +157,7 @@ if [[ ! "$required" =~ ^[0-9]+(,[0-9]+)*$ || "$applied" != "$required" ]]; then
 fi
 
 smoke() {
-  local ref=$1 service target id expected actual origin hostname code
+  local ref=$1 service target id expected actual origin hostname code registration_mode
   local -a probe
   for service in api worker web; do
     target=server
@@ -179,8 +179,12 @@ smoke() {
   code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/") || return 1
   [[ "$code" == 200 ]] || return 1
   "${probe[@]}" --fail --cookie "$jar" "$origin/health" | jq -e '.ok == true' >/dev/null || return 1
+  registration_mode=$(compose exec -T db psql -X -v ON_ERROR_STOP=1 -U xiutu -d xiutu -At \
+    -c 'SELECT registration_mode FROM app_config WHERE id=true' </dev/null) || return 1
+  [[ "$registration_mode" == open || "$registration_mode" == invite ]] || return 1
   "${probe[@]}" --fail --cookie "$jar" "$origin/v1/public-config" |
-    jq -e '.registrationMode == "open" and .capabilities.smsConfigured == true' >/dev/null || return 1
+    jq -e --arg mode "$registration_mode" \
+      '.registrationMode == $mode and .capabilities.smsConfigured == true' >/dev/null || return 1
   "${probe[@]}" --fail --cookie "$jar" "$origin/v1/session" |
     jq -e '.user == null and .spaces == []' >/dev/null || return 1
   code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/v1/projects") || return 1
