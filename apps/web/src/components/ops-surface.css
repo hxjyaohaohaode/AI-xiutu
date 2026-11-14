@@ -731,3 +731,11 @@
     margin-bottom: 10px;
   }
 }
+
+.ops-layout .ops-account-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 12px;
+  max-width: 100%;
+}

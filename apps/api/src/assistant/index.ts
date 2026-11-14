@@ -575,11 +575,13 @@ export function registerAssistant(
   });
   let inventory: { ids: string[]; checkedAt: number } | undefined;
   let discovery: Promise<{ ids: string[]; checkedAt: number }> | undefined;
+  let retryDiscoveryAfter = 0;
   app.get('/v1/ops/openai-model-inventory', async (req, reply) => {
     requireOperator(req);
     reply.header('cache-control', 'no-store');
     if (!service.key) return { state: 'unconfigured', models: [] };
-    if (!inventory || Date.now() - inventory.checkedAt > 5 * 60_000) {
+    const now = Date.now();
+    if ((!inventory || now - inventory.checkedAt >= 5 * 60_000) && now >= retryDiscoveryAfter) {
       discovery ??= listOpenAIProjectModels(service.key, service.dependencies.fetcher)
         .then((ids) => ({ ids, checkedAt: Date.now() }))
         .finally(() => {
@@ -588,11 +590,14 @@ export function registerAssistant(
       try {
         inventory = await discovery;
       } catch {
-        return { state: 'unavailable', models: [] };
+        retryDiscoveryAfter = Date.now() + 15_000;
       }
     }
+    if (!inventory || Date.now() - inventory.checkedAt >= 30 * 60_000)
+      return { state: 'unavailable', models: [] };
     return {
       state: 'visible',
+      stale: Date.now() - inventory.checkedAt >= 5 * 60_000,
       checkedAt: new Date(inventory.checkedAt).toISOString(),
       models: inventory.ids.map((id) => {
         const specialist = OPENAI_SPECIALIST_OPERATIONS.find((operation) =>

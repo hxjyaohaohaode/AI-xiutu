@@ -28,6 +28,8 @@ export const auditLabels: Record<string, string> = {
   'operator.quota_view': '查看空间权益',
   'operator.user_invite': '创建用户邀请',
   'operator.user_status': '更新用户状态',
+  'operator.user_role': '更新运营权限',
+  'operator.user_close': '注销账号',
   'operator.config': '更新站点配置',
   'operator.plan_create': '创建权益套餐',
   'operator.plan_version': '更新权益套餐',

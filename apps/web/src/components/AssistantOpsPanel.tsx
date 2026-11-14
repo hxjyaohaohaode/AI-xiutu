@@ -50,6 +50,7 @@ type ResponseProfile = NonNullable<ReturnType<typeof responsesModel>>;
 type Inventory = {
   state: 'visible' | 'unavailable' | 'unconfigured';
   checkedAt?: string;
+  stale?: boolean;
   models: { id: string; adapter: string | null }[];
 };
 type Unknown = {
@@ -372,6 +373,13 @@ export function AssistantOpsPanel() {
                     count: inventory.models.length,
                   })}
                 </p>
+                {inventory.stale && inventory.checkedAt && (
+                  <p role="status">
+                    {t('上游暂时未响应。以下为 {time} 确认的模型。', {
+                      time: formatDate(inventory.checkedAt),
+                    })}
+                  </p>
+                )}
                 <label>
                   {t('筛选模型 ID')}
                   <input

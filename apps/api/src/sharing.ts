@@ -89,6 +89,17 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       .parse(req.body);
     const grant = await transaction(db, async (tx) => {
       const project = await projectAccess(tx, p.id, user.id, 'admin');
+      const active = await tx.query(
+        "SELECT id,phone FROM users WHERE (id=$1 OR phone=$2) AND status='active' ORDER BY id FOR SHARE",
+        [user.id, body.targetPhone],
+      );
+      if (!active.rows.some((row) => row.id === user.id))
+        throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+      const target = active.rows.find((row) => row.phone === body.targetPhone);
+      if (!target)
+        throw new HttpError(400, 'SHARE_TARGET_UNAVAILABLE', '无法向该账号发出邀请，请确认对方已注册');
+      if (target.id === user.id)
+        throw new HttpError(400, 'INVALID_SHARE_TARGET', '无需向自己创建分享');
       const space = (
         await tx.query('SELECT sharing_policy FROM spaces WHERE id=$1 FOR UPDATE', [
           project.space_id,
@@ -108,19 +119,6 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       ).rows[0]!;
       if (Number(count.count) >= policy.maxActiveGrants)
         throw new HttpError(409, 'SHARE_CAP_REACHED', '有效分享数已达空间上限');
-      const target = (
-        await tx.query("SELECT id FROM users WHERE phone=$1 AND status='active'", [
-          body.targetPhone,
-        ])
-      ).rows[0];
-      if (!target)
-        throw new HttpError(
-          400,
-          'SHARE_TARGET_UNAVAILABLE',
-          '无法向该账号发出邀请，请确认对方已注册',
-        );
-      if (target.id === user.id)
-        throw new HttpError(400, 'INVALID_SHARE_TARGET', '无需向自己创建分享');
       const row = (
         await tx.query(
           'INSERT INTO share_grants(project_id,target_user_id,mode,expires_at,created_by) VALUES($1,$2,$3,clock_timestamp()+($4::text||\' days\')::interval,$5) RETURNING id,mode,expires_at AS "expiresAt",target_user_id AS "targetUserId"',

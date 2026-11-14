@@ -34,7 +34,7 @@ try {
         [phone, name, password],
       )
     ).rows[0]!;
-    await tx.query('INSERT INTO operator_users(user_id) VALUES($1)', [user.id]);
+    await tx.query('INSERT INTO operator_users(user_id,manages_accounts) VALUES($1,true)', [user.id]);
     await createPersonalSpace(tx, user.id, name);
     await ensureMonthlyGrant(tx, user.id);
     await audit(tx, user.id, 'operator.bootstrap', 'user', user.id, {

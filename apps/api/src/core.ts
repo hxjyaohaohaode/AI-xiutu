@@ -206,10 +206,7 @@ export async function lockProjectMutation(
   permission: 'edit' | 'admin' = 'edit',
 ) {
   const hint = await projectAccess(tx, projectId, actorId, permission);
-  const active = await tx.query("SELECT id FROM users WHERE id=$1 AND status='active' FOR SHARE", [
-    actorId,
-  ]);
-  if (!active.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+  await lockActiveUser(tx, actorId);
   if (authHash !== undefined) await lockActiveSession(tx, actorId, authHash);
   await tx.query('SELECT id FROM spaces WHERE id=$1 FOR SHARE', [hint.space_id]);
   await tx.query('SELECT id FROM projects WHERE id=$1 FOR SHARE', [projectId]);
@@ -219,6 +216,13 @@ export async function lockProjectMutation(
   ]);
   return projectAccess(tx, projectId, actorId, permission);
 }
+export async function lockActiveUser(tx: Queryable, userId: string) {
+  const active = await tx.query("SELECT id FROM users WHERE id=$1 AND status='active' FOR SHARE", [
+    userId,
+  ]);
+  if (!active.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+}
+
 export async function lockActiveSession(tx: Queryable, actorId: string, authHash: string) {
   const session = await tx.query(
     'SELECT token_hash FROM sessions WHERE token_hash=$1 AND user_id=$2 AND expires_at>clock_timestamp() FOR SHARE',

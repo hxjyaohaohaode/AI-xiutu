@@ -50,7 +50,7 @@ import type {
 import { secureUuid } from '../lib/uuid';
 import { readModelCatalog, api, errorMessage, jsonRequest } from '../lib/api';
 import { assetCopyAttempt } from '../lib/asset-copy';
-import type { Artwork, Asset, Project, PublicConfig } from '../lib/types';
+import type { Artwork, Asset, Project, PublicConfig, Space } from '../lib/types';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { useConfirmation } from './ConfirmationDialog';
@@ -180,6 +180,7 @@ export function AIPanel({
   recipe,
   config,
   userId = null,
+  spaces = [],
   projectAssets = [],
   currentAsset = null,
   initialOperation = 'edit-plan',
@@ -224,6 +225,7 @@ export function AIPanel({
   recipe: EditorRecipe;
   config: PublicConfig | null;
   userId?: string | null;
+  spaces?: Space[];
   projectAssets?: Asset[];
   currentAsset?: Asset | null;
   initialOperation?: AIOperation;
@@ -1261,6 +1263,8 @@ export function AIPanel({
             artwork={artwork}
             recipe={recipe}
             isLoggedIn={isLoggedIn}
+            userId={userId}
+            spaces={spaces}
             onAuth={onAuth}
             onSave={onSave}
             onExport={onExport}

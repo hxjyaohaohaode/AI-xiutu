@@ -103,6 +103,7 @@ export function AuthPanel({
   const [operations] = useState(() => new AuthOperations());
   const accepted = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordRejected, setPasswordRejected] = useState(false);
   const [smsState, setSmsState] = useState<'idle' | 'sent' | 'unknown'>('idle');
   const [smsExpiresIn, setSmsExpiresIn] = useState(600);
   const [resetDone, setResetDone] = useState(false);
@@ -166,6 +167,7 @@ export function AuthPanel({
     setDirection(next === 'password' ? 'back' : 'forward');
     setMode(next);
     setRegisterStep('phone');
+    setPasswordRejected(false);
     setError(null);
     setErrors({});
     touched.current.clear();
@@ -181,6 +183,10 @@ export function AuthPanel({
   }
   function updateField(field: AuthField, value: string) {
     const next = { ...fields, [field]: value };
+    if (passwordRejected && (field === 'phone' || field === 'password')) {
+      setPasswordRejected(false);
+      setError(null);
+    }
     if (field === 'phone' && normalizedAuthPhone(value) !== phone) {
       next.code = '';
       setSmsState('idle');
@@ -288,6 +294,7 @@ export function AuthPanel({
     const operation = operations.begin('submit');
     if (!operation) return;
     setActiveKind('submit');
+    setPasswordRejected(false);
     setError(null);
     setErrors({});
     try {
@@ -324,6 +331,7 @@ export function AuthPanel({
         const field = authFieldForFailure(failure);
         if (field) showErrors({ [field]: errorMessage(failure) });
         else setError(errorMessage(failure));
+        setPasswordRejected(mode === 'password' && authFailure(failure).code === 'INVALID_CREDENTIALS');
         if (authFailureConsumedCode(mode, failure)) {
           setFields((current) => ({ ...current, code: '' }));
           setErrors((current) => ({ ...current, code: '本次验证码已使用，请重新获取。' }));
@@ -828,6 +836,11 @@ export function AuthPanel({
                   </p>
                 )}
                 <InlineError message={error ? t(error) : null} />
+                {passwordRejected && !smsUnavailable && (
+                  <button type="button" className="auth-text-button" onClick={() => switchMode('otp')}>
+                    {t('改用短信验证码登录')}
+                  </button>
+                )}
                 <button
                   className="button button-primary auth-primary"
                   type="submit"

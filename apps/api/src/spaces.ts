@@ -7,6 +7,7 @@ import {
   title,
   role,
   requireUser,
+  lockActiveUser,
   spaceRole,
   spacesFor,
   hash,
@@ -22,7 +23,8 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
     const p = z.object({ name: title }).strict().parse(req.body);
     const space = await transaction(db, async (tx) => {
       await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
-      await tx.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [user.id]);
+      const owner = await tx.query("SELECT id FROM users WHERE id=$1 AND status='active' FOR UPDATE", [user.id]);
+      if (!owner.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
       const count = await tx.query(
         "SELECT count(*) FROM spaces WHERE owner_id=$1 AND kind='team'",
         [user.id],
@@ -104,6 +106,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       .parse(req.body);
     const space = await transaction(db, async (tx) => {
       await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
+      await lockActiveUser(tx, user.id);
       const hint = (
         await tx.query("SELECT space_id FROM invitations WHERE code_hash=$1 AND kind='space'", [
           hash(p.code),
@@ -241,7 +244,17 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
     const actor = requireUser(req),
       params = z.object({ id }).parse(req.params);
     const body = z.object({ targetUserId: id, expectedOwnerId: id }).strict().parse(req.body);
+    if (body.targetUserId === actor.id)
+      throw new HttpError(400, 'OWNER_UNCHANGED', '请选择另一位现有成员');
     await transaction(db, async (tx) => {
+      const active = await tx.query(
+        "SELECT id FROM users WHERE id=ANY($1::uuid[]) AND status='active' ORDER BY id FOR SHARE",
+        [[actor.id, body.targetUserId]],
+      );
+      if (!active.rows.some((row) => row.id === actor.id))
+        throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+      if (active.rowCount !== 2)
+        throw new HttpError(400, 'MEMBER_REQUIRED', '新所有者须是当前有效成员');
       const space = (await tx.query('SELECT * FROM spaces WHERE id=$1 FOR UPDATE', [params.id]))
         .rows[0];
       await spaceRole(tx, params.id, actor.id, ['owner']);
@@ -249,8 +262,6 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
         throw new HttpError(400, 'TEAM_REQUIRED', '仅团队空间可交接所有权');
       if (space.owner_id !== body.expectedOwnerId || space.owner_id !== actor.id)
         throw new HttpError(409, 'OWNER_CHANGED', '空间所有者已改变，请刷新');
-      if (body.targetUserId === actor.id)
-        throw new HttpError(400, 'OWNER_UNCHANGED', '请选择另一位现有成员');
       const target = (
         await tx.query(
           `SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id

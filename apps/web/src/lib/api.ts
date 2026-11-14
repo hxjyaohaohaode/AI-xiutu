@@ -48,7 +48,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 /** A deadline for model discovery only. This never retries a paid mutation. */
 export async function readModelCatalog<T>(path: string, signal: AbortSignal): Promise<T> {
-  return api<T>(path, { signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
+  async function read(timeout: number) {
+    const value = await api<T & { models?: unknown }>(path, {
+      cache: 'no-store', signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
+    });
+    if (!Array.isArray(value?.models))
+      throw new ApiError('MODEL_CATALOG_UNAVAILABLE', '暂时无法读取模型列表，请稍后重试。', 503);
+    return value;
+  }
+  try {
+    return await read(8_000);
+  } catch (error) {
+    signal.throwIfAborted();
+    if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
+    return read(10_000);
+  }
 }
 
 export const jsonRequest = (method: string, body?: unknown): RequestInit => ({

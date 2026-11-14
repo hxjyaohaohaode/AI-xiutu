@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { registerAccountLifecycle } from './ops-account-lifecycle.js';
 import { z } from 'zod';
 import { OPENAI_SPECIALIST_OPERATIONS } from '@ai-xiutu/contracts';
 import {
@@ -194,8 +195,9 @@ export function registerOperations(
       capabilities: capabilities(),
     };
   });
+  registerAccountLifecycle(app, db);
   app.get('/v1/ops/users', async (req) => {
-    requireOperator(req);
+    const actor = requireOperator(req);
     const p = z.object({ query: z.string().max(120).default('') }).parse(req.query);
     const query = p.query.trim();
     const compact = query.replace(/[\s()-]/g, '');
@@ -203,19 +205,25 @@ export function registerOperations(
       ? normalizePhone(compact)
       : null;
     const term = query.replace(/[\\%_]/g, '\\$&');
+    const canManageAccounts = !!(await db.query(
+      'SELECT 1 FROM operator_users WHERE user_id=$1 AND manages_accounts',
+      [actor.id],
+    )).rowCount;
     const rows = (
       await db.query(
-        "SELECT u.id,u.display_name,u.phone,u.status,u.created_at,EXISTS(SELECT 1 FROM operator_users o WHERE o.user_id=u.id) AS is_operator FROM users u WHERE CASE WHEN $2::text IS NOT NULL THEN u.phone=$2 ELSE u.display_name ILIKE $1 ESCAPE '\\' OR u.phone ILIKE $1 ESCAPE '\\' END ORDER BY u.created_at DESC LIMIT 100",
+        "SELECT u.id,u.display_name,u.phone,u.status,u.created_at,o.user_id IS NOT NULL AS is_operator,COALESCE(o.manages_accounts,false) AS manages_accounts FROM users u LEFT JOIN operator_users o ON o.user_id=u.id WHERE CASE WHEN $2::text IS NOT NULL THEN u.phone=$2 ELSE u.display_name ILIKE $1 ESCAPE '\\' OR u.phone ILIKE $1 ESCAPE '\\' END ORDER BY u.created_at DESC LIMIT 100",
         [`%${term}%`, exactPhone],
       )
     ).rows;
     return {
+      canManageAccounts,
       users: rows.map((u) => ({
         id: u.id,
         displayName: u.display_name,
-        phoneMasked: maskPhone(u.phone),
+        phoneMasked: u.status === 'closed' ? '' : maskPhone(u.phone),
         status: u.status,
         isOperator: u.is_operator,
+        managesAccounts: u.manages_accounts,
         createdAt: u.created_at,
       })),
     };
@@ -253,7 +261,7 @@ export function registerOperations(
         user: {
           id: user.id,
           displayName: user.display_name,
-          phoneMasked: maskPhone(user.phone),
+          phoneMasked: user.status === 'closed' ? '' : maskPhone(user.phone),
           status: user.status,
           phoneVerified: Boolean(user.phone_verified_at),
         },
@@ -294,10 +302,12 @@ export function registerOperations(
     const user = await transaction(db, async (tx) => {
       const old = (await tx.query('SELECT * FROM users WHERE id=$1 FOR UPDATE', [p.id])).rows[0];
       if (!old) throw new HttpError(404, 'USER_NOT_FOUND', '账号不存在');
+      if (old.status === 'closed')
+        throw new HttpError(409, 'ACCOUNT_CLOSED', '账号已注销，无法恢复');
       if (old.status === 'pending' && body.status === 'active')
         throw new HttpError(409, 'VERIFICATION_REQUIRED', '待验证账号必须自行完成短信注册');
       if ((await tx.query('SELECT user_id FROM operator_users WHERE user_id=$1', [p.id])).rowCount)
-        throw new HttpError(403, 'OPERATOR_PROTECTED', '运营账号须通过受控命令行管理');
+        throw new HttpError(403, 'OPERATOR_PROTECTED', '请先由账号管理员撤回运营权限');
       // Restoring an unverified invitation must restore the verification workflow,
       // not fabricate phone ownership or leave an active account without a space.
       const nextStatus =

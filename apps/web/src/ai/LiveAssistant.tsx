@@ -51,7 +51,7 @@ import { assistantSearchEvidenceSchema, defaultLiveDecisionQuestions,
 import { parseEditorRecipe, type EditorRecipe } from '@ai-xiutu/editor';
 import { api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import { secureUuid } from '../lib/uuid';
-import type { Artwork, Project, Session, Space } from '../lib/types';
+import type { Artwork, Project, Space } from '../lib/types';
 import { EditorVoiceClient } from './voiceClient';
 import { LiveModeSettings } from './LiveModeSettings';
 import { appendCaption, type CaptionState, VoiceCaptions } from './VoiceCaptions';
@@ -217,6 +217,8 @@ export interface LiveAssistantProps {
   artwork: Artwork | null;
   recipe: EditorRecipe;
   isLoggedIn: boolean;
+  userId: string | null;
+  spaces: Space[];
   onAuth: () => void;
   onSave: () => void;
   onExport?: () => void;
@@ -264,15 +266,16 @@ export function LiveAssistant(props: LiveAssistantProps) {
     artwork,
     recipe,
     isLoggedIn,
+    userId: actorId,
+    spaces,
     onAuth,
     onSave,
     onPrepareGenerationDraft,
     captureCurrentImage,
   } = props;
-  const [catalogError, setCatalogError] = useState('');
+  const [catalogError, setCatalogError] = useState<'login' | 'unavailable' | null>(null);
   const [catalogAttempt, setCatalogAttempt] = useState(0);
-  const [catalog, setCatalog] = useState<Catalog | null>(null),
-    [spaces, setSpaces] = useState<Space[]>([]);
+  const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [creative, setCreative] = useState(initialCreativeSettings);
   const [grant, setGrant] = useState<AssistantGrant | null>(null);
   const [contextManifest, setContextManifest] = useState<Record<string, any> | null>(null);
@@ -352,8 +355,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const [prompt, setPrompt] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<StatusMessage>('');
-  const [actorId, setActorId] = useState<string | null>(null),
-    [submissionReady, setSubmissionReady] = useState(false),
+  const [submissionReady, setSubmissionReady] = useState(false),
     [pendingSubmission, setPendingSubmission] = useState<AssistantSubmission | null>(null);
   const actor = useRef(actorId),
     submission = useRef<AssistantSubmission | null>(null);
@@ -683,19 +685,20 @@ export function LiveAssistant(props: LiveAssistantProps) {
       if (refreshing || controller.signal.aborted || document.visibilityState === 'hidden') return;
       if (Date.now() - lastRead < 15_000) return;
       refreshing = true;
-      setCatalogError('');
       lastRead = Date.now();
       try {
-        const [value, session] = await Promise.all([
-          readModelCatalog<Catalog>('/assistant/models', controller.signal),
-          readModelCatalog<Session>('/session', controller.signal),
-        ]);
+        const value = await readModelCatalog<Catalog>('/assistant/models', controller.signal);
         if (controller.signal.aborted) return;
         setCatalog(value);
-        setSpaces(session.spaces);
-        setActorId(session.user?.id ?? null);
+        setCatalogError(null);
       } catch (err) {
-        if (!controller.signal.aborted) setCatalogError(errorMessage(err));
+        if (controller.signal.aborted) return;
+        if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
+          setCatalog(null);
+          setCatalogError('login');
+        } else {
+          setCatalogError((current) => current === 'login' ? current : 'unavailable');
+        }
       } finally {
         refreshing = false;
       }
@@ -711,7 +714,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       window.removeEventListener('focus', refresh);
       document.removeEventListener('visibilitychange', refresh);
     };
-  }, [isLoggedIn, props.visible, catalogAttempt]);
+  }, [actorId, isLoggedIn, props.visible, catalogAttempt]);
   useEffect(() => {
     restoreSubmission();
   }, [actorId, isLoggedIn]);
@@ -778,8 +781,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setCandidates([]);
     if (!isLoggedIn) {
       setCatalog(null);
-      setSpaces([]);
-      setActorId(null);
+      setCatalogError(null);
       submission.current = null;
       setPendingSubmission(null);
       voiceSubmission.current = null;
@@ -2180,6 +2182,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
     !pendingVoiceSubmission && !pendingTeamVoiceSubmission && catalog?.voiceReady &&
     !!project && voiceBackendOk && !!selectedVoice && (!grant || (!nativeMode && !translating));
   const voiceMessages = messages.filter((message) => message.voiceSession === voiceEpoch.current);
+  const catalogStatus = (
+    <ModelReadStatus
+      label={t(catalogError === 'login' ? '登录后使用 AI 助手' : catalogError ? '模型列表加载失败' : '正在读取模型')}
+      error={catalogError ?? undefined}
+      actionLabel={catalogError === 'login' ? t('登录') : undefined}
+      retry={catalogError === 'login' ? onAuth : () => {
+        setCatalogError(null);
+        setCatalogAttempt((attempt) => attempt + 1);
+      }}
+    />
+  );
   const voiceCandidateIds = new Set(voiceMessages.flatMap((message) => message.candidateIds ?? []));
   const hasVoiceResults = voiceMessages.length > 0 || !!delegatedResult;
   const voiceAction = t(muted ? '开启麦克风' : '静音麦克风');
@@ -2524,10 +2537,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         {(!catalog || showVoiceTranscript || toolStatus || voiceExtra === 'details' ||
           error || recoveryLabel) && (
           <div className="voice-workspace-details">
-            {!catalog && (
-              <ModelReadStatus label={t(catalogError ? '模型列表加载失败' : '正在读取模型')}
-                error={catalogError} retry={() => setCatalogAttempt((n) => n + 1)} />
-            )}
+            {!catalog && catalogStatus}
             {showVoiceTranscript && <VoiceCaptions captions={voiceCaptions} compact />}
             {toolStatus && <div className="voice-tool-status"><AssistantActivity label={renderStatus(toolStatus)} color="var(--voice-muted)" /></div>}
             {voiceExtra === 'details' && (
@@ -2698,13 +2708,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             node.scrollHeight - node.clientHeight - node.scrollTop < 64;
         }}
       >
-          {isLoggedIn && !catalog && (
-            <ModelReadStatus
-              label={t(catalogError ? '模型列表加载失败' : '正在读取模型')}
-              error={catalogError}
-              retry={() => setCatalogAttempt((n) => n + 1)}
-            />
-          )}
+          {isLoggedIn && !catalog && catalogStatus}
         {!isLoggedIn ? (
           <div className="ai-conversation-empty ai-login-empty">
             <ComposerVisual kind="assistant" />

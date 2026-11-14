@@ -3518,6 +3518,7 @@ export function App({
                           }
                           onActivityChange={setAiActivity}
                           userId={session.user?.id ?? null}
+                          spaces={session.spaces}
                           projectAssets={assets}
                           currentAsset={asset}
                           referenceSource={referenceSource}

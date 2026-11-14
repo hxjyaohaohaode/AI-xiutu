@@ -24,7 +24,7 @@ import { CheckControl } from './CheckControl';
 import { SquishSwitch } from './control-motion';
 import { FeatureSkeleton } from './DeferredFeature';
 import { OpsReadCoordinator } from './ops-read';
-import type { Asset, Project, PublicConfig, User } from '../lib/types';
+import type { Asset, Project, PublicConfig } from '../lib/types';
 import { Disclosure, OptionChips, ValueSlider } from './Controls';
 import type { ImageCapabilities } from '../ai/types';
 import { OPENAI_SPECIALIST_OPERATIONS, type OpenAISpecialistOperation } from '@ai-xiutu/contracts';
@@ -35,6 +35,7 @@ import { UsageDashboard } from '../usage/UsageDashboard';
 import { AssistantOpsPanel } from './AssistantOpsPanel';
 import { UnknownJobsPanel } from './UnknownJobsPanel';
 import { opsModelFields, auditLabels } from './ops-model-fields';
+import { OpsAccountActions, type OpsAccount } from './OpsAccountActions';
 import './ops-surface.css';
 
 type OpsTab =
@@ -126,7 +127,7 @@ type Overview = {
 };
 type OpsReadResult =
   | { tab: 'overview'; overview: Overview }
-  | { tab: 'users'; users: User[] }
+  | { tab: 'users'; users: OpsAccount[]; canManageAccounts: boolean }
   | { tab: 'config'; config: Config; projects: Project[] }
   | { tab: 'plans'; plans: Plan[] }
   | { tab: 'models'; models: ModelConfig[]; catalog: ProviderCatalogItem[] }
@@ -158,7 +159,8 @@ export function OpsDashboard({
   const [readReady, setReadReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [overview, setOverview] = useState<Overview | null>(null);
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<OpsAccount[]>([]);
+  const [canManageAccounts, setCanManageAccounts] = useState(false);
   const [query, setQuery] = useState('');
   const [config, setConfig] = useState<Config | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
@@ -210,16 +212,13 @@ export function OpsDashboard({
         async (scope, signal): Promise<OpsReadResult> => {
           if (scope.tab === 'overview')
             return { tab: 'overview', overview: await api<Overview>('/ops/overview', { signal }) };
-          if (scope.tab === 'users')
-            return {
-              tab: 'users',
-              users: (
-                await api<{ users: User[] }>(
-                  `/ops/users?query=${encodeURIComponent(scope.query)}`,
-                  { signal },
-                )
-              ).users,
-            };
+          if (scope.tab === 'users') {
+            const accounts = await api<{ users: OpsAccount[]; canManageAccounts: boolean }>(
+              `/ops/users?query=${encodeURIComponent(scope.query)}`,
+              { signal },
+            );
+            return { tab: 'users', ...accounts };
+          }
           if (scope.tab === 'config') {
             const [nextConfig, projects] = await Promise.all([
               api<Config>('/ops/config', { signal }),
@@ -255,7 +254,10 @@ export function OpsDashboard({
           value(result) {
             setReadReady(true);
             if (result.tab === 'overview') setOverview(result.overview);
-            else if (result.tab === 'users') setUsers(result.users);
+            else if (result.tab === 'users') {
+              setUsers(result.users);
+              setCanManageAccounts(result.canManageAccounts);
+            }
             else if (result.tab === 'plans') setPlans(result.plans);
             else if (result.tab === 'audit') setEntries(result.entries);
             else if (result.tab === 'models') {
@@ -476,42 +478,28 @@ export function OpsDashboard({
                         <div>
                           <strong>{user.displayName}</strong>
                           <small>
-                            {user.phoneMasked} · {user.isOperator ? t('运营者') : t('用户')}
+                            {user.phoneMasked && <>{user.phoneMasked} · </>}
+                            {t(user.managesAccounts ? '账号管理员' : user.isOperator ? '运营者' : '用户')}
                           </small>
                         </div>
                         <span className="soft-tag">
-                          {user.status === 'active'
-                            ? t('正常')
-                            : user.status === 'banned'
-                              ? t('已限制')
-                              : t('待短信验证')}
+                          {t(user.status === 'closed' ? '已注销' : user.status === 'active'
+                            ? '正常' : user.status === 'banned' ? '已限制' : '待短信验证')}
                         </span>
-                        <button
-                          className="text-button"
-                          disabled={busy || reason.trim().length < 3}
-                          onClick={() =>
-                            void action(
-                              () =>
-                                api(
-                                  `/ops/users/${user.id}`,
-                                  jsonRequest('PATCH', {
-                                    status: user.status === 'banned' ? 'active' : 'banned',
-                                    reason,
-                                  }),
-                                ),
-                              t('用户状态已更新'),
-                            )
-                          }
-                        >
-                          {user.status === 'banned' ? t('恢复') : t('限制账号')}
-                        </button>
+                        <OpsAccountActions
+                          user={user}
+                          canManageAccounts={canManageAccounts}
+                          reason={reason}
+                          disabled={busy}
+                          action={action}
+                        />
                       </div>
                     ))}
                   </div>
                   {!users.length && <p className="quiet-copy">{t('没有符合条件的用户。')}</p>}
                   {reasonField}
                   <p className="fine-print">
-                    {t('限制账号会撤销现有会话；请先填写依据。不能限制当前运营账号自身。')}
+                    {t('填写操作依据后可限制或恢复普通账号。账号管理员还可以调整运营权限或注销账号。')}
                   </p>
                 </div>
                 <form

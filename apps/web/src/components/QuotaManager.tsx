@@ -292,7 +292,9 @@ export function QuotaManager() {
                     ? t('正常')
                     : user.status === 'banned'
                       ? t('已限制')
-                      : t('待短信验证')}
+                      : user.status === 'closed'
+                        ? t('已注销')
+                        : t('待短信验证')}
                 </small>
               </span>
               {account?.user.id === user.id && <CheckCircle size={19} />}
