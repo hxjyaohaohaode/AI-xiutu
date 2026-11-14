@@ -27,6 +27,7 @@ export function portraitContour(
   target: PortraitTarget,
   { width, height }: Dimensions,
   value: (id: string) => number,
+  sceneAware = false,
 ): FaceContourV3 | undefined {
   const { leftEye, rightEye, oval, lips } = target.contours;
   if (!leftEye?.length || !rightEye?.length || !oval?.length || !lips?.length) return;
@@ -66,6 +67,10 @@ export function portraitContour(
   const strengths = contourTools.map(value) as [number, number, number, number, number, number];
   if (strengths.every((v) => v === 0)) return;
   const [slim, narrow, vFace, jaw, cheekbones, small] = strengths;
+  const balance = sceneAware
+    ? 1 / Math.max(1, Math.hypot(...strengths) * 0.87 +
+      0.28 * Math.max(0, value('eyeSize'), value('eyeHeight'), value('eyeWidth')))
+    : 1;
   const rows: FaceContourV3['rows'] = [];
   const rowCount = 18;
   const chinHold = 0.985;
@@ -125,7 +130,7 @@ export function portraitContour(
       const available = Math.min(cap, room * 0.22);
       return i === 0 || i === rowCount - 1 || available <= 0
         ? 0
-        : visibility * available * Math.tanh((request * span) / available);
+        : visibility * available * Math.tanh((request * span * balance) / available);
     };
     rows.push({
       y,

@@ -3,7 +3,9 @@ export {
   REFINED_PORTRAIT_ANALYSIS,
   PRECISE_PORTRAIT_ANALYSIS,
   OBSERVED_PORTRAIT_ANALYSIS,
+  SCENE_PORTRAIT_ANALYSIS,
 } from './types.js';
+export { protectBackgroundLines } from './scene-protection.js';
 export { PORTRAIT_TOOLS } from './catalog.js';
 export {
   center,

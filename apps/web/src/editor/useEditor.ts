@@ -355,7 +355,8 @@ export function useEditor() {
           if (
             result &&
             completed.source === sourceIdentity.current &&
-            completed.version > settledVersion.current
+            completed.version > settledVersion.current &&
+            (interactiveInput.current !== null || completed.version === previewVersion.current)
           )
             setLiveFrame({
               image: result,
@@ -363,6 +364,14 @@ export function useEditor() {
               quality: completed.quality,
               owner: recyclable ? liveWorker.current : null,
             });
+          else if (recyclable && result?.data.buffer instanceof ArrayBuffer && liveWorker.current) {
+            const buffer = result.data.buffer;
+            try {
+              liveWorker.current.postMessage({ type: 'recycle-point-preview', buffer }, [buffer]);
+            } catch {
+              /* The optional preview lane may have closed. */
+            }
+          }
           pumpPreview(true);
         },
         stopLiveWorker,

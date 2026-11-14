@@ -183,7 +183,7 @@ export interface FaceContourV3 {
 
 export interface WarpStrokeV3 {
   /** Omitted preserves the published displacement field. New flows integrate a smooth velocity. */
-  algorithm?: 'flow-v1' | 'flow-v2' | 'face-field-v1' | 'face-field-v2' | 'restore-v1';
+  algorithm?: 'flow-v1' | 'flow-v2' | 'face-field-v1' | 'face-field-v2' | 'portrait-field-v1' | 'restore-v1';
   /** Source-space constraints used by the face fields. */
   anchors?: FaceWarpAnchorV3[];
   /** Original and requested side outlines for face-field-v2. */

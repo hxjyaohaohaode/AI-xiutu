@@ -108,6 +108,11 @@ export class WarpPreviewCache {
     if (!recipe.enabled || recipe.strokes.length <= 1)
       return applyWarpV3(image, recipe, original, options);
     const last = recipe.strokes.at(-1)!;
+    // A new scene field can change the shared displacement wherever it
+    // overlaps another portrait field, including its smoothed grid edge.
+    if (last.algorithm === 'portrait-field-v1' &&
+        recipe.strokes.at(-2)?.algorithm === 'portrait-field-v1')
+      return applyWarpV3(image, recipe, original, options);
     const prior = { ...recipe, strokes: recipe.strokes.slice(0, -1) };
     const signature = JSON.stringify(prior);
     const matches = (frame: typeof this.prefix): frame is NonNullable<typeof this.prefix> =>

@@ -6,6 +6,7 @@ This project uses MediaPipe Tasks Vision and distributes the following unmodifie
 - MediaPipe BlazeFace Full Range, float16 version 1 (`blaze_face_full_range.tflite`).
 - MediaPipe Pose Landmarker Lite, float16 version 1 (`pose_landmarker_lite.task`).
 - MediaPipe Selfie Multiclass Image Segmenter, float32, 256 × 256, version 1 (`selfie_multiclass_256x256.tflite`).
+- MediaPipe [Hair Segmenter](https://storage.googleapis.com/mediapipe-assets/Model%20Card%20-%20Hair%20Segmentation.pdf), float32, 512 × 512, version 1 (`hair_segmenter.tflite`).
 
 MediaPipe is a Google project. The upstream MediaPipe source and the model cards for these assets identify Apache License 2.0. A copy of that license is provided in `Apache-2.0.txt`. This notice does not change the license of the surrounding project and does not imply Google's endorsement of this application.
 
@@ -21,6 +22,8 @@ Model cards:
 Asset URLs and SHA-256 hashes are maintained in `scripts/vision-assets.mjs`. The installed Tasks Vision SDK version is locked by `package-lock.json`. The preparation script copies the corresponding WebAssembly loader/runtime and these license/notice files to the same-origin static directory. Models and runtime binaries are not committed to Git.
 
 # Portrait matting distribution notice
+
+[YuNet](https://github.com/opencv/opencv_zoo/tree/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet) by Shiqi Yu is distributed under the MIT terms reproduced in `YuNet-MIT.txt`. `portrait-yunet.json` pins the OpenCV Zoo dynamic-input export and its SHA-256. Inference runs at the application origin as a source of candidate face boxes.
 
 MODNet by Zhanghan Ke, Jiayu Sun, Kaican Li, Qiong Yan and Rynson W. H. Lau publishes its photographic portrait model under Apache License 2.0. The pinned ONNX copy is distributed by HivisionIDPhotos. `portrait-matting.json` records the exact downloaded bytes and SHA-256. The original model and inference references are available in the [MODNet repository](https://github.com/ZHKKKe/MODNet/tree/44667be551eff6427e774b60e3b251f90b9dac61) and the [HivisionIDPhotos model release](https://github.com/Zeyi-Lin/HivisionIDPhotos/releases/tag/pretrained-model).
 

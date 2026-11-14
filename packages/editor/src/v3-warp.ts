@@ -3,7 +3,7 @@ import { checkV3, sampleBilinearV3, sampleBoundedCubicV3, clamp01 } from './v3-p
 import type { WarpStrokeV3, WarpV3 } from './v3-types.js';
 import type { RGBAImage, RenderOptions, Point, Dimensions } from './types.js';
 import { flowWarpPoint, flowWarpPointV2 } from './v3-flow.js';
-import { compileFaceWarp, faceWarpBounds } from './face-warp.js';
+import { compileFaceWarp, compilePortraitWarp, faceWarpBounds } from './face-warp.js';
 import { compileFaceContour, faceContourBounds } from './face-contour.js';
 
 function support(stroke: WarpStrokeV3, dimensions: Dimensions) {
@@ -44,6 +44,7 @@ export function compileWarpFieldV3(
 
 function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGBAImage) {
   const short = Math.min(dimensions.width, dimensions.height);
+  const sceneOverlapScale = short * 0.004;
   const referenced = new Set(warp.strokes.map((stroke) => stroke.guardId));
   const guards = new Map(
     warp.enabled
@@ -52,6 +53,10 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
           .map(({ id, mask }) => [id, compileSelectionMaskV3(mask, dimensions, original)])
       : [],
   );
+  const protectedAt =
+    warp.enabled && warp.strokes.some((stroke) => stroke.strength) && warp.protection
+      ? compileSelectionMaskV3(warp.protection, dimensions, original)
+      : null;
   const strokes = warp.enabled
     ? warp.strokes
         .filter((s) => s.strength !== 0)
@@ -68,15 +73,18 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
             dy,
             dragLimit: Math.min(1, (r * 0.8) / Math.max(1e-12, Math.hypot(dx, dy))),
             guard: s.guardId ? guards.get(s.guardId) : undefined,
-            faceField: s.anchors?.length ? compileFaceWarp(s.anchors, dimensions) : undefined,
-            faceContour: s.contour ? compileFaceContour(s.contour, dimensions) : undefined,
+            scene: s.algorithm === 'portrait-field-v1'
+              ? compilePortraitWarp(s.anchors ?? [], s.contour, dimensions, (x, y) =>
+                Math.max(protectedAt?.(x, y) ?? 0,
+                  (s.guardId && guards.get(s.guardId)?.(x, y)) || 0))
+              : undefined,
+            faceField: s.algorithm !== 'portrait-field-v1' && s.anchors?.length
+              ? compileFaceWarp(s.anchors, dimensions) : undefined,
+            faceContour: s.algorithm !== 'portrait-field-v1' && s.contour
+              ? compileFaceContour(s.contour, dimensions) : undefined,
           };
         })
     : [];
-  const protectedAt =
-    strokes.length && warp.protection
-      ? compileSelectionMaskV3(warp.protection, dimensions, original)
-      : null;
   const all = strokes.map((_, index) => index);
   const grid = strokes.length > 8 ? new Map<number, number[]>() : null;
   const cell = Math.max(8, short / 12);
@@ -94,6 +102,8 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
     }
   }
   const empty: number[] = [];
+  let sceneGroup = 0;
+  const sceneGroups = strokes.map((stroke) => stroke.scene ? sceneGroup : ++sceneGroup);
   const candidatesAt = (x: number, y: number) => {
     if (!grid) return all;
     if (x < -short || x > dimensions.width + short || y < -short || y > dimensions.height + short)
@@ -112,6 +122,43 @@ function compileWarpMapping(warp: WarpV3, dimensions: Dimensions, original?: RGB
     while (position >= 0) {
       const i = candidates[position--]!;
       const stroke = strokes[i]!;
+      if (stroke.scene) {
+        // Adjacent automatic portrait fields share the same sample coordinate.
+        // In overlap (typically a head on its body), compose one displacement,
+        // then continue to prior manual/legacy strokes in their saved order.
+        let dx = 0, dy = 0, last = i, participation = 0;
+        const apply = (item: typeof stroke) => {
+          const mapped = item.scene!(x, y);
+          const px = (mapped.x - x) * item.strength;
+          const py = (mapped.y - y) * item.strength;
+          if (px || py) {
+            dx += px;
+            dy += py;
+            participation += Math.min(1, Math.max(Math.abs(px), Math.abs(py)) / sceneOverlapScale);
+          }
+        };
+        apply(stroke);
+        while (position >= 0) {
+          const next = candidates[position]!;
+          if (!strokes[next]!.scene || sceneGroups[next] !== sceneGroups[i]) break;
+          apply(strokes[next]!);
+          last = next;
+          position--;
+        }
+        // Fade in the shared budget as a second field grows. Counting
+        // nonzero fields would make the first field jump at the overlap edge.
+        const mixture = 1 / (1 + Math.max(0, participation - 1) * 0.24);
+        x += dx * mixture;
+        y += dy * mixture;
+        if ((dx || dy) && reconstruction) reconstruction.detail = true;
+        const next = candidatesAt(x, y);
+        if (next !== candidates) {
+          candidates = next;
+          position = candidates.length - 1;
+          while (position >= 0 && next[position]! >= last) position--;
+        }
+        continue;
+      }
       if (stroke.faceField || stroke.faceContour) {
         const protectedWeight = stroke.guard?.(point.x, point.y) ?? 0;
         const strength = stroke.strength * (1 - Math.max(globalProtection, protectedWeight));

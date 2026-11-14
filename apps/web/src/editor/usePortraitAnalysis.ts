@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createPortraitAnalysisAdapter,
   OBSERVED_PORTRAIT_ANALYSIS,
+  SCENE_PORTRAIT_ANALYSIS,
   PRECISE_PORTRAIT_ANALYSIS,
   REFINED_PORTRAIT_ANALYSIS,
   validatePortraitAnalysis,
@@ -89,7 +90,7 @@ export function usePortraitAnalysis(
       try {
         const adapter = createPortraitAnalysisAdapter({
           id: 'mediapipe',
-          algorithmVersion: OBSERVED_PORTRAIT_ANALYSIS,
+          algorithmVersion: SCENE_PORTRAIT_ANALYSIS,
           configured: true,
           analyze: async (input, options) =>
             new Promise((resolve, reject) => {
@@ -262,7 +263,8 @@ export function usePortraitAnalysis(
         (result.algorithmVersion !== ALGORITHM &&
           result.algorithmVersion !== REFINED_PORTRAIT_ANALYSIS &&
           result.algorithmVersion !== PRECISE_PORTRAIT_ANALYSIS &&
-          result.algorithmVersion !== OBSERVED_PORTRAIT_ANALYSIS)
+          result.algorithmVersion !== OBSERVED_PORTRAIT_ANALYSIS &&
+          result.algorithmVersion !== SCENE_PORTRAIT_ANALYSIS)
       )
         throw new Error('人物标注的关键点协议不受当前版本支持，请先通过对应分析适配器转换。');
       stop();

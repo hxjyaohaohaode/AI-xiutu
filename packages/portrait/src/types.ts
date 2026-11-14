@@ -4,6 +4,7 @@ import type { Point, SelectionMaskV3 } from '@ai-xiutu/editor';
 export const REFINED_PORTRAIT_ANALYSIS = 'mediapipe-v2-face-roi';
 export const PRECISE_PORTRAIT_ANALYSIS = 'mediapipe-v3-part-evidence';
 export const OBSERVED_PORTRAIT_ANALYSIS = 'mediapipe-v4-visible-regions';
+export const SCENE_PORTRAIT_ANALYSIS = 'portrait-v5-scene';
 
 export interface VisibleFaceParts {
   pixels: number;
@@ -28,12 +29,15 @@ export interface PortraitTarget {
     teeth?: SelectionMaskV3;
     nostrils?: SelectionMaskV3;
     accessories?: SelectionMaskV3;
+    hair?: SelectionMaskV3;
     relight?: { light: SelectionMaskV3; shade: SelectionMaskV3 };
   };
   /** Local per-person pose segmentation; absent when the outline is unreliable. */
   bodyMask?: SelectionMaskV3;
   /** Soft edit corridor around the observed outline, before protecting neighbors. */
   bodySupport?: SelectionMaskV3;
+  /** Stable scene edges near the selected subject, in source coordinates. */
+  sceneEdges?: SelectionMaskV3;
 }
 export interface PortraitAnalysis {
   schemaVersion: 1;

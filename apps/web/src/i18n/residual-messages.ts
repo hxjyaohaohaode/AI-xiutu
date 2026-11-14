@@ -334,6 +334,10 @@ export const residualEnglish: Readonly<Record<string, string>> = {
   '缺少原始图像指纹。': 'Source image fingerprint is missing.',
   '当前设备不能创建分析画布。': 'This device cannot create an analysis canvas.',
   正在定位面部关键点: 'Locating facial landmarks',
+  '远景人脸补充识别未完成。': 'Additional distant face detection did not finish.',
+  '部分远景或暗光人脸的补检未完成。': 'Additional detection for some distant or dimly lit faces did not finish.',
+  '头发细部分析未完成。': 'Fine hair analysis did not finish.',
+  '画面中疑似海报或屏幕上的人像已排除。': 'Likely portraits on posters or screens were excluded.',
   '正在分离皮肤、头发与背景': 'Separating skin, hair & background',
   没有分割结果: 'No segmentation result',
   '皮肤分割未完成，当前只使用面部轮廓并排除五官；请检查蒙版。':

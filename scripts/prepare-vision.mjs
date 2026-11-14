@@ -53,6 +53,7 @@ for (const asset of prepared) {
 await mkdir(resolve(out, 'wasm'), { recursive: true });
 await copyFile(resolve(root, 'third-party/Apache-2.0.txt'), resolve(out, 'LICENSE.txt'));
 await copyFile(resolve(root, 'third-party/BiRefNet-MIT.txt'), resolve(out, 'BiRefNet-MIT.txt'));
+await copyFile(resolve(root, 'third-party/YuNet-MIT.txt'), resolve(out, 'YuNet-MIT.txt'));
 await copyFile(resolve(root, 'third-party/NOTICE.md'), resolve(out, 'NOTICE.txt'));
 await copyFile(
   resolve(root, 'third-party/ONNX-Runtime-LICENSE.txt'),
@@ -65,6 +66,10 @@ await copyFile(
 await copyFile(
   resolve(root, 'node_modules/onnxruntime-web/dist', matting.runtimeFile),
   resolve(out, 'wasm', matting.runtimeFile),
+);
+await copyFile(
+  resolve(root, 'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs'),
+  resolve(out, 'wasm/ort-wasm-simd-threaded.mjs'),
 );
 for (const variant of ['asyncify', 'jsep'])
   for (const extension of ['mjs', 'wasm']) {

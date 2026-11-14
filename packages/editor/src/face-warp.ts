@@ -1,5 +1,6 @@
 import type { Dimensions, Point } from './types.js';
-import type { FaceWarpAnchorV3 } from './v3-types.js';
+import type { FaceContourV3, FaceWarpAnchorV3 } from './v3-types.js';
+import { compileFaceContour, faceContourBounds } from './face-contour.js';
 
 function movingAnchors(anchors: FaceWarpAnchorV3[], dimensions: Dimensions) {
   const short = Math.min(dimensions.width, dimensions.height);
@@ -66,6 +67,78 @@ function constraintBounds(constraints: ReturnType<typeof movingAnchors>) {
 
 export function faceWarpBounds(anchors: FaceWarpAnchorV3[], dimensions: Dimensions) {
   return constraintBounds(movingAnchors(anchors, dimensions));
+}
+
+/** Sample contour and feature requests into one photo-space displacement grid.
+ * Photograph edges and other subjects are soft pins in the solve itself, so
+ * protection cannot introduce a new sharp gradient after the grid is fitted. */
+export function compilePortraitWarp(
+  anchors: FaceWarpAnchorV3[],
+  contour: FaceContourV3 | undefined,
+  dimensions: Dimensions,
+  protection: (x: number, y: number) => number,
+) {
+  const detail = anchors.length ? compileFaceWarp(anchors, dimensions, true) : undefined;
+  const outline = contour ? compileFaceContour(contour, dimensions) : undefined;
+  const boxes = [
+    ...(anchors.length ? [faceWarpBounds(anchors, dimensions)] : []),
+    ...(contour ? [faceContourBounds(contour, dimensions)] : []),
+  ];
+  const left = Math.max(0, Math.min(...boxes.map((b) => b.left)));
+  const right = Math.min(dimensions.width, Math.max(...boxes.map((b) => b.right)));
+  const top = Math.max(0, Math.min(...boxes.map((b) => b.top)));
+  const bottom = Math.min(dimensions.height, Math.max(...boxes.map((b) => b.bottom)));
+  if (!(right > left && bottom > top)) return (x: number, y: number): Point => ({ x, y });
+  const pitch = Math.max(0.45, Math.min(right - left, bottom - top) / 66);
+  const cols = Math.min(144, Math.max(8, Math.ceil((right - left) / pitch) + 1));
+  const rows = Math.min(144, Math.max(8, Math.ceil((bottom - top) / pitch) + 1));
+  const stepX = (right - left) / (cols - 1), stepY = (bottom - top) / (rows - 1);
+  const displacement = new Float64Array(cols * rows * 2);
+  const mobility = new Float32Array(cols * rows);
+  for (let row = 1; row < rows - 1; row++) {
+    const y = top + row * stepY;
+    for (let col = 1; col < cols - 1; col++) {
+      const x = left + col * stepX;
+      const middle = detail?.(x, y) ?? { x, y };
+      const mapped = outline?.(middle.x, middle.y) ?? middle;
+      const at = row * cols + col;
+      const weight = 1 - Math.min(1, Math.max(0, protection(x / dimensions.width, y / dimensions.height)));
+      mobility[at] = weight;
+      displacement[at * 2] = (mapped.x - x) * weight;
+      displacement[at * 2 + 1] = (mapped.y - y) * weight;
+    }
+  }
+  // Local regularization has a stronger effect where protection cuts across
+  // a requested movement. The source displacement remains the data term.
+  const field = displacement.slice();
+  const stride = 2 * cols;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let row = 1; row < rows - 1; row++) {
+      for (let col = 1; col < cols - 1; col++) {
+        const at = row * cols + col, i = at * 2;
+        const move = mobility[at]!;
+        if (move < 0.01) continue;
+        const mix = move * 0.21;
+        for (let c = 0; c < 2; c++) {
+          const p = i + c;
+          const mean = (field[p - 2]! + field[p + 2]! + field[p - stride]! + field[p + stride]!) * 0.25;
+          field[p] = displacement[p]! * (1 - mix) + mean * mix;
+        }
+      }
+    }
+  }
+  const safe = derivativeScale(field, cols, rows, stepX, stepY, 0.72);
+  return (x: number, y: number): Point => {
+    if (x <= left || x >= right || y <= top || y >= bottom) return { x, y };
+    const u = (x - left) / stepX, v = (y - top) / stepY;
+    const col = Math.min(cols - 2, Math.floor(u)), row = Math.min(rows - 2, Math.floor(v));
+    const fx = u - col, fy = v - row, index = (row * cols + col) * 2;
+    const movement = Math.min(1, (1 - protection(x / dimensions.width, y / dimensions.height)) * 3);
+    const sample = (at: number) =>
+      ((field[at]! * (1 - fx) + field[at + 2]! * fx) * (1 - fy) +
+        (field[at + stride]! * (1 - fx) + field[at + stride + 2]! * fx) * fy) * safe * movement;
+    return { x: x + sample(index), y: y + sample(index + 1) };
+  };
 }
 
 function derivativeScale(
@@ -146,16 +219,19 @@ function constrainContour(
 
 /** Compose contour changes and complete-feature transforms in one inverse map.
  * Store source-pixel displacements on a scale-independent grid for preview/export parity. */
-export function compileFaceWarp(anchors: FaceWarpAnchorV3[], dimensions: Dimensions) {
+export function compileFaceWarp(
+  anchors: FaceWarpAnchorV3[], dimensions: Dimensions, singleField = false,
+) {
   const constraints = movingAnchors(anchors, dimensions);
   const bounds = constraintBounds(constraints);
   const width = bounds.right - bounds.left;
   const height = bounds.bottom - bounds.top;
   if (!width || !height) return (x: number, y: number): Point => ({ x, y });
 
-  const pitch = Math.min(width, height) / 64;
-  const cols = Math.min(144, Math.max(65, Math.ceil(width / pitch) + 1));
-  const rows = Math.min(144, Math.max(65, Math.ceil(height / pitch) + 1));
+  const cells = singleField ? 48 : 64;
+  const pitch = Math.min(width, height) / cells;
+  const cols = Math.min(144, Math.max(cells + 1, Math.ceil(width / pitch) + 1));
+  const rows = Math.min(144, Math.max(cells + 1, Math.ceil(height / pitch) + 1));
   const stepX = width / (cols - 1);
   const stepY = height / (rows - 1);
   const field = new Float64Array(cols * rows * 2);

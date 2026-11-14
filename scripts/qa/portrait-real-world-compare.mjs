@@ -34,6 +34,7 @@ const names = {
   'smile-studio': '正脸肤质与笑容',
   'profile-pedro': '日光下的侧脸',
   'group-aerobics': '多人运动与手臂轮廓',
+  'ballet-arms': '可见上臂与前臂',
 };
 const labels = new Map(Object.entries(newReport.inventory).map(([id, v]) => [id, v.label]));
 const escape = (s) =>
@@ -207,6 +208,7 @@ const display = [
   'smile-studio',
   'profile-pedro',
   'group-aerobics',
+  'ballet-arms',
 ];
 for (const name of display) {
   const input = inputs.find((photo) => photo.name === name);
@@ -220,6 +222,20 @@ for (const name of display) {
     return `<figure><a href="${file}"><img src="${file}" loading="lazy" alt="${escape(names[name] + ' ' + title)}"></a><figcaption>${escape(desc)}</figcaption></figure>`;
   };
   const figures = [];
+  const describe = (values) =>
+    Object.entries(values)
+      .map(([id, value]) => (labels.get(id) ?? id) + ' ' + value)
+      .join('、') || '无可用调整';
+  function compareSettings(previous, next) {
+    return (
+      (next.requestedValues ? '共同请求 ' + describe(next.requestedValues) + '。' : '') +
+      '旧版生效 ' +
+      describe(previous.values) +
+      '。新版生效 ' +
+      describe(next.values) +
+      '。'
+    );
+  }
   const count = (entry, kind) => entry.targets.filter((t) => t.kind === kind).length;
   if (['group-distance', 'group-street', 'group-crew'].includes(name))
     figures.push(
@@ -230,6 +246,19 @@ for (const name of display) {
         '绿色为脸部轮廓，蓝线为姿态锚点，黄色为已确认的身体截面或脚部支点。',
       ),
     );
+  for (const [key, title] of [
+    ['portrait-stack', '面部和身形一起调'],
+    ['complete-edit', '人像、调节、局部和构图成片'],
+  ]) {
+    const previous = a.comparisons.find((c) => c.name === key);
+    const next = b.comparisons.find((c) => c.name === key);
+    if (!previous || !next) continue;
+    const grade =
+      key === 'complete-edit'
+        ? '两版额外应用同一个全局色调、局部提亮与修复、裁切、旋转和四角校正配方。'
+        : '';
+    figures.push(await figure(title, key, undefined, grade + compareSettings(previous, next)));
+  }
   for (const kind of ['face', 'body']) {
     const modes = ['stack', 'single', 'strong'];
     for (const mode of modes) {
@@ -257,11 +286,7 @@ for (const name of display) {
       const title =
         (kind === 'face' ? '面部' : '身形') +
         { stack: '日常叠加', single: '单项', strong: '高强度叠加' }[mode];
-      const describe = (entry) =>
-        Object.entries(entry.values)
-          .map(([id, value]) => (labels.get(id) ?? id) + ' ' + value)
-          .join('、') || '当前样本无可用调整';
-      const caption = '旧版 ' + describe(oldCase) + '。新版 ' + describe(newCase) + '。';
+      const caption = compareSettings(oldCase, newCase);
       const crop =
         mode === 'single' && kind === 'face'
           ? detailRect(name, { width: b.size[0], height: b.size[1] }, oldCase, newCase)

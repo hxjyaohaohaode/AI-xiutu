@@ -308,6 +308,7 @@ export function bodyProportionAnchors(
   size: Dimensions,
   value: (id: string) => number,
   observed = false,
+  sceneAware = false,
 ): FaceWarpAnchorV3[] {
   const result: FaceWarpAnchorV3[] = [];
   const short = Math.min(size.width, size.height);
@@ -326,6 +327,8 @@ export function bodyProportionAnchors(
   };
   // The caller has already filtered unavailable values on the same analysis.
   const gain = Object.fromEntries([...bodyPrecisionTools].map((id) => [id, value(id)]));
+  const widthBalance = sceneAware ? 1 / Math.max(1, 0.70 + 0.26 * Math.hypot(
+    ...['shoulders', 'waist', 'hips', 'arms', 'legs', 'height', 'legLength'].map(value))) : 1;
   const pose = gain.height || gain.legLength ? fullPose(target, size, observed) : undefined;
   const shoulderDistance = pose ? span(pose.shoulder, pose.hip, size) : 0;
   const stretchBudget = observed
@@ -389,7 +392,7 @@ export function bodyProportionAnchors(
   for (const key of bodySectionKeys) {
     const band = sections(target, key);
     const setting = widthKeys[key];
-    const width = setting ? (gain[setting[0]] ?? 0) * setting[1] : 0;
+    const width = setting ? (gain[setting[0]] ?? 0) * setting[1] * widthBalance : 0;
     const subjectLeg = key.startsWith('thigh') || key.startsWith('shin');
     if (key.endsWith('A') || key.endsWith('B')) {
       if (key.startsWith('upperArm') || key.startsWith('forearm')) {
@@ -448,6 +451,15 @@ export function bodyProportionAnchors(
     const radius = pose.length * 0.085;
     for (const p of target.contours.footPins ?? []) pin(p, radius, 0.94);
     if (!heightGain) for (const p of target.contours.headPins ?? []) pin(p, radius, 0.95);
+  }
+  if (sceneAware && result.length) {
+    // Stop width changes from dragging isolated hands, knees and shoes. A
+    // leg-length edit needs the knees to follow its longitudinal request.
+    const width = Math.max(8, span(target.landmarks[11]!, target.landmarks[12]!, size));
+    for (const index of [15, 16, 27, 28, ...(!lengthGain && !heightGain ? [25, 26] : [])]) {
+      const p = visible(target, index);
+      if (p) pin(p, width * 0.12, 0.85);
+    }
   }
   return result;
 }

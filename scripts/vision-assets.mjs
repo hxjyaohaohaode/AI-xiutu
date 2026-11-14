@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import yuNet from '../third-party/portrait-yunet.json' with { type: 'json' };
 
 // Versioned official assets. Size and structural checks are intentional: a hash
 // accidentally recorded from a partial download must not validate a broken model.
@@ -15,6 +16,14 @@ export const assets = [
     path: 'face_detector/blaze_face_full_range/float16/1/blaze_face_full_range.tflite',
     bytes: 1083786,
     sha256: '3698b18f063835bc609069ef052228fbe86d9c9a6dc8dcb7c7c2d69aed2b181b',
+    format: 'tflite',
+  },
+  { ...yuNet, format: 'onnx' },
+  {
+    file: 'hair_segmenter.tflite',
+    path: 'image_segmenter/hair_segmenter/float32/1/hair_segmenter.tflite',
+    bytes: 781618,
+    sha256: '2628cf3ce5f695f604cbea2841e00befcaa3624bf80caf3664bef2656d59bf84',
     format: 'tflite',
   },
   {

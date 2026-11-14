@@ -78,7 +78,13 @@ export function GeometryControls({
     value: numericAt(recipe, tool.path),
     onChange: (value: number) => {
       try {
-        apply(withNumeric(currentV3(editor), tool, value), '调整' + tool.label);
+        const current = currentV3(editor);
+        const next = withNumeric(current, tool, value);
+        // Contain translates the output bounds along with the content, so the
+        // first nonzero placement should establish a fixed canvas.
+        if (value && tool.path.startsWith('transform.translate') && next.transform.fit === 'contain')
+          next.transform.fit = 'crop';
+        apply(next, '调整' + tool.label);
       } catch (error) {
         report(error instanceof Error ? error.message : '参数组合不可用。');
       }

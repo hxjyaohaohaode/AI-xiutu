@@ -1,6 +1,7 @@
 import { createRasterMask, MAX_RASTER_RUNS_PER_MASK, type Point } from '@ai-xiutu/editor';
 import { boundsOf } from '@ai-xiutu/portrait';
 import type { FaceDetector, FaceLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision';
+import type { FaceCandidate } from './yunet';
 
 type Landmarks = ReturnType<FaceLandmarker['detect']>['faceLandmarks'][number];
 type Window = ReturnType<typeof boundsOf>;
@@ -419,16 +420,151 @@ export function detectFaceDetails(
   });
 }
 
+/** Non-destructive exposure normalization for detector input. */
+function liftedForDetection(pixels: ImageData) {
+  const data = pixels.data;
+  const hist = new Uint32Array(256);
+  const luminance = (i: number) =>
+    Math.round(0.2126 * data[i]! + 0.7152 * data[i + 1]! + 0.0722 * data[i + 2]!);
+  let count = 0, dark = 0;
+  for (let i = 0; i < data.length; i += 12) {
+    if (data[i + 3]! < 224) continue;
+    const y = luminance(i);
+    if (y < 9) dark++;
+    else {
+      hist[y]!++;
+      count++;
+    }
+  }
+  if (count < 64 || dark / (dark + count) < 0.23) return false;
+  let white = 9, sum = 0;
+  for (; white < 255; white++) {
+    sum += hist[white]!;
+    if (sum >= 0.9 * count) break;
+  }
+  white = Math.max(24, white);
+  if (white > 210 && dark / (dark + count) < 0.68) return false;
+  const gain = Float32Array.from({ length: 256 }, (_, y) =>
+    Math.min(8, Math.max(1, 255 * Math.min(y / white, 1) ** 0.72 / Math.max(1, y))),
+  );
+  for (let i = 0; i < data.length; i += 4) {
+    const g = gain[luminance(i)]!;
+    for (let c = 0; c < 3; c++) data[i + c] = data[i + c]! * g;
+  }
+  return true;
+}
+
+export async function recoverYuNetFaces(
+  source: OffscreenCanvas,
+  face: FaceLandmarker,
+  existing: Landmarks[],
+  oval: (points: Point[]) => Point[],
+  excluded: (candidate: FaceCandidate) => boolean,
+) {
+  const { openYuNet } = await import('./yunet');
+  const detector = await openYuNet();
+  const view = analysisCanvas(source, entireFrame, 960);
+  const initial = existing.map((points) => boundsOf(oval(points)));
+  const recovered: Face[] = [];
+  try {
+    const ctx = view.getContext('2d', { willReadFrequently: true })!;
+    const pixels = ctx.getImageData(0, 0, view.width, view.height);
+    const boxes = await detector.detect(pixels);
+    if (!existing.length && liftedForDetection(pixels)) {
+      for (const candidate of await detector.detect(pixels)) {
+        const previous = boxes.findIndex(({ bounds }) => sameFace(bounds, candidate.bounds));
+        if (previous === -1) boxes.push(candidate);
+        else if (boxes[previous]!.score < candidate.score) boxes[previous] = candidate;
+      }
+    }
+    for (const candidate of boxes.sort((a, b) => b.score - a.score)) {
+      if (existing.length + recovered.length >= 12) break;
+      if (initial.some((b) => sameFace(b, candidate.bounds)) ||
+          recovered.some(({ bounds }) => sameFace(bounds, candidate.bounds)) ||
+          excluded(candidate)) continue;
+      const size = Math.max(candidate.bounds.width * source.width, candidate.bounds.height * source.height) * 1.65;
+      const { x, y, width, height } = candidate.bounds;
+      const left = Math.max(0, x + width * 0.5 - size * 0.5 / source.width);
+      const top = Math.max(0, y + height * 0.5 - size * 0.5 / source.height);
+      const window = { x: left, y: top,
+        width: Math.min(1, x + width * 0.5 + size * 0.5 / source.width) - left,
+        height: Math.min(1, y + height * 0.5 + size * 0.5 / source.height) - top,
+      };
+      const scale = 480 / Math.max(window.width * source.width, window.height * source.height);
+      const canvas = new OffscreenCanvas(Math.max(1, Math.round(window.width * source.width * scale)),
+        Math.max(1, Math.round(window.height * source.height * scale)));
+      try {
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(source, window.x * source.width, window.y * source.height,
+          window.width * source.width, window.height * source.height, 0, 0, canvas.width, canvas.height);
+        const candidates = (adjusted: boolean) => {
+          if (adjusted) {
+            const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            if (!liftedForDetection(pixels)) return [];
+            ctx.putImageData(pixels, 0, 0);
+          }
+          return face.detect(canvas).faceLandmarks.flatMap((landmarks) => {
+            const points = landmarks.map((p) => ({ ...p,
+              x: window.x + p.x * window.width, y: window.y + p.y * window.height,
+              z: p.z * window.width,
+            }));
+            try {
+              const bounds = boundsOf(oval(points));
+              const box = candidate.bounds;
+              const overlapWidth = Math.max(0, Math.min(bounds.x + bounds.width, box.x + box.width) - Math.max(bounds.x, box.x));
+              const overlapHeight = Math.max(0, Math.min(bounds.y + bounds.height, box.y + box.height) - Math.max(bounds.y, box.y));
+              const intersection = overlapWidth * overlapHeight;
+              const agreement = intersection / (bounds.width * bounds.height + box.width * box.height - intersection);
+              const nose = points[1];
+              if (!nose || nose.x < 0 || nose.x > 1 || nose.y < 0 || nose.y > 1 || agreement < 0.24 ||
+                initial.some((b) => sameFace(b, bounds)) ||
+                recovered.some((other) => sameFace(other.bounds, bounds))) return [];
+              return [{ bounds, points, agreement }];
+            } catch {
+              return [];
+            }
+          });
+        };
+        const raw = candidates(false);
+        const best = (raw.length ? raw : candidates(true)).sort((a, b) => b.agreement - a.agreement)[0];
+        if (best) recovered.push(best);
+      } finally {
+        canvas.width = canvas.height = 1;
+      }
+    }
+  } finally {
+    view.width = view.height = 1;
+    await detector.close();
+  }
+  return [...existing, ...recovered.sort((a, b) =>
+    a.bounds.x - b.bounds.x || a.bounds.y - b.bounds.y).map(({ points }) => points)];
+}
+
 type PoseOutput = ReturnType<PoseLandmarker['detect']>;
 type BodyObservation = {
   points: PoseOutput['landmarks'][number];
   sample?: (p: Point) => number;
 };
 
+function sharesTorso(a: BodyObservation, b: BodyObservation, distance: (a: Point, b: Point) => number) {
+  const p = a.points, q = b.points;
+  const width = Math.max(8, Math.min(distance(p[11]!, p[12]!), distance(q[11]!, q[12]!)));
+  const center = (points: typeof p, first: number) => ({
+    x: (points[first]!.x + points[first + 1]!.x) / 2,
+    y: (points[first]!.y + points[first + 1]!.y) / 2,
+  });
+  if ([11, 12, 23, 24].some((i) => Math.min(p[i]!.visibility, q[i]!.visibility) < 0.58))
+    return false;
+  return distance(center(p, 23), center(q, 23)) < 0.34 * width &&
+    distance(center(p, 11), center(q, 11)) < 0.49 * width;
+}
+
 export function observeBodies(
   source: OffscreenCanvas,
   pose: PoseLandmarker,
-  faces: readonly Window[],
+  legacyFaces: readonly Window[],
+  confirmedFaces: readonly Window[],
 ) {
   function detect(window: Window): BodyObservation[] {
     // The native float callback requires aligned rows at the inference size.
@@ -502,40 +638,77 @@ export function observeBodies(
   // slot previously assigned to another person in a saved recipe.
   const bodies = detect(entireFrame).sort((a, b) => leftEdge(a) - leftEdge(b));
   const originalCount = bodies.length;
-  const expected = faces
-    .filter((face) => face.height < 0.19 && face.y + face.height * 3 < 1)
-    .sort((a, b) => b.height - a.height);
-  for (const head of expected.slice(0, 8)) {
+  const headContext = (face: Window) => face.height < 0.19 && face.y + face.height * 3 < 1;
+  function matchesHead(body: BodyObservation, head: Window, margin: number) {
+    const nose = body.points[0]!;
+    return (
+      nose.visibility >= 0.51 &&
+      nose.x >= head.x - head.width * margin &&
+      nose.x <= head.x + head.width * (1 + margin) &&
+      nose.y >= head.y - head.height * 0.3 &&
+      nose.y <= head.y + head.height * 1.23
+    );
+  }
+  function refineHead(head: Window, limit: number) {
     const x = head.x + head.width * 0.5;
     const y = Math.max(0, head.y - head.height * 0.65);
     const height = Math.min(1 - y, head.height * 10.85);
     const halfWidth = Math.min(((height * source.height) / source.width) * 0.39, head.width * 3.1);
     const left = Math.max(0, x - halfWidth),
       right = Math.min(1, x + halfWidth);
-    const sameHead = (body: BodyObservation) => {
-      const nose = body.points[0]!;
-      return (
-        nose.visibility >= 0.51 &&
-        nose.x >= head.x - head.width * 0.3 &&
-        nose.x <= head.x + head.width * 1.3 &&
-        nose.y >= head.y - head.height * 0.3 &&
-        nose.y <= head.y + head.height * 1.23
-      );
-    };
+    const sameHead = (body: BodyObservation) => matchesHead(body, head, 0.3);
     const existing = bodies.findIndex(sameHead);
-    if (existing >= 0 && head.height >= 0.105 && quality(bodies[existing]!) > 12) continue;
-    if (existing < 0 && bodies.length >= 8) continue;
+    if (existing >= 0 && head.height >= 0.105 && quality(bodies[existing]!) > 12) return;
+    if (existing < 0 && bodies.length >= limit) return;
     const alternatives = detect({ x: left, y, width: right - left, height }).filter(sameHead);
     const best = alternatives.sort((a, b) => quality(b) - quality(a))[0];
-    if (!best || quality(best) < 7 || !best.sample || best.sample(best.points[0]!) < 0.3) continue;
+    if (!best || quality(best) < 7 || !best.sample || best.sample(best.points[0]!) < 0.3) return;
     const same = existing >= 0 ? existing : bodies.findIndex((body) => compatible(body, best));
     if (same < 0) bodies.push(best);
     else if (quality(best) >= quality(bodies[same]!) - 0.16) bodies[same] = best;
   }
-  return [
-    ...bodies.slice(0, originalCount),
-    ...bodies.slice(originalCount).sort((a, b) => a.points[0]!.x - b.points[0]!.x),
+  // Run the historical search before adding new proposals. A new face must
+  // never cause a previously saved pose slot to refer to a different person.
+  for (const head of legacyFaces.filter(headContext).sort((a, b) => b.height - a.height).slice(0, 8))
+    refineHead(head, 8);
+  bodies.splice(originalCount, bodies.length - originalCount,
+    ...bodies.slice(originalCount).sort((a, b) => a.points[0]!.x - b.points[0]!.x));
+  const legacyCount = bodies.length;
+  for (const head of confirmedFaces.filter(headContext).sort((a, b) => b.height - a.height))
+    if (!bodies.some((body) => matchesHead(body, head, 0.3))) refineHead(head, 12);
+  const ordered = [
+    ...bodies.slice(0, legacyCount),
+    ...bodies.slice(legacyCount).sort((a, b) => a.points[0]!.x - b.points[0]!.x),
   ];
+  const faceMatch = (body: BodyObservation) =>
+    confirmedFaces.some((head) => matchesHead(body, head, 0.25));
+  function sharesLegWithoutHead(candidate: BodyObservation, known: BodyObservation) {
+    const shoulder = Math.max(8, distance(known.points[11]!, known.points[12]!));
+    if (distance(candidate.points[0]!, known.points[0]!) > 0.76 * shoulder) return false;
+    // A mixed pose may borrow one person's leg and another person's shoulder.
+    // Prefer a pose tied to a real face if both the ankle and its heel or toe agree.
+    return [[27, 29, 31], [28, 30, 32]].some(([ankle, heel, toe]) => {
+      const agrees = (i: number) =>
+        Math.min(candidate.points[i]!.visibility, known.points[i]!.visibility) > 0.62 &&
+        distance(candidate.points[i]!, known.points[i]!) < 0.22 * shoulder;
+      return agrees(ankle!) && (agrees(heel!) || agrees(toe!));
+    });
+  }
+  // Preserve slots. Two noisy noses can land on different sides of the same
+  // turned head, even when shoulders and hips point to the same torso.
+  return ordered
+    .map((body, slot) => ({ ...body, slot, confirmed: faceMatch(body) }))
+    .sort((a, b) => Number(b.confirmed) - Number(a.confirmed) || quality(b) - quality(a))
+    // Reject a duplicate only against a keeper, not a candidate already
+    // rejected for being a weaker match.
+    .reduce<Array<BodyObservation & { slot: number; confirmed: boolean }>>((kept, body) => {
+      if (!kept.some((other) =>
+        compatible(body, other) || sharesTorso(body, other, distance) ||
+        (!body.confirmed && other.confirmed && sharesLegWithoutHead(body, other))))
+        kept.push(body);
+      return kept;
+    }, [])
+    .sort((a, b) => a.slot - b.slot);
 }
 
 function anchorDistance(a: Landmarks, b: Landmarks) {

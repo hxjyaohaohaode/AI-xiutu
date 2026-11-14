@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
-import { createServer } from 'vite';
+import { createServer, preview } from 'vite';
 import {
   compileEditorCoordinateMap,
   createRecipeV4,
@@ -21,11 +21,19 @@ const artifacts = resolve(
 );
 await mkdir(artifacts, { recursive: true });
 const temporary = await mkdtemp(resolve(tmpdir(), 'xiutu-preview-'));
-const vite = await createServer({
-  configFile: resolve(root, 'apps/web/vite.config.ts'),
-  cacheDir: resolve(temporary, 'vite'),
-  server: { host: '127.0.0.1', port: 0 },
-});
+const configFile = resolve(root, 'apps/web/vite.config.ts');
+const dist = process.env.PREVIEW_BUILT_DIST;
+const vite = dist
+  ? await preview({
+      configFile,
+      build: { outDir: resolve(root, dist) },
+      preview: { host: '127.0.0.1', port: 0 },
+    })
+  : await createServer({
+      configFile,
+      cacheDir: resolve(temporary, 'vite'),
+      server: { host: '127.0.0.1', port: 0 },
+    });
 const report = {
   cases: [],
   workerRecovery: { state: 'not-run', reason: 'The independent recovery check has not started.' },
@@ -168,7 +176,7 @@ async function verifyLocalMaskAndLiquify(input) {
     await page.route('**/v1/**', (route) =>
       route.fulfill({ status: 503, json: { message: 'offline' } }),
     );
-    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    await page.goto(`http://127.0.0.1:${vite.httpServer.address().port}/#/studio`, { waitUntil: 'load', timeout: 60000 });
     await page
       .getByLabel('选择照片', { exact: true })
       .setInputFiles({ name: 'scene-preview.png', mimeType: 'image/png', buffer: encoded });
@@ -853,7 +861,7 @@ async function verifyWorkerRecovery({ png, source }) {
   }
 }
 try {
-  await vite.listen();
+  if ('listen' in vite) await vite.listen();
   const channel = process.env.BROWSER_CHANNEL;
   browser = await chromium.launch({ headless: true, ...(channel ? { channel } : {}) });
   report.browser = browser.version();

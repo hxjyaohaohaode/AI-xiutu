@@ -22,6 +22,7 @@ export function featureTransforms(
   value: (id: string) => number,
   coordinated = false,
   observed = false,
+  sceneAware = false,
 ): FaceWarpAnchorV3[] {
   const { leftEye, rightEye, lips } = target.contours;
   if (!leftEye?.length || !rightEye?.length || !lips?.length) return [];
@@ -90,16 +91,20 @@ export function featureTransforms(
       ? Math.abs((browCenter.y - origin.y) * height * ux - (browCenter.x - origin.x) * width * uy)
       : w;
     const size = value('eyeSize');
+    const shapeUse = Math.hypot(value('faceSlim'), value('faceNarrow'), value('vFace'), value('faceSmall'));
+    const shared = sceneAware ? 1 / Math.max(1, 0.87 +
+      Math.max(0, size) * 0.18 + shapeUse * 0.3 +
+      Math.max(Math.abs(value('irisScale')), Math.abs(value('pupilSize'))) * 0.19) : 1;
     const eyeMove = build(
       origin,
       w,
       h,
       side * w * value('eyeSpacing') * (coordinated ? 0.06 * aperture : 0.11),
       coordinated
-        ? 0.079 * aperture * Math.tanh((size * 0.068 + value('eyeWidth') * 0.069) / 0.079)
+        ? 0.079 * aperture * Math.tanh((size * 0.068 + value('eyeWidth') * 0.069) * shared / 0.079)
         : size * 0.145 + value('eyeWidth') * 0.15,
       coordinated
-        ? 0.098 * aperture * Math.tanh((size * 0.084 + value('eyeHeight') * 0.094) / 0.098)
+        ? 0.098 * aperture * Math.tanh((size * 0.084 + value('eyeHeight') * 0.094) * shared / 0.098)
         : size * 0.195 + value('eyeHeight') * 0.24,
       -side * value('eyeRotate') * down * (coordinated ? 5 * aperture : 11),
       Math.max(h * 1.05, gap * 0.86),

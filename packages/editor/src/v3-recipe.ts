@@ -756,7 +756,8 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
             r.algorithm !== 'flow-v1' &&
             r.algorithm !== 'flow-v2' &&
             r.algorithm !== 'face-field-v1' &&
-            r.algorithm !== 'face-field-v2'
+            r.algorithm !== 'face-field-v2' &&
+            r.algorithm !== 'portrait-field-v1'
       )
         errors.push(`${p}.algorithm: unsupported warp algorithm`);
       if (Object.hasOwn(r, 'resampling') && r.resampling !== 'bounded-cubic-v1')
@@ -765,7 +766,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         ? identifier(r.guardId, `${p}.guardId`, errors)
         : undefined;
       if (guardId && !guardIds.has(guardId)) errors.push(`${p}.guardId: unknown warp guard`);
-      const faceFieldV2 = r.algorithm === 'face-field-v2';
+      const faceFieldV2 = r.algorithm === 'face-field-v2' || r.algorithm === 'portrait-field-v1';
       const faceField = r.algorithm === 'face-field-v1' || faceFieldV2;
       if (!faceFieldV2 && r.contour !== undefined)
         errors.push(p + '.contour: requires face-field-v2');
@@ -825,6 +826,7 @@ export function parseRecipeV3(input: unknown): RecipeV3 {
         r.algorithm === 'flow-v2' ||
         r.algorithm === 'face-field-v1' ||
         r.algorithm === 'face-field-v2' ||
+        r.algorithm === 'portrait-field-v1' ||
         r.algorithm === 'restore-v1'
           ? { algorithm: r.algorithm }
           : {}),

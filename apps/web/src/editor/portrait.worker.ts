@@ -18,10 +18,11 @@ import {
   analyzeFacePixels,
   analyzeHeadBoundaries,
   measureBodySections,
+  protectBackgroundLines,
   visibleFaceParts,
   visibleEyeAccessories,
   visibleMeshLighting,
-  OBSERVED_PORTRAIT_ANALYSIS,
+  SCENE_PORTRAIT_ANALYSIS,
   anchoredSubjectPrior,
   type PortraitAnalysis,
   type PortraitTarget,
@@ -39,7 +40,9 @@ import {
   observeBodies,
   poseEditCorridor,
   recoverDistantFaces,
+  recoverYuNetFaces,
 } from './portrait-refinement';
+import { framedPortrait } from './framed-portrait';
 
 type Request = {
   id: number;
@@ -144,7 +147,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     const result: PortraitAnalysis = {
       schemaVersion: 1,
       provider: 'mediapipe',
-      algorithmVersion: OBSERVED_PORTRAIT_ANALYSIS,
+      algorithmVersion: SCENE_PORTRAIT_ANALYSIS,
       frame: {
         coordinates: 'source-normalized',
         contentHash: hash,
@@ -183,6 +186,18 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       minFaceDetectionConfidence: 0.6,
       minFacePresenceConfidence: 0.6,
     });
+    const panels: PortraitTarget['bounds'][] = [];
+    const inPanel = ({ x, y }: Point, panel: PortraitTarget['bounds']) =>
+      x >= panel.x && x <= panel.x + panel.width && y >= panel.y && y <= panel.y + panel.height;
+    const embeddedFace = (bounds: PortraitTarget['bounds']) => {
+      const point = { x: bounds.x + bounds.width * 0.5, y: bounds.y + bounds.height * 0.5 };
+      if (panels.some((panel) => inPanel(point, panel))) return true;
+      const panel = framedPortrait(image, bounds);
+      if (!panel) return false;
+      panels.push(panel);
+      return true;
+    };
+    let legacyFaceBounds: Array<ReturnType<typeof boundsOf>> = [];
     try {
       const oval = (points: Point[]) =>
         contourLoops(points, FaceLandmarker.FACE_LANDMARKS_FACE_OVAL)[0] ?? [];
@@ -216,17 +231,39 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           result.warnings.push('远景人脸补充识别未完成。');
         }
       }
-      const targets = found.map((points) => {
+      legacyFaceBounds = found.map((points) => boundsOf(oval(points)));
+      // Keep existing slots for saved edits, including gaps from rejected printed faces.
+      const indexed = found.map((points, slot) => ({ points, slot })).filter(({ points }) =>
+        !embeddedFace(boundsOf(oval(points))));
+      if (!indexed.some(({ points }) => {
+        const box = boundsOf(oval(points));
+        return box.width * box.height >= 0.12;
+      })) {
+        try {
+          const supplemented = await recoverYuNetFaces(canvas, face,
+            indexed.map(({ points }) => points), oval, ({ bounds }) => embeddedFace(bounds));
+          let slot = found.length;
+          for (const points of supplemented.slice(indexed.length)) {
+            if (slot >= 12) break;
+            indexed.push({ points, slot: slot++ });
+          }
+        } catch (error) {
+          if (import.meta.env.DEV) console.warn('YuNet face proposals unavailable', error);
+          result.warnings.push('部分远景或暗光人脸的补检未完成。');
+        }
+      }
+      const targets = indexed.map(({ points, slot }) => {
         const shape = contours(points);
         return {
+          slot,
           landmarks: points.map((point) => ({ x: point.x, y: point.y, z: point.z })),
           contours: shape,
           bounds: boundsOf(shape.oval),
         };
       });
-      result.targets = targets.map((t, i) => ({
+      result.targets = targets.map(({ slot, ...t }, i) => ({
         ...t,
-        id: `face-${hash.slice(0, 12)}-${i + 1}`,
+        id: `face-${hash.slice(0, 12)}-${slot + 1}`,
         kind: 'face',
         label: `人物 ${i + 1}`,
       }));
@@ -246,6 +283,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
     if (segmentation) {
       progress('正在分离皮肤、头发与背景');
       let segment: ImageSegmenter | null = null;
+      let hairSegment: ImageSegmenter | null = null;
       const overview = analysisCanvas(canvas, entireFrame, 576);
       try {
         segment = await ImageSegmenter.createFromOptions(freshWasm(), {
@@ -258,6 +296,21 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           outputCategoryMask: true,
           outputConfidenceMasks: true,
         });
+        if (result.targets.some(({ bounds }) =>
+          Math.min(bounds.width * image.width, bounds.height * image.height) >= 70) &&
+          manifest.assets?.some((asset: { file?: string }) => asset.file === 'hair_segmenter.tflite')) {
+          try {
+            hairSegment = await ImageSegmenter.createFromOptions(freshWasm(), {
+              canvas: new OffscreenCanvas(1, 1),
+              baseOptions: { modelAssetPath: '/vision/hair_segmenter.tflite', delegate: 'CPU' },
+              runningMode: 'IMAGE',
+              outputConfidenceMasks: true,
+            });
+          } catch (error) {
+            if (import.meta.env.DEV) console.warn('Hair segmentation refinement unavailable', error);
+            result.warnings.push('头发细部分析未完成。');
+          }
+        }
         segment.segment(overview, (output) => {
           const mask = output.categoryMask;
           if (!mask) throw new Error('没有分割结果');
@@ -375,22 +428,60 @@ self.onmessage = async (event: MessageEvent<Request>) => {
           const head = headWindow(target.bounds);
           const headCrop = analysisCanvas(canvas, head, 448);
           try {
+            let detailHair: ((p: Point) => number) | undefined;
+            if (hairSegment &&
+              Math.min(target.bounds.width * image.width, target.bounds.height * image.height) >= 70) {
+              hairSegment.segment(headCrop, ({ confidenceMasks }) => {
+                const mask = confidenceMasks?.[1];
+                if (mask)
+                  detailHair = confidenceSampler(mask.getAsFloat32Array().slice(), mask.width, mask.height, head);
+              });
+            }
             segment.segment(headCrop, (output) => {
               const masks = output.confidenceMasks;
               if (!masks?.[0] || !masks[1] || !masks[3]) return;
               const samplers = masks.map((mask) =>
                 confidenceSampler(mask.getAsFloat32Array(), mask.width, mask.height, head),
               );
+              const hairAt = (point: Point) => {
+                const broad = samplers[1]!(point);
+                if (!detailHair) return broad;
+                // A specialized hair prediction can mistake a shadow on the
+                // face for hair. Use the skin/accessory probabilities as vetoes.
+                const fine = detailHair(point);
+                const skin = Math.max(samplers[2]?.(point) ?? 0, samplers[3]!(point));
+                const accessory = samplers[5]?.(point) ?? 0;
+                const refined = broad * 0.63 + fine * 0.37;
+                return refined * (1 - 0.81 * confidenceWeight(Math.max(skin, accessory), 0.32, 0.77));
+              };
+              const sceneEdges = protectBackgroundLines(image, target.bounds, (point) =>
+                Math.max(samplers[2]?.(point) ?? 0, samplers[3]!(point), hairAt(point),
+                  point.x >= target.bounds.x && point.x <= target.bounds.x + target.bounds.width &&
+                  point.y >= target.bounds.y && point.y <= target.bounds.y + target.bounds.height ? 1 : 0));
+              if (sceneEdges) target.sceneEdges = sceneEdges;
+              if (detailHair) {
+                const edge = 112;
+                const w = Math.max(1, Math.round(edge * Math.min(1, headCrop.width / headCrop.height)));
+                const h = Math.max(1, Math.round(edge * Math.min(1, headCrop.height / headCrop.width)));
+                const raster = confidenceRaster(w, h, (index) =>
+                  confidenceWeight(hairAt({
+                    x: head.x + (((index % w) + 0.5) / w) * head.width,
+                    y: head.y + ((Math.floor(index / w) + 0.5) / h) * head.height,
+                  }), 0.39, 0.80), edge, 850, head);
+                if (raster) target.featureMasks = { ...target.featureMasks, hair: raster };
+              }
+              target.visibleParts = visibleFaceParts(image, target);
               Object.assign(
                 target.contours,
                 analyzeHeadBoundaries(
                   target,
                   image,
                   head,
-                  (index, point) => samplers[index]?.(point) ?? 0,
+                  (index, point) => index === 1 ? hairAt(point) : samplers[index]?.(point) ?? 0,
                   result.targets
                     .filter((person) => person !== target)
                     .map((person) => person.bounds),
+                  true,
                 ),
               );
             });
@@ -404,12 +495,13 @@ self.onmessage = async (event: MessageEvent<Request>) => {
       } finally {
         overview.width = overview.height = 1;
         segment?.close();
+        hairSegment?.close();
       }
     }
     for (const target of result.targets) {
       target.visibleParts = visibleFaceParts(image, target);
       if (target.visibleParts.pixels < 34) continue;
-      const evidence = analyzeFacePixels(image, target);
+      const evidence = analyzeFacePixels(image, target, true);
       Object.assign(target.contours, evidence.contours);
       if (evidence.featureMasks && Object.keys(evidence.featureMasks).length)
         target.featureMasks = { ...target.featureMasks, ...evidence.featureMasks };
@@ -430,12 +522,15 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         const observations = observeBodies(
           canvas,
           pose,
+          legacyFaceBounds,
           result.targets.map((target) => target.bounds),
         );
-        const targets = observations.flatMap(({ points, sample }, index) => {
+        const targets = observations.flatMap(({ points, sample, slot }, index) => {
           try {
+            if (panels.some((panel) => [0, 11, 12, 23, 24].every((joint) =>
+              inPanel(points[joint]!, panel)))) return [];
             const target: PortraitTarget = {
-              id: '',
+              id: `body-${hash.slice(0, 12)}-${slot + 1}`,
               kind: 'body',
               label: '',
               landmarks: points.map(({ x, y, z, visibility }) => ({ x, y, z, visibility })),
@@ -450,6 +545,9 @@ self.onmessage = async (event: MessageEvent<Request>) => {
                   0,
                 );
               target.contours = measureBodySections(target, image, sample, neighbor, true);
+              const sceneEdges = protectBackgroundLines(image, target.bounds, (point) =>
+                Math.max(sample(point), neighbor(point)));
+              if (sceneEdges) target.sceneEdges = sceneEdges;
               const { x, y, width, height } = target.bounds;
               const x0 = Math.max(0, x - width * 0.28);
               const y0 = Math.max(0, y - height * 0.14);
@@ -497,7 +595,6 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         result.targets.push(
           ...targets.map((t, i) => ({
             ...t,
-            id: `body-${hash.slice(0, 12)}-${i + 1}`,
             label: `身形 ${i + 1}`,
           })),
         );
@@ -508,6 +605,7 @@ self.onmessage = async (event: MessageEvent<Request>) => {
         pose?.close();
       }
     }
+    if (panels.length) result.warnings.push('画面中疑似海报或屏幕上的人像已排除。');
     canvas.width = 1;
     canvas.height = 1;
     self.postMessage({ id, result });

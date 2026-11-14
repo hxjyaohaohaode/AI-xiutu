@@ -249,14 +249,16 @@ jobs:
               assert vision['schemaVersion'] == 1 and vision['sdkVersion'] == '1.2.2'
           matting = json.loads(Path('third-party/portrait-matting.json').read_text())
           fine_matting = json.loads(Path('third-party/portrait-fine-matting.json').read_text())
+          yunet = json.loads(Path('third-party/portrait-yunet.json').read_text())
           expected_vision = {
               'face_landmarker.task', 'blaze_face_full_range.tflite', 'pose_landmarker_lite.task',
-              'selfie_multiclass_256x256.tflite', matting['file'], fine_matting['file'],
+              'selfie_multiclass_256x256.tflite', 'hair_segmenter.tflite',
+              yunet['file'], matting['file'], fine_matting['file'],
           }
           assert len(vision['assets']) == len(expected_vision)
           published_vision = {item['file']: item for item in vision['assets']}
           assert published_vision.keys() == expected_vision
-          for model in (matting, fine_matting):
+          for model in (matting, fine_matting, yunet):
               assert published_vision[model['file']] == {key: model[key] for key in ('file', 'bytes', 'sha256')}
           import hashlib
           for item in vision['assets']:

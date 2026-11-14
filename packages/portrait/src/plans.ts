@@ -25,6 +25,7 @@ import {
   REFINED_PORTRAIT_ANALYSIS,
   PRECISE_PORTRAIT_ANALYSIS,
   OBSERVED_PORTRAIT_ANALYSIS,
+  SCENE_PORTRAIT_ANALYSIS,
   type PortraitAnalysis,
   type PortraitTarget,
   type PortraitValues,
@@ -57,15 +58,15 @@ export interface PortraitApplyOptions {
   upgradePortrait?: boolean;
 }
 const insideSource = (p: Point) => p.x >= 0 && p.x <= 1 && p.y >= 0 && p.y <= 1;
-export const CURRENT_PORTRAIT_GEOMETRY = 4;
+export const CURRENT_PORTRAIT_GEOMETRY = 5;
 const analysisGeometry = (analysis: PortraitAnalysis) =>
-  analysis.algorithmVersion === OBSERVED_PORTRAIT_ANALYSIS
+  analysis.algorithmVersion === SCENE_PORTRAIT_ANALYSIS
     ? CURRENT_PORTRAIT_GEOMETRY
-    : analysis.algorithmVersion === PRECISE_PORTRAIT_ANALYSIS
-      ? 3
-      : analysis.algorithmVersion === REFINED_PORTRAIT_ANALYSIS
-        ? 2
-        : 0;
+    : analysis.algorithmVersion === OBSERVED_PORTRAIT_ANALYSIS
+      ? 4
+      : analysis.algorithmVersion === PRECISE_PORTRAIT_ANALYSIS
+        ? 3
+        : analysis.algorithmVersion === REFINED_PORTRAIT_ANALYSIS ? 2 : 0;
 const catalog = new Map(PORTRAIT_TOOLS.map((t) => [t.id, t]));
 const skinSpotTools = ['skinShine', 'skinBlemish', 'skinColorSpot'];
 const eyeControls = new Set([
@@ -678,6 +679,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
   const coordinated = version >= 2;
   const precise = version >= 3;
   const observed = version >= 4;
+  const sceneAware = version >= 5;
   const availability = toolAvailability(analysis, target, recipe.schemaVersion, version);
   const geometry = geometryFor(analysis, target, recipe.schemaVersion, version);
   const previousValues = portraitValues(recipe, targetId);
@@ -770,7 +772,8 @@ export function applyPortraitValues<T extends LayeredRecipe>(
           )
           .map((other) => polygon(other.contours.oval!, 0))
       : [];
-  const protections = [...(accessory ? [accessory] : []), ...(neighbors ?? []), ...faceNeighbors];
+  const protections = [...(accessory ? [accessory] : []), ...(neighbors ?? []), ...faceNeighbors,
+    ...(sceneAware && target.sceneEdges ? [target.sceneEdges] : [])];
   const guardMask = protections.length ? combine('union', protections) : undefined;
   const guardId = `${prefix}${target.kind === 'face' ? 'eyewear' : 'neighbor-guard'}`;
   const oldGuards = recipe.warp.guards ?? [];
@@ -1011,6 +1014,9 @@ export function applyPortraitValues<T extends LayeredRecipe>(
                 0.45 * value('even'),
             )
           : 1;
+        const surface = sceneAware ? 1 / Math.max(1, 0.74 +
+          0.56 * value('smooth') + 0.31 * value('even') + 0.22 * value('skinBlemish') +
+          0.20 * Math.max(0, value('wrinkles'))) : 1;
         const spot = {
           shine: 100 * value('skinShine'),
           speckle: 100 * value('skinBlemish') * (observed ? 1 - smooth * 0.25 : 1),
@@ -1026,12 +1032,12 @@ export function applyPortraitValues<T extends LayeredRecipe>(
             ...(algorithm ? { algorithm } : {}),
             mask: masks.skin,
             radius,
-            smoothing: smooth * 100 * combinedSkin,
+            smoothing: smooth * 100 * combinedSkin * surface,
             texture:
               refined && (values.texture ?? 0) < 0
                 ? texture * 100 * (1 - 0.42 * smooth) * combinedSkin
                 : (values.texture ?? 0),
-            uniformity: value('even') * 100 * combinedSkin,
+            uniformity: value('even') * 100 * combinedSkin * surface,
             fineLines: refined
               ? value('wrinkles') * 100 * (1 - 0.28 * smooth) * combinedSkin
               : (values.wrinkles ?? 0),
@@ -1186,9 +1192,9 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         createColorBlockV3({ adjustments: { exposure: value('sculpt') * 0.5 } }),
       );
     const radius = fw / short;
-    const contour = coordinated ? portraitContour(target, dims, value) : undefined;
+    const contour = coordinated ? portraitContour(target, dims, value, sceneAware) : undefined;
     if (refined) {
-      faceAnchors.push(...featureTransforms(target, dims, value, coordinated, observed));
+      faceAnchors.push(...featureTransforms(target, dims, value, coordinated, observed, sceneAware));
       for (const [id, moves] of geometry.classic ?? []) {
         if (!value(id) || (coordinated && contourTools.some((key) => key === id))) continue;
         let gain = 1;
@@ -1429,7 +1435,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         id: prefix + 'face-field',
         ...(guardMask ? { guardId } : {}),
         origin: provenance('face-field', 1),
-        algorithm: coordinated ? 'face-field-v2' : 'face-field-v1',
+        algorithm: sceneAware ? 'portrait-field-v1' : coordinated ? 'face-field-v2' : 'face-field-v1',
         anchors: faceAnchors,
         ...(contour ? { contour } : {}),
         resampling: 'bounded-cubic-v1',
@@ -1581,7 +1587,7 @@ export function applyPortraitValues<T extends LayeredRecipe>(
       vx = vertical.x / length,
       vy = vertical.y / length;
     const bodyHeight = target.bounds.height * dims.height;
-    if (value('headSize')) {
+    if (!sceneAware && value('headSize')) {
       const head = mid(p(7), p(8));
       warp('headSize', 'bulge', head, head, shoulderSize * 0.46, -value('headSize') * 0.35);
     }
@@ -1603,13 +1609,18 @@ export function applyPortraitValues<T extends LayeredRecipe>(
         warp('neckWidth', 'pinch', neck, neck, shoulderSize * 0.25, value('neckWidth') * 0.3);
     }
     if (precise) {
-      const anchors = bodyProportionAnchors(target, dims, value, observed);
+      const anchors = bodyProportionAnchors(target, dims, value, observed, sceneAware);
+      if (sceneAware && value('headSize') && shoulderSize > 0.02) {
+        const center = mid(p(7), p(8));
+        if (insideSource(center)) anchors.push({ mode: 'bulge', from: center, to: center,
+          radius: Math.min(0.75, shoulderSize * 0.50), strength: -value('headSize') * 0.31 });
+      }
       if (anchors.some(({ mode }) => mode !== 'pin'))
         warps.push({
           id: prefix + 'body-field',
           ...(guardMask ? { guardId } : {}),
           origin: provenance('body-field', 1),
-          algorithm: 'face-field-v2',
+          algorithm: sceneAware ? 'portrait-field-v1' : 'face-field-v2',
           resampling: 'bounded-cubic-v1',
           mode: 'push',
           from: shoulder,

@@ -9,7 +9,7 @@ import { makeupPalettes } from './makeup-palettes';
 import { Sparkle, PaintBrush, HandPointing, ArrowsClockwise } from '../components/ControlGlyph';
 import {
   PORTRAIT_TOOLS,
-  OBSERVED_PORTRAIT_ANALYSIS,
+  SCENE_PORTRAIT_ANALYSIS,
   CURRENT_PORTRAIT_GEOMETRY,
   portraitValues,
   applyPortraitValues,
@@ -199,7 +199,7 @@ export function PortraitControls({
     recipe.schemaVersion === 4 &&
     !!target &&
     hasAutomatic &&
-    state.analysis?.algorithmVersion === OBSERVED_PORTRAIT_ANALYSIS &&
+    state.analysis?.algorithmVersion === SCENE_PORTRAIT_ANALYSIS &&
     !hasCurrentPortrait;
   const values = target ? portraitValues(recipe, target.id) : {};
   const availability = useMemo(

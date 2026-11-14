@@ -124,7 +124,6 @@ export function ColorControls({
     id: definition.path,
     ...definition,
     value: numericAt(color, definition.path),
-    integer: definition.unit === 'seed',
     gradient:
       definition.path === 'adjustments.temperature'
         ? 'linear-gradient(90deg,#85b8f4,#e3e3db,#f0be67)'

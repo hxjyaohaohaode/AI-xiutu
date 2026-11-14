@@ -15,6 +15,9 @@ import {
 import {
   compileSelectionMaskV3,
   compileWarpFieldV3,
+  createAdjustmentRegionV3,
+  createHealingOperationV4,
+  createRetouchRegionV4,
   createRecipeV4,
   renderEditorRecipe,
   renderEditorRecipeTiled,
@@ -32,6 +35,7 @@ const { inputs } = JSON.parse(await readFile('scripts/qa/portrait-real-world-inp
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const filter = process.env.PORTRAIT_QA_CASES?.split(',');
 const meterOnly = process.env.PORTRAIT_QA_METER_ONLY === 'true';
+const combined = new Set(['standing-guo', 'standing-pat', 'group-street', 'ballet-arms']);
 // Manually marked nose positions for the people in the comparative crops.
 // Both revisions must select the same person even if detector ordering changes.
 const subjects = {
@@ -89,6 +93,7 @@ const singles = {
   'standing-guo': 'legLength',
   'profile-pedro': 'earSize',
   'group-aerobics': 'arms',
+  'ballet-arms': 'arms',
 };
 const cases = [];
 const inventory = Object.fromEntries(
@@ -205,6 +210,67 @@ function writePng(directory, name, image) {
   })
     .png()
     .toFile(join(directory, `${name}.png`));
+}
+
+function finishPhoto(recipe) {
+  const mask = {
+    type: 'radial',
+    centerX: 0.55,
+    centerY: 0.32,
+    radiusX: 0.28,
+    radiusY: 0.26,
+    feather: 0.72,
+    invert: false,
+  };
+  return createRecipeV4({
+    ...recipe,
+    adjustments: {
+      ...recipe.adjustments,
+      exposure: 0.19,
+      highlights: -17,
+      shadows: 16,
+      vibrance: 8,
+    },
+    detail: { ...recipe.detail, texture: 9 },
+    effects: {
+      ...recipe.effects,
+      vignette: { ...recipe.effects.vignette, amount: 11 },
+    },
+    optics: { ...recipe.optics, denoiseLuminance: 10 },
+    regionEdits: [
+      ...recipe.regionEdits,
+      createAdjustmentRegionV3({
+        id: 'scene-local-tone',
+        mask,
+        color: { adjustments: { exposure: 0.12, saturation: -6 } },
+      }),
+    ],
+    retouch: [
+      ...recipe.retouch,
+      createRetouchRegionV4({ id: 'scene-local-texture', mask, smoothing: 13, texture: 12 }),
+    ],
+    healing: [
+      ...recipe.healing,
+      createHealingOperationV4({
+        id: 'scene-local-heal',
+        method: 'diffusion',
+        iterations: 48,
+        mask: { ...mask, centerX: 0.16, centerY: 0.18, radiusX: 0.009, radiusY: 0.009 },
+      }),
+    ],
+    geometry: { ...recipe.geometry, crop: { x: 0.03, y: 0.02, width: 0.94, height: 0.96 } },
+    transform: { ...recipe.transform, rotationDegrees: 0.65, fit: 'crop' },
+    projective: {
+      enabled: true,
+      corners: [
+        { x: 0.006, y: 0 },
+        { x: 0.997, y: 0.008 },
+        { x: 1, y: 1 },
+        { x: 0, y: 0.995 },
+      ],
+      fit: 'crop',
+    },
+  });
 }
 
 async function inventoryOnImage(input, image, analysis) {
@@ -331,7 +397,7 @@ try {
       );
       const analysis = validatePortraitAnalysis(found.analysis, frame);
       let auditLineup;
-      if (analysis.algorithmVersion === 'mediapipe-v4-visible-regions') {
+      if (analysis.algorithmVersion === 'portrait-v5-scene') {
         if (input.name === 'smile-headshot') {
           assert.ok(
             analysis.targets.some((t) => t.featureMasks?.teeth),
@@ -358,15 +424,55 @@ try {
             .filter((t) => t.kind === 'face')
             .map((t) => t.landmarks[1]);
           const marked = [0.111, 0.204, 0.276, 0.361, 0.475, 0.579, 0.663, 0.751, 0.855];
-          const matched = marked.filter((x) =>
-            noses.some((p) => Math.abs(x - p.x) < 0.022 && p.y > 0.34 && p.y < 0.44),
-          );
-          auditLineup = { annotated: marked.length, matched: matched.length };
-          assert.ok(
-            matched.length >= 7,
-            'Recover the distant lineup without counting duplicate faces',
-          );
+          const poseNoses = analysis.targets
+            .filter((t) => t.kind === 'body')
+            .map((t) => t.landmarks[0]);
+          const match = (points) =>
+            points.map((p) =>
+              marked.findIndex((x) => Math.abs(x - p.x) < 0.02 && p.y > 0.34 && p.y < 0.44),
+            );
+          const faceIds = match(noses);
+          const poseIds = match(poseNoses);
+          auditLineup = {
+            annotated: marked.length,
+            matched: new Set(faceIds).size,
+            poses: new Set(poseIds).size,
+          };
+          for (const ids of [faceIds, poseIds])
+            assert.ok(
+              ids.length === 9 && new Set(ids).size === 9 && !ids.includes(-1),
+              'Recover the distant lineup without counting duplicate faces or bodies',
+            );
         }
+        if (input.name === 'group-street') {
+          const faces = analysis.targets.filter((t) => t.kind === 'face');
+          const bodies = analysis.targets.filter((t) => t.kind === 'body');
+          assert.equal(
+            faces.length,
+            1,
+            'The left storefront poster must not become an editable face',
+          );
+          assert.ok(Math.abs(faces[0].landmarks[1].x - 0.407) < 0.035);
+          assert.equal(bodies.length, 2, 'Two people, with no duplicate or pose inside the poster');
+          assert.ok(bodies.every((target) => target.landmarks[0].x > 0.26));
+        }
+        if (input.name === 'low-vox')
+          assert.ok(
+            analysis.targets.some(
+              ({ kind, bounds }) =>
+                kind === 'face' &&
+                bounds.x + bounds.width / 2 > 0.43 &&
+                bounds.x + bounds.width / 2 < 0.66,
+            ),
+            'Recover the dark frontal face',
+          );
+        if (input.name === 'smile-fringe')
+          assert.ok(
+            analysis.targets.some(
+              ({ kind, contours }) => kind === 'face' && contours.hairCrown && !contours.hairline,
+            ),
+            'Separate the visible crown from roots hidden by the fringe',
+          );
       }
       if (meterOnly) {
         cases.push({
@@ -471,9 +577,47 @@ try {
             name,
             target: target?.id,
             bounds: target?.bounds,
+            requestedValues: Object.fromEntries(
+              Object.entries(controls).filter(([, v]) => v !== undefined),
+            ),
             values,
             ...metrics(image, edited),
             ...(target ? displacement(recipe, image, analysis, target) : {}),
+          });
+        }
+      }
+      if (combined.has(input.name)) {
+        let recipe = createRecipeV4();
+        const used = {};
+        for (const kind of ['face', 'body']) {
+          const target = selectSubject(analysis, input.name, kind);
+          const editable = availability.get(target?.id);
+          for (const [id, value] of Object.entries(stacks[kind])) {
+            if (editable?.has(id)) used[id] = value;
+          }
+          const values = Object.fromEntries(
+            Object.entries(stacks[kind]).filter(([id]) => editable?.has(id)),
+          );
+          if (Object.keys(values).length)
+            recipe = applyPortraitValues(recipe, analysis, target.id, values);
+        }
+        const finish = finishPhoto(recipe);
+        for (const [name, candidate] of [
+          ['portrait-stack', recipe],
+          ['complete-edit', finish],
+        ]) {
+          const edited = renderEditorRecipe(image, candidate);
+          const tiled = renderEditorRecipeTiled(image, candidate, { tileSize: 173 });
+          assert.equal(tiled.width, edited.width);
+          assert.equal(tiled.height, edited.height);
+          assert.deepEqual(tiled.data, edited.data, name + ' must match tiled export');
+          await writePng(directory, name, edited);
+          audit.comparisons.push({
+            name,
+            values: used,
+            requestedValues: { ...stacks.face, ...stacks.body },
+            outputDimensions: [edited.width, edited.height],
+            ...(name === 'portrait-stack' ? metrics(image, edited) : {}),
           });
         }
       }

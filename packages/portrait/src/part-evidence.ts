@@ -41,7 +41,7 @@ function signedDistance(p: Point, outline: Point[], size: Dimensions) {
   }
   return Math.sqrt(closest) * (inside ? 1 : -1);
 }
-function frame(target: PortraitTarget, size: Dimensions) {
+function frame(target: PortraitTarget, size: Dimensions, profile = false) {
   const { leftEye, rightEye, lips } = target.contours;
   if (!leftEye?.length || !rightEye?.length || !lips?.length) return;
   const a = center(leftEye),
@@ -58,15 +58,27 @@ function frame(target: PortraitTarget, size: Dimensions) {
     ux = -ux;
     uy = -uy;
   }
+  // Use forehead to chin for a strong profile. Far-side eye points may be
+  // inferred behind the nose, making the interocular axis unreliable.
+  const browRoot = target.landmarks[10], chin = target.landmarks[152];
+  const towardChin = browRoot && chin && profile
+    ? { x: (chin.x - browRoot.x) * size.width, y: (chin.y - browRoot.y) * size.height }
+    : undefined;
+  const length = towardChin && Math.hypot(towardChin.x, towardChin.y);
+  if (towardChin && length && length > 17) {
+    ux = towardChin.y / length;
+    uy = -towardChin.x / length;
+  }
+  const scale = towardChin && length ? Math.max(span, length * 0.40) : span;
   const local = (p: Point) => ({
-    x: ((p.x - middle.x) * size.width * ux + (p.y - middle.y) * size.height * uy) / span,
-    y: ((p.y - middle.y) * size.height * ux - (p.x - middle.x) * size.width * uy) / span,
+    x: ((p.x - middle.x) * size.width * ux + (p.y - middle.y) * size.height * uy) / scale,
+    y: ((p.y - middle.y) * size.height * ux - (p.x - middle.x) * size.width * uy) / scale,
   });
   const point = (x: number, y: number) => ({
-    x: middle.x + ((x * ux - y * uy) * span) / size.width,
-    y: middle.y + ((x * uy + y * ux) * span) / size.height,
+    x: middle.x + ((x * ux - y * uy) * scale) / size.width,
+    y: middle.y + ((x * uy + y * ux) * scale) / size.height,
   });
-  return { local, point, span };
+  return { local, point, span: scale };
 }
 type FaceFrame = NonNullable<ReturnType<typeof frame>>;
 
@@ -75,10 +87,10 @@ type FaceFrame = NonNullable<ReturnType<typeof frame>>;
 export function visibleFaceParts(image: RGBAImage, target: PortraitTarget) {
   const axes = frame(target, image);
   const pixels = Math.min(target.bounds.width * image.width, target.bounds.height * image.height);
-  const blocker =
-    target.featureMasks?.accessories &&
-    compileSelectionMaskV3(target.featureMasks.accessories, image);
-  const clear = (p: Point) => inFrame(p) && !!color(image, p) && (blocker?.(p.x, p.y) ?? 0) < 0.42;
+  const blockers = [target.featureMasks?.accessories, target.featureMasks?.hair]
+    .flatMap((mask) => mask ? [compileSelectionMaskV3(mask, image)] : []);
+  const clear = (p: Point) => inFrame(p) && !!color(image, p) &&
+    blockers.every((blocker) => blocker(p.x, p.y) < 0.42);
   const supported = (loop: Point[], minimum: number) => {
     const box = loop.map((p) => axes!.local(p));
     const span = (Math.max(...box.map((p) => p.x)) - Math.min(...box.map((p) => p.x))) * axes!.span;
@@ -170,7 +182,7 @@ function localRaster(grid: NonNullable<ReturnType<typeof crop>>, pixels: Uint8Ar
 /** Use source-pixel samples in the oral aperture, with a local contrast
  * threshold and connected arch support. A tongue or one reflection cannot
  * enable the control, even when it is as bright as the teeth. */
-export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame(target, image)) {
+export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame(target, image), precise = false) {
   const outline = target.contours.innerLips;
   if (!axes || !outline || outline.length < 6) return;
   const oral = outline.map(axes.local);
@@ -181,7 +193,7 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
   if (span * axes.span < 12 || oral.some((p) => !Number.isFinite(p.x + p.y))) return;
   const aperture = slice(oral, (left + right) / 2, 'x');
   if (!aperture || (aperture[1] - aperture[0]) * axes.span < 3.4) return;
-  const grid = crop(image, outline, 112);
+  const grid = crop(image, outline, precise ? 168 : 112);
   if (!grid) return;
   const samples: {
     index: number;
@@ -227,16 +239,27 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
   if (bright < (observed ? 0.29 : 0.36) || bright - dark < (observed ? 0.11 : 0.09)) return;
   const weights = new Float32Array(width * height);
   const byIndex = new Map(samples.map((p) => [p.index, p]));
+  const columns = Array.from({ length: 14 }, () => [] as number[]);
+  if (precise) for (const p of plausible) {
+    if (p.depth < 0.84 && p.luma >= dark + 0.025)
+      columns[Math.max(0, Math.min(13, Math.floor(p.x * 14)))]!.push(p.luma);
+  }
+  const localPeaks = columns.map((column, i) => quantile([
+    ...column, ...(columns[i - 1] ?? []), ...(columns[i + 1] ?? []),
+  ], 0.80));
   for (const p of plausible) {
+    const local = precise ? localPeaks[Math.max(0, Math.min(13, Math.floor(p.x * 14)))]! : bright;
+    const peak = precise ? Math.max(dark + 0.08, Math.max(bright * 0.54, local)) : bright;
     const contrast = smooth(
-      (p.luma - Math.max(observed ? 0.17 : 0.245, dark + 0.048)) /
-        Math.max(0.075, (bright - dark) * 0.68),
+      (p.luma - Math.max(observed ? 0.17 : 0.245, dark + (precise ? 0.035 : 0.048))) /
+        Math.max(0.075, (peak - dark) * (precise ? 0.62 : 0.68)),
     );
     weights[p.index] =
       contrast * p.neutral * smooth((p.clearance - 0.22) / Math.max(0.7, grid.cell * 0.64));
   }
   const visited = new Uint8Array(weights.length),
     result = new Uint8Array(weights.length);
+  const support: number[] = [];
   for (const seed of plausible) {
     if (visited[seed.index] || weights[seed.index]! < 0.33) continue;
     const cluster = [seed.index];
@@ -261,12 +284,12 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
       part.map((p) => p.depth),
       0.78,
     );
-    const upper = edge <= (observed ? 0.42 : 0.48);
+    const upper = edge <= (precise ? 0.53 : observed ? 0.42 : 0.48);
     const lower = lowerEdge >= 0.79 && edge >= 0.48;
     if (
       (!upper && !lower) ||
-      Math.max(...across) - Math.min(...across) < (upper ? 0.22 : 0.29) ||
-      strong < Math.max(4, samples.length * 0.037) ||
+      Math.max(...across) - Math.min(...across) < (upper ? precise ? 0.12 : 0.22 : 0.29) ||
+          strong < Math.max(4, samples.length * (precise ? 0.026 : 0.037)) ||
       cluster.length > samples.length * 0.93
     )
       continue;
@@ -276,10 +299,31 @@ export function toothArch(image: RGBAImage, target: PortraitTarget, axes = frame
       continue;
     for (const i of cluster) {
       const p = byIndex.get(i)!;
+      if (precise && weights[i]! > 0.55) support.push(p.x);
       const depth = upper ? 1 - 0.45 * smooth((p.depth - 0.66) / 0.27) : 0.78;
       const enamel = observed ? 0.68 + 0.32 * smooth((p.luma - middle + 0.07) / 0.12) : 1;
       result[i] = Math.round(smooth((weights[i]! - 0.29) / 0.61) * depth * enamel * 15) * 17;
     }
+  }
+  if (precise && support.length) {
+    const minimum = Math.min(...support), maximum = Math.max(...support);
+    const grow = Math.max(2, Math.round(0.028 * width));
+    // Include shaded peripheral teeth next to the verified arch. Each added
+    // pixel keeps its own chroma and clearance gate, including through gaps.
+    const candidates = result.slice();
+    for (const p of plausible) {
+      if (p.x < minimum - 0.15 || p.x > maximum + 0.15 || p.depth > 0.92 ||
+          p.neutral < 0.58 || p.luma < dark + 0.066 || weights[p.index]! < 0.24) continue;
+      const x = p.index % width, y = Math.floor(p.index / width);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -grow; dx <= grow; dx++) {
+        if (x + dx < 0 || x + dx >= width || y + dy < 0 || y + dy >= height) continue;
+        const nearby = result[p.index + dx + dy * width]!;
+        if (nearby > 45)
+          candidates[p.index] = Math.max(candidates[p.index]!, Math.round(
+            nearby * smooth(weights[p.index]!) * (1 - Math.abs(dx) / (grow * 1.6)) * 0.94));
+      }
+    }
+    result.set(candidates);
   }
   const mask = localRaster(grid, result);
   return mask ? combine('intersection', [mask, polygon(outline, 0)]) : undefined;
@@ -290,6 +334,7 @@ function pupil(
   eye: Point[],
   centers: { point: Point; radius: number }[],
   occlusion?: Sample,
+  precise = false,
 ) {
   if (eye.length < 6) return;
   const prior = centers.find(
@@ -312,7 +357,8 @@ function pupil(
       const candidate = offset(prior.point, dx, dy);
       if ((occlusion?.(candidate) ?? 0) > 0.48) continue;
       const clearance = signedDistance(candidate, eye, image);
-      for (const ratio of [0.28, 0.36, 0.44, 0.52, 0.6, 0.68]) {
+      for (const ratio of precise ? [0.24, 0.30, 0.36, 0.42, 0.48, 0.54, 0.60, 0.66, 0.72] :
+        [0.28, 0.36, 0.44, 0.52, 0.6, 0.68]) {
         const core = radius * ratio;
         if (core < 1.15 || clearance < core * 1.12) continue;
         const contrast: number[] = [];
@@ -320,8 +366,8 @@ function pupil(
         const hit: Point[] = [];
         for (const direction of directions) {
           const at = (r: number) => offset(candidate, r * direction.x, r * direction.y);
-          const outside = at(Math.min(radius * 0.93, core + radius * 0.22));
-          const inside = at(core * 0.65);
+          const outside = at(Math.min(radius * 0.94, core + radius * (precise ? 0.12 : 0.22)));
+          const inside = at(core * (precise ? 0.83 : 0.65));
           if (signedDistance(outside, eye, image) < 0.32 || (occlusion?.(outside) ?? 0) > 0.48)
             continue;
           const a = lightness(image, inside),
@@ -329,7 +375,7 @@ function pupil(
           if (a === undefined || b === undefined) continue;
           cores.push(a);
           contrast.push(b - a);
-          if (b - a >= 0.045) hit.push(direction);
+          if (b - a >= (precise ? 0.032 : 0.045)) hit.push(direction);
         }
         // Reject crescent-shaped iris estimates, eyelashes and one-sided glare.
         if (
@@ -344,7 +390,8 @@ function pupil(
         const median = quantile(contrast, 0.5);
         const score =
           median * 0.7 + quantile(contrast, 0.32) * 0.3 - (Math.hypot(dx, dy) / radius) * 0.06;
-        if (median < 0.063 || score < 0.044 || quantile(cores, 0.62) > 0.53) continue;
+        if (median < (precise ? 0.046 : 0.063) || score < (precise ? 0.031 : 0.044) ||
+            quantile(cores, 0.62) > 0.53) continue;
         if (!best || score > best.score) best = { center: candidate, radius: core, score };
       }
     }
@@ -383,7 +430,7 @@ function irisBoundary(
     ].filter(inFrame);
 }
 
-function nostrilPixels(image: RGBAImage, target: PortraitTarget, axes: FaceFrame) {
+function nostrilPixels(image: RGBAImage, target: PortraitTarget, axes: FaceFrame, precise: boolean) {
   const { landmarks } = target;
   const masks = [];
   const points: Point[] = [];
@@ -396,7 +443,7 @@ function nostrilPixels(image: RGBAImage, target: PortraitTarget, axes: FaceFrame
       roof = landmarks[roofId];
     if (!outer || !inner || !roof || ![outer, inner, roof].every(inFrame)) continue;
     const span = distance(outer, inner, image);
-    if (span < 4 || span > axes.span * 0.3) continue;
+    if (span < (precise ? 3 : 4) || span > axes.span * 0.3) continue;
     const [a, b, c] = [outer, inner, roof].map(axes.local) as [Point, Point, Point];
     const cx = lerp(a.x, b.x, 0.53),
       cy = lerp(lerp(a.y, b.y, 0.45), c.y, 0.35);
@@ -434,10 +481,15 @@ function nostrilPixels(image: RGBAImage, target: PortraitTarget, axes: FaceFrame
     if (core.length < 3 || core.length > samples.length * 0.6) continue;
     const q = center(core.map((p) => p.p));
     if (!inFrame(q)) continue;
+    const observed = axes.local(q);
     const result = new Uint8Array(grid.width * grid.height);
-    for (const { index, radial, y } of samples) {
+    for (const { index, p, radial, y } of samples) {
+      const local = axes.local(p);
+      const hole = precise ? Math.hypot((local.x - observed.x) / (rx * 0.8),
+        (local.y - observed.y) / (ry * 0.76)) : radial;
       const alpha =
-        smooth((hi - y - 0.025) / Math.max(0.045, (hi - lo) * 0.7)) * smooth((1 - radial) / 0.39);
+        smooth((hi - y - 0.025) / Math.max(0.045, (hi - lo) * 0.7)) *
+        smooth((1 - Math.max(radial * (precise ? 0.86 : 1), hole)) / 0.39);
       result[index] = Math.round(alpha * 15) * 17;
     }
     const mask = localRaster(grid, result);
@@ -449,15 +501,17 @@ function nostrilPixels(image: RGBAImage, target: PortraitTarget, axes: FaceFrame
   return { points, mask: masks.length ? combine('union', masks) : undefined };
 }
 
-export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget): TargetParts {
+export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget, precise = false): TargetParts {
   const contours: PortraitTarget['contours'] = {};
   const featureMasks: NonNullable<PortraitTarget['featureMasks']> = {};
-  const axes = frame(target, image);
+  const axes = frame(target, image, precise && target.visibleParts?.profile);
   if (!axes) return { contours, featureMasks };
-  const teeth = target.visibleParts?.mouth === false ? undefined : toothArch(image, target, axes);
+  const teeth = target.visibleParts?.mouth === false ? undefined : toothArch(image, target, axes, precise);
   if (teeth) featureMasks.teeth = teeth;
-  const protectedAt = target.featureMasks?.accessories
-    ? compileSelectionMaskV3(target.featureMasks.accessories, image)
+  const blockers = [target.featureMasks?.accessories, target.featureMasks?.hair]
+    .flatMap((mask) => mask ? [compileSelectionMaskV3(mask, image)] : []);
+  const protectedAt = blockers.length
+    ? (x: number, y: number) => Math.max(...blockers.map((sample) => sample(x, y)))
     : undefined;
   const centers = [468, 473].flatMap((i) => {
     const point = target.landmarks[i],
@@ -477,7 +531,8 @@ export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget): Tar
       if (visibleEdge.filter((q) => protectedAt(q.x, q.y) > 0.44).length >= 3) continue;
     }
     const occlusion = protectedAt && ((p: Point) => protectedAt(p.x, p.y));
-    const found = eye && pupil(image, eye, centers, occlusion);
+    const found = eye && (pupil(image, eye, centers, occlusion, precise) ??
+      (precise ? pupil(image, eye, centers, occlusion) : undefined));
     if (found?.length === 2) contours[side + 'Pupil'] = found;
     if (target.visibleParts && eye?.length)
       for (const prior of centers) {
@@ -489,7 +544,7 @@ export function analyzeFacePixels(image: RGBAImage, target: PortraitTarget): Tar
       }
   }
   const nostrils =
-    target.visibleParts?.nose === false ? undefined : nostrilPixels(image, target, axes);
+    target.visibleParts?.nose === false ? undefined : nostrilPixels(image, target, axes, precise);
   if (nostrils?.mask) {
     featureMasks.nostrils = nostrils.mask;
     contours.nostrilCenters = nostrils.points;
@@ -506,8 +561,10 @@ export function analyzeHeadBoundaries(
   window: Bounds,
   sample: (index: 0 | 1 | 2 | 3 | 5, p: Point) => number,
   otherFaces: readonly Bounds[] = [],
+  precise = false,
 ): PortraitTarget['contours'] {
-  const axes = frame(target, size),
+  const profile = precise && !!target.visibleParts?.profile;
+  const axes = frame(target, size, profile),
     oval = target.contours.oval;
   if (!axes || !oval?.length || axes.span < 15) return {};
   const outline = oval.map(axes.local);
@@ -531,7 +588,9 @@ export function analyzeHeadBoundaries(
     );
   const hair: Point[] = [],
     crown: Point[] = [];
-  const rows = [-0.7, -0.47, -0.23, 0, 0.23, 0.47, 0.7];
+  const rows = precise
+    ? [-0.76, -0.57, -0.38, -0.19, 0, 0.19, 0.38, 0.57, 0.76]
+    : [-0.7, -0.47, -0.23, 0, 0.23, 0.47, 0.7];
   const step = Math.max(0.018, 0.65 / axes.span);
   for (const x of rows) {
     let supported = 0;
@@ -592,20 +651,32 @@ export function analyzeHeadBoundaries(
     return best.length >= minimum ? best.map((p) => axes.point(p.x, p.y)) : [];
   };
   const contours: PortraitTarget['contours'] = {};
-  const hairline = adjacent(hair, 0.22, 3),
+  // The visible lower edge of bangs can have perfect hair/skin contrast. If
+  // it crosses the forehead substantially below the cranial landmark, there
+  // is no evidence for moving the covered roots.
+  const exposed = precise
+    ? hair.filter(({ x, y }) => y <= edge + (Math.abs(x) < 0.4 ? 0.15 : 0.25))
+    : hair;
+  const hairline = adjacent(exposed, 0.22, precise ? 4 : 3),
     hairCrown = adjacent(crown, 0.28, 4);
-  if (hairline.length) contours.hairline = hairline;
+  if (hairline.length && (!precise ||
+    (exposed.some((p) => Math.abs(p.x) <= 0.2) && exposed.length >= hair.length * 0.67)))
+    contours.hairline = hairline;
   if (hairCrown.length) contours.hairCrown = hairCrown;
   for (const side of [-1, 1]) {
+    if (profile) {
+      const nose = target.landmarks[1];
+      if (nose && Math.sign(axes.local(nose).x) === side) continue;
+    }
     const band: { y: number; edge: number; protrusion: number }[] = [];
-    for (let y = -0.04; y <= 0.7; y += 0.075) {
+    for (let y = -0.04; y <= (profile ? 0.86 : 0.70); y += precise ? 0.064 : 0.075) {
       const limits = slice(outline, y, 'y');
       if (!limits) continue;
       const x = side < 0 ? limits[0] : limits[1];
       const observed = (p: Point) => Math.max(sample(2, p), sample(3, p));
       let beyond = 0,
         gap = 0;
-      for (let d = 0; d < 0.49; d += step) {
+      for (let d = 0; d < (profile ? 0.60 : 0.49); d += step) {
         const p = axes.point(x + side * d, y);
         if (!safe(p)) break;
         if (observed(p) > 0.47 && sample(1, p) < 0.48 && sample(5, p) < 0.42) {
@@ -616,7 +687,7 @@ export function analyzeHeadBoundaries(
       const outer = axes.point(x + side * (beyond + step * 3), y);
       if (
         beyond >= 0.08 &&
-        beyond <= 0.37 &&
+        beyond <= (profile ? 0.49 : 0.37) &&
         safe(outer) &&
         observed(outer) < 0.32 &&
         Math.max(sample(0, outer), sample(1, outer)) > 0.47
@@ -631,7 +702,7 @@ export function analyzeHeadBoundaries(
     if (
       near.length < 3 ||
       peak.y < 0.025 ||
-      peak.y > 0.54 ||
+      peak.y > (profile ? 0.69 : 0.54) ||
       Math.max(...near.map((p) => p.y)) - Math.min(...near.map((p) => p.y)) < 0.14 ||
       peak.protrusion < Math.max(0.11, step * 3)
     )

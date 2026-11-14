@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 import { createServer } from 'vite';
 import {
   applyPortraitValues,
-  OBSERVED_PORTRAIT_ANALYSIS,
+  SCENE_PORTRAIT_ANALYSIS,
   portraitToolAvailability,
   validatePortraitAnalysis,
 } from '@ai-xiutu/portrait';
@@ -167,7 +167,7 @@ try {
       ),
       frame,
     );
-    assert.equal(analysis.algorithmVersion, OBSERVED_PORTRAIT_ANALYSIS);
+    assert.equal(analysis.algorithmVersion, SCENE_PORTRAIT_ANALYSIS);
     await writeFile(join(output, input.name + '-analysis.json'), JSON.stringify(analysis));
     const result = {
       name: input.name,

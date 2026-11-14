@@ -100,11 +100,12 @@ function readTarget(input: unknown): PortraitTarget {
   const r = object(
     input,
     ['id', 'kind', 'label', 'landmarks', 'contours', 'bounds'],
-    ['featureMasks', 'bodyMask', 'bodySupport', 'visibleParts'],
+    ['featureMasks', 'bodyMask', 'bodySupport', 'visibleParts', 'sceneEdges'],
   );
   if (r.kind !== 'face' && r.kind !== 'body') throw new Error('人像目标类别不支持。');
   const id = string(r.id, 80);
-  if (!new RegExp(`^${r.kind}-[a-f0-9]{12}-[1-8]$`).test(id)) throw new Error('人像目标标识无效。');
+  if (!new RegExp(`^${r.kind}-[a-f0-9]{12}-(?:[1-9]|1[0-2])$`).test(id))
+    throw new Error('人像目标标识无效。');
   const landmarks = array(r.landmarks, r.kind === 'face' ? 468 : 33, 512).map((p) =>
     readPoint(p, true, r.kind === 'body'),
   );
@@ -131,11 +132,12 @@ function readTarget(input: unknown): PortraitTarget {
   let featureMasks: PortraitTarget['featureMasks'];
   if (r.featureMasks !== undefined) {
     if (r.kind !== 'face') throw new Error('身形目标不能携带面部蒙版。');
-    const raw = object(r.featureMasks, [], ['skin', 'teeth', 'nostrils', 'accessories', 'relight']);
+    const raw = object(r.featureMasks, [], ['skin', 'teeth', 'nostrils', 'accessories', 'hair', 'relight']);
     featureMasks = {};
     if (raw.skin !== undefined) featureMasks.skin = parseSelectionMaskV3(raw.skin);
     if (raw.teeth !== undefined) featureMasks.teeth = parseSelectionMaskV3(raw.teeth);
     if (raw.nostrils !== undefined) featureMasks.nostrils = parseSelectionMaskV3(raw.nostrils);
+    if (raw.hair !== undefined) featureMasks.hair = parseSelectionMaskV3(raw.hair);
     if (raw.accessories !== undefined)
       featureMasks.accessories = parseSelectionMaskV3(raw.accessories);
     if (raw.relight !== undefined) {
@@ -183,6 +185,7 @@ function readTarget(input: unknown): PortraitTarget {
     ...(visibleParts ? { visibleParts } : {}),
     ...(featureMasks ? { featureMasks } : {}),
     ...(r.bodyMask !== undefined ? { bodyMask: parseSelectionMaskV3(r.bodyMask) } : {}),
+    ...(r.sceneEdges !== undefined ? { sceneEdges: parseSelectionMaskV3(r.sceneEdges) } : {}),
     ...(r.bodySupport !== undefined ? { bodySupport: parseSelectionMaskV3(r.bodySupport) } : {}),
   };
 }
@@ -221,7 +224,7 @@ export function validatePortraitAnalysis(
     )
       throw new Error('分析结果与当前原图不一致，已拒绝应用。');
   }
-  const targets = array(r.targets, 0, 16).map(readTarget),
+  const targets = array(r.targets, 0, 24).map(readTarget),
     ids = new Set<string>();
   for (const target of targets) {
     if (

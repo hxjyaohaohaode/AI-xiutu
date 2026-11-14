@@ -57,7 +57,7 @@ export function useStagePreviews(
   const [compare, setCompare] = useState<PreviewResult | null>(null);
   const [crop, setCrop] = useState<PreviewResult | null>(null);
   const [remote, setRemote] = useState<PreviewResult | null>(null);
-  const remoteKey = JSON.stringify(remoteRecipe);
+  const remoteKey = useMemo(() => JSON.stringify(remoteRecipe), [remoteRecipe]);
   const [error, setError] = useState<string | null>(null);
   // The comparison frame shows unwarped source content with the current output geometry.
   const comparisonKey = editorGeometryKey(recipe, false);
@@ -65,7 +65,7 @@ export function useStagePreviews(
     () => ({ ...recipe, geometry: { ...recipe.geometry, crop: null } }),
     [recipe],
   );
-  const cropKey = JSON.stringify(uncropped);
+  const cropKey = useMemo(() => cropOpen ? JSON.stringify(uncropped) : '', [cropOpen, uncropped]);
   const cropGeometryKey = editorGeometryKey(uncropped);
   function failWorker() {
     releaseWorker(worker);

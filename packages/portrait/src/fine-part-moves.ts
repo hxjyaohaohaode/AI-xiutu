@@ -91,7 +91,7 @@ export function finePartMoves(target: PortraitTarget, size: Dimensions) {
     ['hairVolume', 'hairCrown', 0.37, -0.13, 4],
   ] as const) {
     const points = target.contours[key];
-    if (!points || points.length < min || points.length > 7) continue;
+    if (!points || points.length < min || points.length > 9) continue;
     for (const [i, p] of points.entries()) {
       const factor = 0.82 + 0.18 * (1 - Math.abs((2 * i) / (points.length - 1) - 1));
       put(id, p, down.x * span * range, down.y * span * range, span * radius, factor);

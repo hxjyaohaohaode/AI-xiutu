@@ -23,6 +23,7 @@ export type NumericDefinition = {
   step: number;
   neutral: number;
   unit: string;
+  integer?: boolean;
   description?: string;
 };
 export const NUMERIC_CONTROLS: readonly NumericDefinition[] = [
@@ -31,10 +32,10 @@ export const NUMERIC_CONTROLS: readonly NumericDefinition[] = [
     path: 'adjustments.' + tool.id,
     step: tool.unit === 'EV' ? 0.01 : 0.1,
   })),
-  ...V2_TOOLS.map((tool) => ({
-    ...tool,
-    step: tool.unit === 'seed' ? tool.step : Math.min(tool.step, 0.1),
-  })),
+  ...V2_TOOLS.map((tool) => {
+    const integer = tool.unit === 'seed' || tool.path === 'effects.grain.size';
+    return { ...tool, integer, step: integer ? tool.step : Math.min(tool.step, 0.1) };
+  }),
   ...V3_TOOLS,
 ];
 export type InspectorController = {
@@ -118,6 +119,7 @@ export function withNumeric<T extends object>(
   if (
     !NUMERIC_CONTROLS.includes(definition) ||
     !Number.isFinite(amount) ||
+    (definition.integer && !Number.isInteger(amount)) ||
     amount < definition.min ||
     amount > definition.max
   )

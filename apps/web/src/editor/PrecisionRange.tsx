@@ -296,10 +296,14 @@ export function PrecisionRange({
   };
   useEffect(() => {
     const button = scrubButton.current;
-    if (!button) return;
+    const track = range.current;
     const scroll = (event: WheelEvent) => wheelAction.current(event);
-    button.addEventListener('wheel', scroll, { passive: false });
-    return () => button.removeEventListener('wheel', scroll);
+    button?.addEventListener('wheel', scroll, { passive: false });
+    track?.addEventListener('wheel', scroll, { passive: false });
+    return () => {
+      button?.removeEventListener('wheel', scroll);
+      track?.removeEventListener('wheel', scroll);
+    };
   }, [editing]);
   function moveTouch(clientX: number) {
     const track = touchTrack.current;
@@ -624,7 +628,10 @@ export function PrecisionRange({
           }}
           onBlur={() => {
             if (gesture.current.pointerId !== null) cancelGesture();
-            else complete(gesture.current.commit());
+            else {
+              finishWheel();
+              complete(gesture.current.commit());
+            }
           }}
           onDoubleClick={resetControl}
         />

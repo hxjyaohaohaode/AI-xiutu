@@ -26,7 +26,10 @@ import { fitsNativePreview } from './native-preview';
 
 let preview: RGBAImage | null = null;
 let original: RGBAImage | null = null;
-let draftSource: RGBAImage | null = null;
+const draftSources = new Map<number, RGBAImage>();
+const draftLimits = [76_800, 153_600, MAX_INTERACTIVE_PIXELS];
+let draftLevel = 1;
+let draftDuration = 0;
 let sourceDimensions: Dimensions | null = null;
 let images = new Map<string, RGBAImage>(),
   originalImages = new Map<string, RGBAImage>();
@@ -42,6 +45,13 @@ function preparedSource(source: RGBAImage, recipe: EditorRecipe, maxPixels: numb
   if (previewSources.size >= 3) previewSources.delete(previewSources.keys().next().value!);
   previewSources.set(key, image);
   return image;
+}
+function draftRaster(source: RGBAImage, limit: number) {
+  const cached = draftSources.get(limit);
+  if (cached) return cached;
+  const raster = interactiveRaster(source, limit);
+  draftSources.set(limit, raster);
+  return raster;
 }
 type Message = {
   type: string;
@@ -68,7 +78,9 @@ self.onmessage = async (event: MessageEvent<Message>) => {
   if (message.type === 'source' || message.type === 'interactive-source') {
     preview = message.image ?? null;
     original = message.type === 'source' ? (message.original ?? null) : null;
-    draftSource = null;
+    draftSources.clear();
+    draftLevel = 1;
+    draftDuration = 0;
     sourceDimensions = message.sourceDimensions ?? original ?? preview;
     images = message.images ?? new Map();
     originalImages = message.originalImages ?? new Map();
@@ -85,7 +97,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         ? preparePointPreview(preview)
         : undefined;
     if (message.type === 'interactive-source' && preview)
-      draftSource = interactiveRaster(preview);
+      draftRaster(preview, draftLimits[draftLevel]!);
     return;
   }
   if (message.type === 'recycle-point-preview') {
@@ -155,13 +167,14 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     const mode = exporting ? null : pointPreviewMode(recipe);
     const useDraft = interactive && !warpDetail && message.previewQuality !== 'full' && !mode;
     const cache = !mode ? warpPreviewCache : undefined;
+    const draftLimit = draftLimits[draftLevel]!;
     let recyclable = false;
     const renderPreview = () => {
       const input = useDraft
         ? preparedSource(
-            (draftSource ??= interactiveRaster(source)),
+            draftRaster(source, draftLimit),
             recipe,
-            MAX_INTERACTIVE_PIXELS,
+            draftLimit,
           )
         : native
           ? source
@@ -189,6 +202,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       self.postMessage({ id: message.id, type: message.type });
       return;
     }
+    const started = useDraft ? performance.now() : 0;
     const result = exporting
       ? message.originalOnly
         ? source
@@ -198,6 +212,12 @@ self.onmessage = async (event: MessageEvent<Message>) => {
             tileSize: 512,
           })
       : renderPreview();
+    if (useDraft) {
+      const elapsed = performance.now() - started;
+      draftDuration = draftDuration ? draftDuration * 0.6 + elapsed * 0.4 : elapsed;
+      if (draftDuration > 65 && draftLevel > 0) draftLevel--;
+      else if (draftDuration < 24 && draftLevel < draftLimits.length - 1) draftLevel++;
+    }
     if (exporting && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);
@@ -230,7 +250,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         message.originalOnly ||
         warpPreviewCache.keeps(result) ||
         result.data.buffer === source.data.buffer ||
-        result.data.buffer === draftSource?.data.buffer ||
+        [...draftSources.values()].some((image) => image.data.buffer === result.data.buffer) ||
         [...previewSources.values()].some((image) => image.data.buffer === result.data.buffer)
           ? { ...result, data: new Uint8ClampedArray(result.data) }
           : result;
