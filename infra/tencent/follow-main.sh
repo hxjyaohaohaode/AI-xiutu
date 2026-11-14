@@ -49,7 +49,6 @@ if [[ -f state/blocked-sha && "$(cat state/blocked-sha)" == "$head" ]]; then
 fi
 
 release_file=$(mktemp state/release.XXXXXXXX)
-bundle=
 jar=
 deploying=false
 committed=false
@@ -61,13 +60,13 @@ ensure_rollback() {
     printf '%s\n' "$head" > state/blocked-sha
     export XIUTU_IMAGE_REF
     XIUTU_IMAGE_REF=$(image_ref "$current")
-    if ! compose up -d --no-deps --no-build --pull never --wait --wait-timeout 90 api worker web ||
+    if ! compose up -d --no-deps --no-build --pull never --wait --wait-timeout 90 api worker ||
+       ! compose up -d --no-deps --no-build --pull never --wait --wait-timeout 45 web ||
        ! smoke "$XIUTU_IMAGE_REF"; then
       echo 'Previous application needs manual recovery. Database and assets were kept.' >&2
     fi
   fi
   rm -f -- "$release_file"
-  [[ -z "$bundle" ]] || rm -f -- "$bundle"
   [[ -z "$jar" ]] || rm -f -- "$jar"
   exit "$code"
 }
@@ -83,11 +82,14 @@ if [[ "$http" == 404 ]]; then
   exit 0
 fi
 test "$http" = 200
-digest=$(jq -er --arg tag "cloud-$head" --arg asset "$asset" '
+metadata=$(jq -er --arg tag "cloud-$head" --arg asset "$asset" '
   select(.tag_name == $tag and .draft == false and .prerelease == true)
   | [.assets[] | select(.name == $asset and .state == "uploaded" and .size > 0 and .size < 2000000000)]
-  | select(length == 1) | .[0].digest | select(test("^sha256:[a-f0-9]{64}$"))
+  | select(length == 1) | .[0]
+  | select(.digest | test("^sha256:[a-f0-9]{64}$")) | [.digest, .size] | @tsv
 ' "$release_file")
+read -r digest asset_size <<<"$metadata"
+[[ "$asset_size" =~ ^[0-9]{1,10}$ ]] || exit 1
 for check in checks.yml frontend-system-redesign.yml; do
   result=$(github_api "actions/workflows/$check/runs?branch=main&event=push&head_sha=$head&per_page=5" |
     jq -r --arg sha "$head" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")][0].conclusion // "pending"')
@@ -102,15 +104,36 @@ if (( free_kib < 6291456 )); then
   exit 1
 fi
 
-bundle=$(mktemp state/bundle.XXXXXXXX)
-curl --fail --silent --show-error --location --retry 2 --retry-delay 3 --retry-max-time 900 \
-  --connect-timeout 18 --max-time 900 --max-filesize 2000000000 \
-  --proto '=https' --proto-redir '=https' \
-  --output "$bundle" "https://github.com/$repo/releases/download/cloud-$head/$asset"
-printf '%s  %s\n' "${digest#sha256:}" "$bundle" | sha256sum --check --status
+mkdir -p state/downloads
+bundle="state/downloads/$head-${digest#sha256:}.part"
+# Keep one partial download and resume it across network interruptions or
+# restarts. It cannot reach Docker until the complete asset digest matches.
+find state/downloads -maxdepth 1 -type f -name '*.part' ! -name "${bundle##*/}" -delete
+touch "$bundle"
+already=$(stat -c '%s' "$bundle")
+if (( already > asset_size )); then
+  rm -f -- "$bundle"
+  echo 'Cached bundle exceeds the release manifest size.' >&2
+  exit 1
+fi
+if (( already < asset_size )); then
+  echo "Staging $head from byte $already of $asset_size."
+  curl --fail --silent --show-error --location --continue-at - \
+    --connect-timeout 18 --max-time 900 --speed-limit 4096 --speed-time 60 \
+    --proto '=https' --proto-redir '=https' \
+    --output "$bundle" "https://github.com/$repo/releases/download/cloud-$head/$asset" || {
+      echo "Download incomplete; retained $(stat -c '%s' "$bundle") staging bytes for the next attempt."
+      exit 0
+    }
+fi
+if [[ "$(stat -c '%s' "$bundle")" != "$asset_size" ]] ||
+   ! printf '%s  %s\n' "${digest#sha256:}" "$bundle" | sha256sum --check --status; then
+  rm -f -- "$bundle"
+  echo 'GitHub asset size or SHA-256 digest did not match.' >&2
+  exit 1
+fi
 docker image load --input "$bundle" --platform linux/amd64
 rm -f -- "$bundle"
-bundle=
 
 compose_hash=$(sed 's/\r$//' compose.yaml | sha256sum | cut -d ' ' -f 1)
 for target in server web; do
@@ -174,11 +197,14 @@ fi
 XIUTU_IMAGE_REF=$head
 compose config --quiet
 deploying=true
-compose up -d --no-deps --no-build --pull never --wait --wait-timeout 90 api worker web
+compose up -d --no-deps --no-build --pull never --wait --wait-timeout 90 api worker
+compose up -d --no-deps --no-build --pull never --wait --wait-timeout 45 web
 smoke "$head"
 prior=$(cat state/previous-sha 2>/dev/null || true)
 printf '%s\n' "$current" > state/previous-sha
 printf 'RELEASE_SHA=%s\n' "$head" > RELEASE.next
+chown --reference=RELEASE RELEASE.next
+chmod --reference=RELEASE RELEASE.next
 mv -f -- RELEASE.next RELEASE
 committed=true
 rm -f -- state/blocked-sha
