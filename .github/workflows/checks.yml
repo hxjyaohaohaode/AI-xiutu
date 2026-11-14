@@ -47,6 +47,9 @@ jobs:
       - run: npm ci
       - name: Verify the runner's installed Chrome
         run: google-chrome --version
+      - name: Prepare the verified local vision models for the production bundle
+        if: matrix.round == 1
+        run: npm run vision:prepare
       - name: Measure continuous slider, curve and touch paints
         if: matrix.round == 1
         env:
@@ -71,9 +74,7 @@ jobs:
         run: node --import tsx scripts/qa/team-voice.browser.mjs
       - name: Real portrait inference and full/tiled pixel comparison
         if: matrix.round == 1
-        run: |
-          npm run vision:prepare
-          node --import tsx scripts/qa/spatial-quality.browser.mjs
+        run: node --import tsx scripts/qa/spatial-quality.browser.mjs
       - name: Diverse real-photo beauty, matte and sports restoration observations
         if: matrix.round == 1
         run: node --import tsx scripts/qa/photo-quality.browser.mjs
