@@ -373,5 +373,4 @@
 .layer-preview-stack > small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
 
 @media (min-width: 760px) and (min-height: 521px) {
-  .studio-workspace .canvas-stage .canvas-selection-peek { inset-inline-start: 134px; }
 }

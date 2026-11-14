@@ -6,8 +6,8 @@
 .canvas-stage .canvas-selection-peek {
   position: absolute;
   z-index: 6;
-  inset-inline-start: 108px;
-  top: 10px;
+  inset-inline-start: 8px;
+  inset-block-start: 54px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -233,8 +233,6 @@
     scroll-snap-align: center;
   }
   .canvas-stage .canvas-selection-peek {
-    top: 3px;
-    inset-inline-start: 91px;
     min-height: 44px;
     padding-inline: 10px;
   }

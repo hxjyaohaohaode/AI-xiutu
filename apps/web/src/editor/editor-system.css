@@ -500,8 +500,6 @@
     display: none;
   }
   .studio-workspace .canvas-stage .canvas-selection-peek {
-    top: 2px;
-    inset-inline-start: 4px;
     min-height: 44px;
     padding: 8px;
     min-width: 44px;
@@ -628,6 +626,12 @@
   }
   .studio-workspace .free-panel[data-panel-id='inspector'] .parameter-shelf {
     gap: 4px;
+  }
+}
+@media (max-width: 759px), (max-height: 520px) {
+  .studio-workspace .free-panel[data-fixed-inspector] .local-controls-v3 > .local-primary-controls {
+    order: -1;
+    margin-top: 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -329,6 +329,9 @@
   .project-asset-tools .asset-tool-section > h3 { margin: 0; }
   .studio-workspace .canvas-tools-overlay { inset: 3px 5px auto; }
   .studio-workspace:not(.is-focused) .canvas-stage.content-first.has-image .image-viewport { padding-block-start: 23px; }
+  .studio-workspace .canvas-stage.content-first.has-image[data-crop-editing] .image-viewport {
+    padding-block-start: 65px;
+  }
   .studio-workspace .canvas-tools-dock > .image-action-strip { display: flex; padding: 1px; gap: 0; }
   .studio-workspace .canvas-tools-dock .image-action-strip > .icon-button { min-width: 29px; width: 29px; min-height: 30px; height: 30px; }
   .studio-workspace .canvas-tools-dock .collaboration-summary { min-width: 32px; padding: 4px; }

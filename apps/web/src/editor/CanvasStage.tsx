@@ -723,7 +723,7 @@ export function CanvasStage({
     observer.observe(element);
     measure();
     return () => observer.disconnect();
-  }, []);
+  }, [cropEditing]);
   useEffect(() => {
     const element = viewport.current;
     if (!element) return;
@@ -2124,6 +2124,8 @@ export function CanvasStage({
   return (
     <main
       className={`canvas-stage content-first ${dragging ? 'is-dragging' : ''} ${editor.file ? 'has-image' : ''}`}
+      aria-label={editor.file?.name}
+      data-crop-editing={cropEditing || undefined}
       aria-busy={
         editor.loading ||
         editor.rendering ||

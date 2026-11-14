@@ -34,7 +34,7 @@ assert.equal(sdkVersion, '1.2.2', 'Telemetry classification is restricted to the
 assert.equal(dependencyLock.packages['node_modules/' + sdkName].version, sdkVersion);
 const testedCommit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
 assert.equal(testedCommit, process.env.REVIEW_HEAD, 'The checkout must be the exact reviewed feature head.');
-const artifacts = resolve(root, 'artifacts/frontend-review');
+const artifacts = resolve(root, process.env.FRONTEND_REVIEW_DIR ?? 'artifacts/frontend-review');
 const publishRoot = resolve(artifacts, 'publish');
 await mkdir(artifacts, { recursive: true });
 const privateDirectory = await mkdtemp(join(tmpdir(), 'xiutu-frontend-review-'));
@@ -174,6 +174,7 @@ async function check(name, run) {
   activeCase = name;
   activePage = undefined;
   const started = Date.now();
+  console.log('START ' + name);
   try {
     const details = await run();
     assert.deepEqual(report.routingErrors.filter((failure) => failure.case === name), [], name + ' must not have request routing errors.');
@@ -468,12 +469,15 @@ async function layout(page, label, selector = null) {
           covering: hit?.className?.toString().slice(0, 80) ?? null,
         });
     }
-    const selectedTool = scope.querySelector('.dock-tool-scroll > button[aria-pressed="true"]');
-    const indicator = scope.querySelector('.dock-tool-scroll > .dock-selection');
+    const selectedFace = scope.querySelector('.studio-reference-dock button[aria-pressed="true"] .dock-face');
+    const selectedTool = selectedFace?.closest('.dock-tile') ??
+      scope.querySelector('.dock-tool-scroll > button[aria-pressed="true"]');
+    const indicator = selectedFace ?? scope.querySelector('.dock-tool-scroll > .dock-selection');
     const selectionOffset = selectedTool && visible(selectedTool) &&
       indicator?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
       ? indicator.getBoundingClientRect().top - selectedTool.getBoundingClientRect().top
       : null;
+    const selectedFaceColor = selectedFace && getComputedStyle(selectedFace).backgroundColor;
     const dialog = scope instanceof HTMLDialogElement ? scope : null;
     const bounds = dialog?.getBoundingClientRect();
     const headings = [...scope.querySelectorAll('h1,h2,h3')].filter(visible).filter((node) =>
@@ -482,7 +486,7 @@ async function layout(page, label, selector = null) {
     return {
       width: innerWidth, height: innerHeight,
       documentOverflow: document.documentElement.scrollWidth - innerWidth,
-      sampledControls, obscured, headingOverflows: headings, selectionOffset,
+      sampledControls, obscured, headingOverflows: headings, selectionOffset, selectedFaceColor,
       dialog: bounds ? { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom } : null,
     };
   }, selector);
@@ -519,7 +523,7 @@ async function imageReady(page) {
   await page.locator('.image-frame canvas[aria-label]:visible').waitFor();
   await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
   await page.locator('.stage-loading:visible').waitFor({ state: 'hidden' });
-  assert.equal(await page.locator('.canvas-error [role="alert"]:visible').count(), 0);
+  assert.equal(await page.locator('.workspace-canvas-status [role="alert"]:visible').count(), 0);
   await settle(page);
 }
 async function canvasPixels(page) {
@@ -536,16 +540,16 @@ async function canvasPixels(page) {
   return { width: info.width, height: info.height, pixelSha256: sha256(pixels), opaque, meanLuma: luma / opaque };
 }
 async function importReviewFile(page, filename, input) {
-  const fileName = page.locator('.canvas-file-info').getByText(filename, { exact: true });
+  const source = page.getByRole('main', { name: filename, exact: true }).and(page.locator('.canvas-stage'));
   const confirm = page.locator('dialog.confirmation-dialog[open] .dialog-actions button').last();
   await page.getByLabel(/^(选择照片|選擇照片|Choose photo)$/, { exact: true }).setInputFiles(input);
   const outcome = await Promise.race([
-    fileName.waitFor({ state: 'attached' }).then(() => 'opened'),
+    source.waitFor().then(() => 'opened'),
     confirm.waitFor().then(() => 'confirm'),
   ]);
   if (outcome === 'confirm') {
     await confirm.click();
-    await fileName.waitFor({ state: 'attached' });
+    await source.waitFor();
   }
   await imageReady(page);
 }
@@ -593,10 +597,13 @@ async function changeView(page, id) {
   assert.ok(viewIds.includes(id));
   const compact = page.locator('.mobile-view-trigger');
   if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
-    await (await compact.isVisible() ? compact : page.locator('.project-view-trigger')).click();
-    const navigation = page.getByRole('navigation', { name: '切换工作视图', exact: true });
+    const trigger = await compact.isVisible() ? compact : page.locator('.project-view-trigger');
+    const menuId = await trigger.getAttribute('aria-controls');
+    assert.ok(menuId);
+    const navigation = page.locator(`nav[id="${menuId}"][data-open]`);
+    if (!(await navigation.isVisible())) await trigger.click();
     await navigation.locator('[data-view="' + id + '"]').click();
-    await navigation.waitFor({ state: 'hidden' });
+    await navigation.waitFor({ state: 'detached' });
   } else await page.locator('.compact-view-tabs > button[data-view="' + id + '"]').click();
   await settle(page);
 }
@@ -692,6 +699,7 @@ async function referenceControlReview() {
     }
     const geometry = await layout(page,'actual Scrub modifiers, cancellation and single Undo');
     assert.notEqual(geometry.selectionOffset, null, 'The selected Dock decoration must be measured');
+    assert.notEqual(geometry.selectedFaceColor, 'rgba(0, 0, 0, 0)', 'The selected Dock face must be painted');
     await capture(page,'interactions/scrub-desktop.png');
   } catch(error) {await failureEvidence(desktop.page);throw error;}
   finally {await closeCaseContext(desktop.context);}
@@ -923,7 +931,17 @@ async function inspectAbout(specification) {
     }
     const verifyAboutScreens = async (theme) => {
       for (const image of await about.locator('[data-product-screen] img').all()) {
-        await image.evaluate(async (node) => { await node.decode(); });
+        // Switching theme remounts lazy images. Bring each one into the viewport
+        // before testing the browser-decoded bytes and responsive source.
+        await image.scrollIntoViewIfNeeded();
+        await image.evaluate(async (node) => {
+          let timer;
+          try {
+            await Promise.race([node.decode(), new Promise((_, reject) => {
+              timer = setTimeout(() => reject(new Error(`Image decode timed out: ${node.currentSrc || node.src}`)), 10000);
+            })]);
+          } finally { clearTimeout(timer); }
+        });
         const state = await image.evaluate((node) => ({
           path: new URL(node.currentSrc || node.src, location.href).pathname,
           width: node.naturalWidth, height: node.naturalHeight, alt: node.alt,
@@ -932,7 +950,10 @@ async function inspectAbout(specification) {
         assert.ok(state.path.startsWith('/about/review/') && state.path.endsWith(
           '-' + specification.locale + (theme === 'dark' ? '-dark' : '') + '.webp',
         ), 'About uses the reviewed capture for the active language and theme: ' + state.path);
-        const expected = await readFile(resolve(root, 'apps/web/public' + state.path));
+        const current = published.find(({ path }) => path === 'apps/web/public' + state.path);
+        const expected = current
+          ? await readFile(resolve(publishRoot, current.path))
+          : await readFile(resolve(root, 'apps/web/public' + state.path));
         const response = await page.request.get(origin + state.path);
         assert.equal(response.status(), 200);
         assert.equal(sha256(await response.body()), sha256(expected), 'Served capture matches the workspace file.');
@@ -941,10 +962,12 @@ async function inspectAbout(specification) {
     const themeSwitch = about.locator('.overview-header .theme-switch');
     const initialTheme = await page.locator('html').getAttribute('data-theme');
     await verifyAboutScreens(initialTheme);
+    await page.keyboard.press('Control+Home');
     await themeSwitch.click();
     const nextTheme = initialTheme === 'dark' ? 'light' : 'dark';
     await page.locator(`html[data-theme="${nextTheme}"]`).waitFor({ state: 'attached' });
     await verifyAboutScreens(nextTheme);
+    await page.keyboard.press('Control+Home');
     await themeSwitch.click();
     await page.keyboard.press('Control+Home');
     await page.waitForFunction(() => scrollY <= 1);
@@ -1122,8 +1145,9 @@ async function mobileEditingFlow() {
     }
     const [width, height] = await aspect();
     await layout(page, 'phone fixed crop and orientation');
+    await dimensions.scrollIntoViewIfNeeded();
     const cropReadout = await dimensions.boundingBox();
-    const dock = await page.locator('.floating-tool-dock').boundingBox();
+    const dock = await page.locator(':is(.studio-reference-dock, .floating-tool-dock):visible').boundingBox();
     assert.ok(cropReadout && dock && cropReadout.y + cropReadout.height <= dock.y + 1,
       'the crop size readout is fully visible above the phone tool dock');
     await capture(page, 'interactions/mobile-crop-390.png');
@@ -1175,24 +1199,7 @@ async function mobileEditingFlow() {
     await layout(page, 'full-screen phone assistant with a real editor screenshot');
     await capture(page, 'interactions/mobile-ai-390.png');
     const sourceTrigger = chat.getByRole('button', { name: '共享画面与参考素材', exact: true });
-    await sourceTrigger.press('ArrowDown');
-    const sources = chat.locator('.ai-prompt-source-menu:popover-open');
-    await sources.waitFor();
-    await until(async () => (await sourceTrigger.getAttribute('aria-expanded')) === 'true',
-      'the sources trigger reflects the native popover open state');
-    const sourceMenu = await sources.boundingBox();
-    const composer = chat.locator('.ai-composer-surface:visible');
-    const promptSurface = await composer.boundingBox();
-    assert.ok(sourceMenu.y + sourceMenu.height < promptSurface.y, 'the sources menu opens above the prompt bar');
-    assert.deepEqual(await composer.evaluate(node => {
-      const style = getComputedStyle(node);
-      return { border: style.borderTopWidth, outline: style.outlineStyle, shadow: style.boxShadow };
-    }), { border: '0px', outline: 'none', shadow: 'none' }, 'focus belongs to the action inside the prompt bar');
-    await capture(page, 'interactions/mobile-ai-sources.png');
-    await page.keyboard.press('Escape');
-    await sources.waitFor({ state: 'hidden' });
-    await until(async () => (await sourceTrigger.getAttribute('aria-expanded')) === 'false',
-      'the sources trigger reflects the native popover closed state');
+    assert.equal(await sourceTrigger.isDisabled(), true, 'A visitor can retain the attachment and cannot share project sources');
     await screenshot.waitFor();
     const back = chat.getByRole('button', { name: '返回编辑器', exact: true });
     await back.click();
@@ -1273,7 +1280,7 @@ async function mobileEditingFlow() {
       await sketch.waitFor();
       await layout(page, 'full-screen assistant ' + viewport.width + 'x' + viewport.height);
       const panel = await chat.boundingBox();
-      const composer = await chat.locator('.ai-composer-surface:visible').boundingBox();
+      const composer = await chat.locator('[data-ai-composer] .prompt-bar__field').boundingBox();
       assert.ok(panel.height >= viewport.height - 2 && composer.y + composer.height <= viewport.height);
       await capture(page, 'interactions/mobile-ai-' + viewport.width + '.png');
     }
@@ -1468,11 +1475,18 @@ async function supplementalViews(config) {
     assert.deepEqual(selectedProject.artworks.map((work) => work.title).sort(), ['Lake study', 'Portrait study']);
     await changeView(page, 'works');
     const library = page.locator('.asset-library:visible');
-    await library.getByRole('heading', { name: projectName, exact: true }).waitFor();
-    await library.locator('.library-asset').first().waitFor();
-    assert.equal(await library.locator('.library-asset').count(), 2);
-    const savedWorks = library.locator('.library-version-links > button');
-    assert.deepEqual((await savedWorks.locator('span').allTextContents()).sort(), ['Lake study', 'Portrait study']);
+    await library.getByText(projectName, { exact: true }).first().waitFor();
+    const items = library.locator('.library-reference-masonry [role="listitem"]');
+    await items.nth(1).waitFor();
+    assert.equal(await items.count(), 2);
+    for (const [id, title] of [['coast', 'Lake study'], ['portrait', 'Portrait study']]) {
+      const source = stored.find((item) => item.id === id);
+      await library.locator(`[data-id="${source.assetId}"] .library-masonry-more`).click();
+      const detail = page.locator('dialog.library-asset-menu[open]');
+      await detail.locator('.library-version-links > button').filter({ hasText: title }).waitFor();
+      await detail.getByRole('button', { name: '关闭窗口', exact: true }).click();
+      await detail.waitFor({ state: 'hidden' });
+    }
     await layout(page, 'isolated project gallery');
     await verificationCapture(page, 'views/works.png', 'works', 'Actual isolated project library with two real public photographs and their saved versions');
     const restoration = { state: 'unavailable', quoteVerified: false, createdDerivedAssets: 0 };
@@ -1489,7 +1503,8 @@ async function supplementalViews(config) {
     page.on('response', onRestorationResponse);
     page.on('request', onRestorationRequest);
     try {
-      await library.locator('.library-restoration-action').first().click();
+      await library.locator(`[data-id="${stored[0].assetId}"] .library-masonry-more`).click();
+      await page.locator('dialog.library-asset-menu[open] .library-restoration-action').click();
       const repair = page.locator('dialog.restoration-dialog[open]');
       await repair.waitFor();
       const state = await until(async () => {
@@ -1634,7 +1649,23 @@ async function supplementalViews(config) {
     await availability.waitFor();
     assert.equal(await availability.count(), 1, 'Unavailable assistant has one status, not repeated notices.');
     assert.ok((await availability.innerText()).trim());
-    assert.equal(await assistant.locator('.ai-submit-request').isDisabled(), true);
+    assert.equal(await assistant.locator('[data-ai-composer] .prompt-bar__send').isDisabled(), true);
+    const sourceTrigger = assistant.getByRole('button', { name: '共享画面与参考素材', exact: true });
+    await sourceTrigger.press('Enter');
+    const sources = assistant.getByRole('listbox', { name: '共享画面与参考素材', exact: true });
+    await sources.waitFor();
+    assert.equal(await sourceTrigger.getAttribute('aria-expanded'), 'true');
+    assert.equal(await sources.getByRole('option', { name: /参考图/ }).count(), 1);
+    const composer = assistant.locator('[data-ai-composer] .prompt-bar__field');
+    const menuBox = await sources.boundingBox();
+    const promptBox = await composer.boundingBox();
+    assert.ok(menuBox && promptBox && menuBox.y + menuBox.height <= promptBox.y + 1,
+      'The source options open above the composer');
+    assert.equal(await composer.locator('.prompt-bar__input').evaluate(node => node === document.activeElement), true);
+    await capture(page, 'interactions/signed-in-ai-sources.png');
+    await page.keyboard.press('Escape');
+    await sources.waitFor({ state: 'hidden' });
+    assert.equal(await sourceTrigger.getAttribute('aria-expanded'), 'false');
     await layout(page, 'AI unavailable state without supplier');
     await verificationCapture(page, 'views/assistant-disabled.png', 'assistant-unavailable', 'Actual assistant unavailable state; no external AI request');
     await page.locator('.studio-account').click();
@@ -1677,19 +1708,20 @@ async function businessScreens(locale) {
     try {
       await openFixtureProject(page);
       await changeView(page, 'works');
-      await page.locator('.asset-library:visible .library-asset').first().waitFor();
+      const cards = page.locator('.asset-library:visible .library-reference-masonry [data-card]');
+      await cards.nth(1).waitFor();
       await page.locator('.asset-library:visible img').evaluateAll(async nodes => { await Promise.all(nodes.map(node => node.decode())); });
       await layout(page, locale + suffix + ': real project library');
       if (!phone) {
-        const covers = page.locator('.asset-library:visible .library-cover');
-        const first = await covers.nth(0).boundingBox();
-        const second = await covers.nth(1).boundingBox();
-        assert.ok(first && second && Math.abs(first.y - second.y) <= 1 && Math.abs(first.height - second.height) <= 1,
-          locale + ': artwork thumbnails with different source proportions must share a row and baseline');
+        const first = await cards.nth(0).boundingBox();
+        const second = await cards.nth(1).boundingBox();
+        assert.ok(first && second && Math.abs(first.y - second.y) <= 1 &&
+          (first.x + first.width <= second.x + 1 || second.x + second.width <= first.x + 1),
+          locale + ': artwork thumbnails share a row with separate hit targets');
       }
       await productCapture(page,'library'+suffix,locale,['coast','portrait'],'Actual private project assets and saved versions from disposable API-backed fixture');
       if(phone && locale==='zh-CN') {
-        const firstAsset=page.locator('.asset-library:visible .library-asset').first();
+        const firstAsset=cards.first();
         const regular=await firstAsset.boundingBox();
         await page.setViewportSize({width:320,height:568});
         await layout(page,'small phone: real library filters and assets');
@@ -1712,7 +1744,9 @@ async function businessScreens(locale) {
         await importStoryPhoto(page, 'gallery.webp');
         await tool(page, 'local');
         await page.locator('[data-mask-type="radial"]:visible').click();
-        await page.locator('.mask-overlay polygon').waitFor();
+        const outline = page.locator('.mask-overlay');
+        await outline.waitFor();
+        assert.equal(await outline.locator('polygon').count(), 2, 'Radial selection shows its bounds and feather outline');
         await productCapture(page, 'team-canvas', locale, 'stories/gallery.webp', 'Real signed-in image canvas; About adds clearly marked annotations');
       }
       await changeView(page,'editor');
@@ -1720,12 +1754,12 @@ async function businessScreens(locale) {
       await tool(page,'ai');
       const assistant=page.locator('.free-panel[data-panel-id="ai"][aria-hidden="false"] .live-assistant:visible');
       await until(async()=>await assistant.getAttribute('data-availability')==='unavailable','honest AI service availability');
-      const input=assistant.locator('.ai-composer-input');
+      const input=assistant.locator('[data-ai-composer] .prompt-bar__input');
       const draftEditable=await input.isEditable();
       if (draftEditable) await input.fill(locale==='en'
         ? 'Lift the shadows on the rocks. Keep the light in the surf.'
         : locale==='zh-TW'?'稍微提亮岩石暗部，保留浪花的亮部。':'稍微提亮礁石暗部，保留浪花的亮部。');
-      assert.equal(await assistant.locator('.ai-submit-request').isDisabled(),true);
+      assert.equal(await assistant.locator('[data-ai-composer] .prompt-bar__send').isDisabled(),true);
       await layout(page,locale+suffix+': actual assistant composer and unconfigured service state');
       await productCapture(page,'assistant'+suffix,locale,'stories/shore.webp',
         'Actual assistant input'+(draftEditable?' with an unsent draft':'')+'; service unavailable and submit disabled; no fabricated AI result');

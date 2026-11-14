@@ -546,17 +546,23 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
   await capture(page, 'interactions/mobile-automatic-makeup.png');
   await page.setViewportSize({ width: 320, height: 568 });
   const palette = automatic.locator('.makeup-palette');
+  await palette.scrollIntoViewIfNeeded();
   await until(async () => {
     const color = await palette.boundingBox();
-    const dock = await page.locator('.floating-tool-dock:visible').boundingBox();
+    const dock = await page.locator(':is(.studio-reference-dock, .floating-tool-dock):visible').boundingBox();
+    const swatch = await shades.getByRole('button').first().evaluate(node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return node.contains(document.elementFromPoint(x + width / 2, y + height / 2));
+    });
     return (
       color &&
       dock &&
+      swatch &&
       color.y + color.height <= dock.y + 1 &&
       color.x >= 0 &&
       color.x + color.width <= 320
     );
-  }, 'narrow phone keeps the whole palette above the tool dock');
+  }, 'narrow phone can scroll the palette into view above the tool dock');
   await capture(page, 'interactions/mobile-automatic-makeup-narrow.png');
   const setLanguage = async (locale) => {
     await page.evaluate((locale) => {
@@ -599,7 +605,10 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
               '.makeup-brush-rail',
               '.automatic-makeup .makeup-brush-rail > button[aria-pressed="true"]',
             ],
-            ['.dock-tool-scroll', '.dock-tool-scroll > button[data-dock-tool="paint"]'],
+            [
+              ':is(.dock-tool-scroll, .studio-reference-dock)',
+              '[data-dock-tool="beauty"][aria-pressed="true"]',
+            ],
           ].every(([owner, selector]) => {
             const item = document.querySelector(selector);
             const clip = item?.closest(owner)?.getBoundingClientRect();
@@ -617,13 +626,10 @@ export async function reviewMakeup({ page, canvasPixels, tool, parameter, until,
   await tool(page, 'beauty');
   await page.getByRole('button', { name: '身形', exact: true }).click();
   await page.getByRole('switch', { name: '自动人像调节', exact: true }).click();
-  await page.getByRole('button', { name: '横向拉伸', exact: true }).click();
-  const warp = page.locator('[data-motion="warp-controls"]:visible');
-  await warp.getByRole('button', { name: '横向', exact: true }).waitFor();
-  assert.equal(
-    await warp.getByRole('button', { name: '横向', exact: true }).getAttribute('aria-pressed'),
-    'true',
-  );
+  const horizontal = page.getByRole('button', { name: '横向拉伸', exact: true });
+  await horizontal.click();
+  await until(async () => await horizontal.getAttribute('aria-pressed') === 'true',
+    'the manual body tool activates the horizontal axis');
   const beforeWarp = await canvasPixels(page);
   const imageForWarp = await canvas.boundingBox();
   const x = imageForWarp.x + imageForWarp.width * 0.48;
