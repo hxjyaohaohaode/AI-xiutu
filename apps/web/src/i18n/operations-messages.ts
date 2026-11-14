@@ -1,4 +1,12 @@
 export const operationsEnglish: Readonly<Record<string, string>> = {
+  "搜索模型名称或 ID": "Search model name or ID",
+  "没有符合条件的模型。": "No matching models.",
+  "第 {page} 页": "Page {page}",
+  "操作审计分页": "Audit log pages",
+  "管理赞赏码": "Manage appreciation code",
+  "请填写操作原因，至少 3 个字符。": "Enter a reason with at least 3 characters.",
+  "请至少选择一项任务用途及适用的质量。": "Select at least one task and an applicable quality setting.",
+  "请选择要编辑的模型。": "Select a model to edit.",
   "账号管理员": "Account administrator",
   "已注销": "Closed",
   "授予运营权限": "Grant operator access",

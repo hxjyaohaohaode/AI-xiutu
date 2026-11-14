@@ -52,7 +52,7 @@ test('the fixed phone inspector and canvas agree about the measured dock clearan
 
 test('AI resize, numeric preferences and restored geometry preserve the usable composer minimum', () => {
   for (const view of [phone, desktop]) {
-    const minimum = view.bucket === 'phone' ? 224 : 260;
+    const minimum = view.bucket === 'phone' ? 224 : 456;
     const requested = { ...defaultPanel('ai', view), height: 1 };
     assert.equal(boundPanel(requested, view, 'ai').height, minimum);
     const resized = resizePanel(defaultPanel('ai', view), 'n', 0, 2000, view, 'ai');

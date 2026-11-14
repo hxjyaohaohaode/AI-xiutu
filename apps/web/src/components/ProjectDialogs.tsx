@@ -1,3 +1,4 @@
+import { SquishSwitch } from './control-motion';
 import { t } from '../i18n';
 import { secureUuid } from '../lib/uuid';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
@@ -815,24 +816,16 @@ export function TeamDialog({
           <TeamActivity spaceId={space.id} refreshToken={activityRefresh} />
         ) : policy ? (
           <div className="stack-form">
-            <label className="switch-row">
-              <span>{t('允许项目参考共享')}</span>
-              <input
-                type="checkbox"
-                disabled={!canManage || busy}
+            <SquishSwitch className="setting-switch" label={t('允许项目参考共享')}
+disabled={!canManage || busy}
                 checked={policy.allowReference}
-                onChange={(e) => setPolicy({ ...policy, allowReference: e.target.checked })}
+                onCheckedChange={(checked) => setPolicy({ ...policy, allowReference: checked })}
               />
-            </label>
-            <label className="switch-row">
-              <span>{t('允许接收者复制项目')}</span>
-              <input
-                type="checkbox"
-                disabled={!canManage || busy}
+            <SquishSwitch className="setting-switch" label={t('允许接收者复制项目')}
+disabled={!canManage || busy}
                 checked={policy.allowCopy}
-                onChange={(e) => setPolicy({ ...policy, allowCopy: e.target.checked })}
+                onCheckedChange={(checked) => setPolicy({ ...policy, allowCopy: checked })}
               />
-            </label>
             <p className="form-hint">
               {t('参考共享可以撤销后续访问。接收者已经明确复制的独立副本，无法远程收回。')}
             </p>

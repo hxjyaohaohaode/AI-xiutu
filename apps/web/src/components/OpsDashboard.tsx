@@ -17,7 +17,7 @@ import {
   ArrowClockwise,
   ChatCircleDots,
 } from '@phosphor-icons/react';
-import { api, ApiError, errorMessage, formatDate, jsonRequest } from '../lib/api';
+import { api, ApiError, errorMessage, formatDate, jsonRequest, settingsErrorMessage } from '../lib/api';
 import { Busy, IconButton, InlineError } from './Ui';
 import { StatusMark } from './StatusMark';
 import { CheckControl } from './CheckControl';
@@ -104,6 +104,7 @@ const emptyPlan = {
   benefits: [],
 } satisfies Omit<Plan, 'id' | 'version'>;
 type Config = {
+  revision: string;
   brand: PublicConfig['brand'];
   registrationMode: 'open' | 'invite';
   quota: { freeUnits: number };
@@ -133,7 +134,7 @@ type OpsReadResult =
   | { tab: 'config'; config: Config; projects: Project[] }
   | { tab: 'plans'; plans: Plan[] }
   | { tab: 'models'; models: ModelConfig[]; catalog: ProviderCatalogItem[] }
-  | { tab: 'audit'; entries: Audit[] }
+  | { tab: 'audit'; entries: Audit[]; nextCursor: string | null }
   | { tab: 'independent' };
 const tabs: { id: OpsTab; label: string; icon: React.ReactNode }[] = [
   { id: 'overview', label: '运行概览', icon: <ChartBar size={19} /> },
@@ -168,8 +169,18 @@ export function OpsDashboard({
   const [config, setConfig] = useState<Config | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [models, setModels] = useState<ModelConfig[]>([]);
+  const [modelSearch, setModelSearch] = useState('');
+  const [modelPage, setModelPage] = useState(0);
+  const modelQuery = modelSearch.trim().toLowerCase();
+  const matchingModels = models.filter((model) =>
+    model.id.toLowerCase().includes(modelQuery) || model.label.toLowerCase().includes(modelQuery));
+  const modelLastPage = Math.max(0, Math.ceil(matchingModels.length / 8) - 1);
+  const catalogPage = Math.min(modelPage, modelLastPage);
   const [providerCatalog, setProviderCatalog] = useState<ProviderCatalogItem[]>([]);
   const [entries, setEntries] = useState<Audit[]>([]);
+  const [auditPages, setAuditPages] = useState<(string | null)[]>([null]);
+  const [auditNext, setAuditNext] = useState<string | null>(null);
+  const auditCursor = auditPages.at(-1) ?? null;
   const [reason, setReason] = useState('');
   const [invite, setInvite] = useState('');
   const [phone, setPhone] = useState('');
@@ -180,6 +191,7 @@ export function OpsDashboard({
   const [planDraft, setPlanDraft] = useState<Omit<Plan, 'id' | 'version'>>(emptyPlan);
   const [planEditing, setPlanEditing] = useState<Pick<Plan, 'id' | 'version'> | null>(null);
   const [planBenefits, setPlanBenefits] = useState('');
+  const modelForm = useRef<HTMLFormElement>(null);
   const [modelEdit, setModelEdit] = useState<(ModelConfig & { baseId?: string }) | null>(null);
   const modelFields = modelEdit
     ? opsModelFields(
@@ -187,9 +199,13 @@ export function OpsDashboard({
         providerCatalog.find((model) => model.id === modelEdit.id)?.parameterCapabilities,
       )
     : null;
+  useEffect(() => {
+    modelForm.current?.scrollIntoView({ block: 'nearest' });
+  }, [modelEdit?.baseId, Boolean(modelEdit)]);
   const [managedProjects, setManagedProjects] = useState<Project[]>([]);
   const [logoProject, setLogoProject] = useState('');
   const [reader] = useState(() => new OpsReadCoordinator());
+  const opsBody = useRef<HTMLElement>(null);
   const mounted = useRef(false);
   const actionPending = useRef(false);
   const logoUploadOwner = useRef(0);
@@ -223,11 +239,13 @@ export function OpsDashboard({
             return { tab: 'users', ...accounts };
           }
           if (scope.tab === 'config') {
-            const [nextConfig, projects] = await Promise.all([
+            const [nextConfig, projects] = await Promise.allSettled([
               api<Config>('/ops/config', { signal }),
               api<{ projects: Project[] }>('/projects', { signal }),
             ]);
-            return { tab: 'config', config: nextConfig, projects: projects.projects };
+            if (nextConfig.status === 'rejected') throw nextConfig.reason;
+            return { tab: 'config', config: nextConfig.value,
+              projects: projects.status === 'fulfilled' ? projects.value.projects : [] };
           }
           if (scope.tab === 'plans')
             return {
@@ -248,7 +266,10 @@ export function OpsDashboard({
           if (scope.tab === 'audit')
             return {
               tab: 'audit',
-              entries: (await api<{ entries: Audit[] }>('/ops/audit', { signal })).entries,
+              ...(await api<{ entries: Audit[]; nextCursor: string | null }>(
+                '/ops/audit?limit=10' + (auditCursor ? '&before=' + encodeURIComponent(auditCursor) : ''),
+                { signal },
+              )),
             };
           return { tab: 'independent' };
         },
@@ -262,7 +283,10 @@ export function OpsDashboard({
               setCanManageAccounts(result.canManageAccounts);
             }
             else if (result.tab === 'plans') setPlans(result.plans);
-            else if (result.tab === 'audit') setEntries(result.entries);
+            else if (result.tab === 'audit') {
+              setEntries(result.entries);
+              setAuditNext(result.nextCursor);
+            }
             else if (result.tab === 'models') {
               setModels(result.models);
               setProviderCatalog(result.catalog);
@@ -285,7 +309,7 @@ export function OpsDashboard({
         },
       );
     },
-    [tab, reader],
+    [tab, reader, auditCursor],
   );
   useEffect(() => {
     void load();
@@ -306,18 +330,25 @@ export function OpsDashboard({
         if (reload) await load();
       }
     } catch (e) {
-      if (mounted.current && currentTab.current === tab) setError(errorMessage(e));
+      if (mounted.current && currentTab.current === tab) setError(settingsErrorMessage(e));
     } finally {
       actionPending.current = false;
       if (mounted.current) setBusy(false);
     }
   }
   const reasonField = (
-    <label>
+    <label className="ops-save-reason">
       {t('操作原因')}
       <input
         value={reason}
-        onChange={(e) => setReason(e.target.value)}
+        onInvalid={(event) => {
+          if (reason.trim().length < 3)
+            event.currentTarget.setCustomValidity(t('请填写操作原因，至少 3 个字符。'));
+        }}
+        onChange={(e) => {
+          e.currentTarget.setCustomValidity('');
+          setReason(e.target.value);
+        }}
         placeholder={t('写明调整依据，作为审计记录')}
         minLength={3}
         maxLength={500}
@@ -325,6 +356,13 @@ export function OpsDashboard({
       />
     </label>
   );
+  function validateReason(event: FormEvent<HTMLFormElement>) {
+    if (reason.trim().length >= 3) return true;
+    const field = event.currentTarget.querySelector<HTMLInputElement>('.ops-save-reason input');
+    field?.setCustomValidity(t('请填写操作原因，至少 3 个字符。'));
+    field?.reportValidity();
+    return false;
+  }
   const countLabels: Record<string, string> = {
     users: '注册用户',
     spaces: '创作空间',
@@ -338,6 +376,7 @@ export function OpsDashboard({
   function selectTab(next: OpsTab) {
     if (next === tab) return;
     logoUploadOwner.current++;
+    if (next === 'audit') setAuditPages([null]);
     reader.cancel();
     setLoading(true);
     setTab(next);
@@ -373,7 +412,7 @@ export function OpsDashboard({
         />
       </aside>
       <main
-        className="ops-content"
+        className="ops-content" ref={opsBody}
         data-ops-tab={tab}
         data-read-state={loading ? 'loading' : readReady ? 'ready' : 'error'}
         aria-busy={loading}
@@ -385,7 +424,7 @@ export function OpsDashboard({
             <ArrowClockwise size={21} />
           </IconButton>
         </div>
-        <InlineError message={error} />
+        <InlineError message={tab === 'models' && modelEdit ? null : error} />
         {success && (
           <div className="success-note" role="status">
             <StatusMark state="done" size="small" label={t(success)} />
@@ -555,8 +594,9 @@ export function OpsDashboard({
                 className="surface ops-section stack-form"
                 onSubmit={(e) => {
                   e.preventDefault();
+                  if (!validateReason(e)) return;
                   void action(async () => {
-                    await api(
+                    const saved = await api<Config>(
                       '/ops/config',
                       jsonRequest('PATCH', {
                         brand: {
@@ -565,12 +605,14 @@ export function OpsDashboard({
                           logoAssetId: config.brand.logoAssetId ?? null,
                         },
                         registrationMode: config.registrationMode,
+                        expectedRevision: config.revision,
                         quota: { freeUnits: config.quota.freeUnits },
                         reason,
                       }),
                     );
+                    if (mounted.current && currentTab.current === 'config') setConfig(saved);
                     onConfigChanged();
-                  }, t('配置已保存'));
+                  }, t('配置已保存'), false);
                 }}
               >
                 <h2>{t('站点与周期权益')}</h2>
@@ -712,7 +754,7 @@ export function OpsDashboard({
                 {reasonField}
                 <button
                   className="button button-primary"
-                  disabled={busy || reason.trim().length < 3}
+                  disabled={busy}
                 >
                   {busy ? <Busy /> : t('保存配置')}
                 </button>
@@ -760,7 +802,12 @@ export function OpsDashboard({
             {tab === 'plans' && (
               <>
                 <section className="surface ops-section">
-                  <h2>{t('套餐目录')}</h2>
+                  <div className="section-heading">
+                    <h2>{t('套餐目录')}</h2>
+                    <button type="button" className="button button-secondary" onClick={() => selectTab('support')}>
+                      {t('管理赞赏码')}
+                    </button>
+                  </div>
 
                   {plans.map((plan) => (
                     <div className="plan-row" key={plan.id}>
@@ -784,30 +831,6 @@ export function OpsDashboard({
                         setPlanDraft({ name, units, priceCents, expiresAfterDays, active, kind, description, benefits });
                         setPlanBenefits(benefits.join('\n'));
                       }}>{t('编辑套餐')}</button>
-                      <button
-                        className="text-button"
-                        disabled={busy || reason.trim().length < 3}
-                        onClick={() =>
-                          void action(
-                            () =>
-                              api(
-                                `/ops/plans/${plan.id}`,
-                                jsonRequest('PATCH', {
-                                  name: plan.name,
-                                  units: plan.units,
-                                  priceCents: plan.priceCents,
-                                  expiresAfterDays: plan.expiresAfterDays,
-                                  active: !plan.active,
-                                  expectedVersion: plan.version,
-                                  reason,
-                                }),
-                              ),
-                            t('套餐新版本已保存'),
-                          )
-                        }
-                      >
-                        {plan.active ? t('停售') : t('启用目录')}
-                      </button>
                     </div>
                   ))}
                   {!plans.length && (
@@ -818,6 +841,7 @@ export function OpsDashboard({
                   className="surface ops-section stack-form"
                   onSubmit={(e) => {
                     e.preventDefault();
+                    if (!validateReason(e)) return;
                     void action(async () => {
                       const body = { ...planDraft, benefits: planBenefits.split(/\r?\n/).map((line) => line.trim()).filter(Boolean), reason };
                       await (planEditing
@@ -890,10 +914,9 @@ export function OpsDashboard({
                         <option value="subscription">{t('订阅')}</option>
                       </select>
                     </label>
-                    <label className="switch-row"><input type="checkbox" checked={planDraft.active}
-                      onChange={(e) => setPlanDraft({ ...planDraft, active: e.target.checked })} />
-                      {t('在用户端展示')}
-                    </label>
+                    <SquishSwitch className="setting-switch" checked={planDraft.active}
+                      disabled={busy} label={t('在用户端展示')}
+                      onCheckedChange={(active) => setPlanDraft({ ...planDraft, active })} />
                   </div>
                   <label>{t('套餐说明')}
                     <textarea rows={2} value={planDraft.description} maxLength={400}
@@ -910,7 +933,7 @@ export function OpsDashboard({
                       setPlanDraft(emptyPlan);
                       setPlanBenefits('');
                     }}>{t('取消编辑')}</button>}
-                    <button className="button button-primary" disabled={busy || reason.trim().length < 3}>
+                    <button className="button button-primary" disabled={busy}>
                       {t(planEditing ? '保存套餐' : '创建套餐')}
                     </button>
                   </div>
@@ -918,8 +941,8 @@ export function OpsDashboard({
               </>
             )}
             {tab === 'models' && (
-              <>
-                <div className="surface ops-section">
+              <div className="ops-model-workspace">
+                <div className="surface ops-section ops-model-catalog">
                   <div className="section-heading">
                     <h2>{t('模型能力目录')}</h2>
                     <button
@@ -999,36 +1022,49 @@ export function OpsDashboard({
                       </label>
                     </Disclosure>
                   )}
-                  {models.map((model) => (
+                  <input className="ops-model-search" type="search" aria-label={t('筛选模型 ID')}
+                    placeholder={t('搜索模型名称或 ID')} value={modelSearch}
+                    onChange={(event) => { setModelSearch(event.target.value); setModelPage(0); }} />
+                  <div className="ops-task-model-list">
+                  {matchingModels.slice(catalogPage * 8, (catalogPage + 1) * 8).map((model) => (
                     <button
                       className="model-row"
                       data-motion="ops-row"
+                      aria-pressed={modelEdit?.baseId === model.id}
+                      disabled={busy}
                       key={model.id}
                       onClick={() => setModelEdit({ ...model, baseId: model.id })}
                     >
-                      <SlidersHorizontal size={23} />
                       <div>
-                        <strong>{model.label}</strong>
-                        <small>{model.id}</small>
-                        <small>
-                          {model.runtimeAvailable
-                            ? t('当前操作可执行')
-                            : (model.runtimeReason ?? t('执行环境未开放'))}
-                        </small>
+                        <strong>{model.label || model.id}</strong>
+                        {model.label !== model.id && <small>{model.id}</small>}
                       </div>
-                      <span className="soft-tag">
-                        {model.enabled ? t('目录已启用') : t('目录停用')}
+                      <span className="ops-model-row-state" title={model.runtimeReason ?? undefined}>
+                        {t(!model.enabled ? '目录停用' : model.runtimeAvailable ? '当前操作可执行' : '执行环境未开放')}
                       </span>
-                      <span>{t('编辑')}</span>
                     </button>
                   ))}
-                  {!models.length && <p className="quiet-copy">{t('当前没有模型目录项。')}</p>}
+                  {!matchingModels.length && <p className="quiet-copy">{t('没有符合条件的模型。')}</p>}
+                  </div>
+                  {modelLastPage > 0 && (
+                    <div className="ops-page-nav">
+                      <button type="button" className="text-button" disabled={catalogPage === 0} onClick={() => setModelPage(catalogPage - 1)}>{t('上一页')}</button>
+                      <span>{t('第 {page} 页', { page: catalogPage + 1 })}</span>
+                      <button type="button" className="text-button" disabled={catalogPage >= modelLastPage} onClick={() => setModelPage(catalogPage + 1)}>{t('下一页')}</button>
+                    </div>
+                  )}
                 </div>
-                {modelEdit && (
+                {modelEdit ? (
                   <form
-                    className="surface ops-section stack-form"
+                    ref={modelForm}
+                    className="surface ops-section stack-form ops-model-editor"
                     onSubmit={(e) => {
                       e.preventDefault();
+                      if (!validateReason(e)) return;
+                      if (!modelEdit.operations.length || !modelEdit.allowedQualities.length) {
+                        setError(t('请至少选择一项任务用途及适用的质量。'));
+                        return;
+                      }
                       const {
                         id,
                         label,
@@ -1045,7 +1081,6 @@ export function OpsDashboard({
                         imageUnitCosts,
                       } = modelEdit;
                       void action(async () => {
-                        try {
                           const { model } = await api<{ model: ModelConfig }>(
                             `/ops/models/${encodeURIComponent(id)}`,
                             jsonRequest('PUT', {
@@ -1069,20 +1104,24 @@ export function OpsDashboard({
                             setModelEdit((current) =>
                               current === modelEdit ? { ...model, baseId: model.id } : current,
                             );
-                        } catch (error) {
-                          if (error instanceof ApiError && error.code === 'MODEL_CONFIG_CHANGED')
-                            await load();
-                          throw error;
-                        }
-                      }, t('模型目录配置已更新'));
+                          if (mounted.current && currentTab.current === tab)
+                            setModels((items) => [...items.filter((item) => item.id !== model.id), model]
+                              .sort((left, right) => left.id.localeCompare(right.id)));
+                      }, t('模型目录配置已更新'), false);
                     }}
                   >
-                    <h2>{modelEdit.label || t('新模型目录项')}</h2>
+                    <h2 className="ops-editor-title">{modelEdit.label || t('新模型目录项')}</h2>
+                    <InlineError message={error} />
+                    {modelEdit.baseId && !modelEdit.runtimeAvailable && modelEdit.runtimeReason && (
+                      <p className="control-note">{t(modelEdit.runtimeReason)}</p>
+                    )}
+                    <div className="ops-model-form-grid">
                     <label>
                       {t('供应商模型 ID')}
                       <input
                         value={modelEdit.id}
                         onChange={(e) => setModelEdit({ ...modelEdit, id: e.target.value })}
+                        disabled={busy || !!modelEdit.baseId}
                         pattern="[a-zA-Z0-9][a-zA-Z0-9._:\-]{0,119}"
                         maxLength={120}
                         required
@@ -1093,6 +1132,7 @@ export function OpsDashboard({
                       <ChoiceSelect
                         ariaLabel={t('模型供应商')}
                         value={modelEdit.provider ?? 'qwen'}
+                        disabled={busy}
                         onValueChange={(provider) => {
                           setModelEdit({
                             ...modelEdit,
@@ -1143,6 +1183,8 @@ export function OpsDashboard({
                       {t('显示名称')}
                       <input
                         value={modelEdit.label}
+                        maxLength={120}
+                        disabled={busy}
                         onChange={(e) => setModelEdit({ ...modelEdit, label: e.target.value })}
                         required
                       />
@@ -1237,7 +1279,7 @@ export function OpsDashboard({
                         {modelEdit.allowedQualities.map((quality) => (
                           <div className="quality-cost-row" key={quality}>
                             <SquishSwitch
-                              className="ops-switch"
+                              className="setting-switch"
                               label={`${quality} ${t('独立价格')}`}
                               checked={modelEdit.imageUnitCosts?.[quality] !== undefined}
                               disabled={busy}
@@ -1271,28 +1313,24 @@ export function OpsDashboard({
                       </Disclosure>
                     )}
                     <SquishSwitch
-                      className="ops-switch"
+                      className="setting-switch ops-wide-field"
                       label={t('启用目录项')}
                       checked={modelEdit.enabled}
                       disabled={busy}
                       onCheckedChange={(enabled) => setModelEdit({ ...modelEdit, enabled })}
                     />
+                    </div>
                     {reasonField}
-                    <button
-                      className="button button-primary"
-                      disabled={
-                        busy ||
-                        reason.trim().length < 3 ||
-                        !modelEdit.id ||
-                        !modelEdit.operations?.length ||
-                        !modelEdit.allowedQualities.length
-                      }
-                    >
-                      {t('保存模型范围')}
-                    </button>
+                    <div className="ops-model-save">
+                      <button type="button" className="button button-secondary" disabled={busy}
+                        onClick={() => setModelEdit(null)}>{t('取消编辑')}</button>
+                      <button className="button button-primary" disabled={busy}>
+                        {busy ? <Busy /> : t('保存模型范围')}
+                      </button>
+                    </div>
                   </form>
-                )}
-              </>
+                ) : <p className="control-note ops-model-editor-empty">{t('请选择要编辑的模型。')}</p>}
+              </div>
             )}
             {tab === 'support' && <SupportOps onGrant={() => selectTab('quota')} />}
             {tab === 'quota' && <QuotaManager />}
@@ -1300,52 +1338,46 @@ export function OpsDashboard({
             {tab === 'reconciliation' && <UnknownJobsPanel />}
             {tab === 'usage' && <UsageDashboard operator />}
             {tab === 'audit' && (
-              <div className="surface ops-section">
+              <section className="surface ops-section ops-audit">
                 <h2>{t('最新操作记录')}</h2>
-
                 {entries.length ? (
                   <div className="audit-list">
                     {entries.map((entry) => (
-                      <article key={entry.id}>
-                        <div>
-                          <strong>
-                            {t(auditLabels[entry.action ?? entry.type ?? ''] ?? '管理操作')}
-                          </strong>
-                          <time>{formatDate(entry.createdAt)}</time>
-                        </div>
-                        <p>
-                          {entry.reason ??
-                            entry.detail?.reason ??
-                            t('此项为系统记录，无人工操作原因')}
-                        </p>
-                        <details className="ops-audit-detail">
-                          <summary>{t('记录')}</summary>
+                      <details className="ops-audit-entry" key={entry.id}>
+                        <summary>
+                          <strong>{t(auditLabels[entry.action ?? entry.type ?? ''] ?? entry.action ?? '管理操作')}</strong>
+                          <time dateTime={entry.createdAt}>{formatDate(entry.createdAt)}</time>
+                        </summary>
+                        <div className="ops-audit-body">
+                          {(entry.reason ?? entry.detail?.reason) && <p>{entry.reason ?? entry.detail?.reason}</p>}
                           <dl>
-                            <div>
-                              <dt>ID</dt>
-                              <dd>{entry.id}</dd>
-                            </div>
-                            <div>
-                              <dt>{t('操作')}</dt>
-                              <dd>{entry.action ?? entry.type ?? '—'}</dd>
-                            </div>
+                            <div><dt>ID</dt><dd>{entry.id}</dd></div>
+                            <div><dt>{t('操作')}</dt><dd>{entry.action ?? entry.type ?? '—'}</dd></div>
                             {(entry.targetId || entry.entityId) && (
-                              <div>
-                                <dt>{t('目标')}</dt>
-                                <dd>
-                                  {entry.targetType} {entry.targetId ?? entry.entityId}
-                                </dd>
-                              </div>
+                              <div><dt>{t('目标')}</dt><dd>{entry.targetType} {entry.targetId ?? entry.entityId}</dd></div>
                             )}
                           </dl>
-                        </details>
-                      </article>
+                        </div>
+                      </details>
                     ))}
                   </div>
                 ) : (
                   <p className="quiet-copy">{t('尚无可显示的操作记录。')}</p>
                 )}
-              </div>
+                <nav className="ops-page-nav" aria-label={t('操作审计分页')}>
+                  <button type="button" className="button button-secondary" disabled={auditPages.length < 2}
+                    onClick={() => {
+                      setAuditPages((pages) => pages.slice(0, -1));
+                      opsBody.current?.scrollTo({ top: 0 });
+                    }}>{t('上一页')}</button>
+                  <span>{t('第 {page} 页', { page: auditPages.length })}</span>
+                  <button type="button" className="button button-secondary" disabled={!auditNext}
+                    onClick={() => {
+                      if (auditNext) setAuditPages((pages) => [...pages, auditNext]);
+                      opsBody.current?.scrollTo({ top: 0 });
+                    }}>{t('下一页')}</button>
+                </nav>
+              </section>
             )}
           </>
         ) : null}

@@ -89,13 +89,16 @@ export function panelBounds(view: Viewport, dock: Dock = 'floating', id?: PanelI
   return {
     width: body.width,
     height: body.height,
-    minWidth: attached ? maxWidth : Math.min(view.bucket === 'phone' ? 224 : 240, maxWidth),
+    minWidth: attached ? maxWidth : Math.min(
+      view.bucket === 'phone' ? 224 : id === 'ai' && view.height > 520 ? 348 : 240,
+      maxWidth,
+    ),
     maxWidth,
     minHeight: Math.min(
       id === 'ai'
         ? view.bucket === 'phone'
           ? 224
-          : 260
+          : view.height <= 520 ? 260 : 456
         : view.height <= 520
           ? 176
           : view.bucket === 'phone'
@@ -351,7 +354,7 @@ export function defaultPanel(id: PanelId, view: Viewport): PanelGeometry {
     phone && !shortLandscape
       ? body.width
       : id === 'ai'
-        ? 390
+        ? Math.min(456, Math.max(360, Math.round(body.width * 0.46)))
         : shortLandscape
           ? Math.min(300, body.width * 0.48)
           : view.bucket === 'tablet'
