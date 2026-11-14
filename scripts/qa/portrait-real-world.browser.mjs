@@ -27,6 +27,7 @@ const commit =
 assert.match(commit, /^[a-f0-9]{40}$/);
 const output = resolve(process.env.PORTRAIT_QA_DIR ?? 'artifacts/portrait-real-world');
 const cache = resolve('artifacts/portrait-real-world-inputs');
+const fixtures = new URL('./fixtures/portrait/', import.meta.url);
 const { inputs } = JSON.parse(await readFile('scripts/qa/portrait-real-world-inputs.json', 'utf8'));
 const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const filter = process.env.PORTRAIT_QA_CASES?.split(',');
@@ -113,14 +114,14 @@ function selectSubject(analysis, name, kind) {
 }
 
 async function imageInput(input) {
-  await mkdir(cache, { recursive: true });
-  const path = join(cache, input.name + '.jpg');
+  const name = input.name + '.jpg';
+  const path = input.vendored ? new URL(name, fixtures) : join(cache, name);
   let bytes;
   let downloaded = false;
   try {
     bytes = await readFile(path);
   } catch (error) {
-    if (error.code !== 'ENOENT') throw error;
+    if (input.vendored || error.code !== 'ENOENT') throw error;
     const response = await fetch(input.url, {
       signal: AbortSignal.timeout(30000),
       headers: { 'User-Agent': 'AI-Xiutu QA (public portrait fixture)' },
@@ -138,7 +139,10 @@ async function imageInput(input) {
   }
   assert.equal(bytes.length, input.bytes, input.name);
   assert.equal(sha(bytes), input.sha256, input.name);
-  if (downloaded) await writeFile(path, bytes);
+  if (downloaded) {
+    await mkdir(cache, { recursive: true });
+    await writeFile(path, bytes);
+  }
   const decoded = sharp(bytes);
   const metadata = await decoded.metadata();
   const { data, info } = await decoded

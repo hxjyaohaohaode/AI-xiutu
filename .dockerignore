@@ -9,3 +9,4 @@ coverage
 test-results
 apps/web/dist
 apps/web/public/vision
+scripts/qa/fixtures/portrait/
