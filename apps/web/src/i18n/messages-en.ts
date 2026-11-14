@@ -66,6 +66,7 @@ export const english: Readonly<Record<string, string>> = {
   '更多任务': 'More tasks',
   '请先填写公开检索查询词': 'Enter a public search query first',
   '等待麦克风授权超时。请在浏览器中允许麦克风后再通话。': 'Microphone permission timed out. Allow microphone access in your browser, then start the call again.',
+  '无法初始化麦克风音频。请刷新页面后重试。': 'Microphone audio could not start. Refresh the page and try again.',
   "重新加载": "Reload",
   "无法读取参考图，请重新选择。": "Couldn't read the reference image. Choose it again.",
   "参考图已保留，生图时使用": "Reference kept for image generation",

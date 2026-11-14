@@ -5,6 +5,7 @@ import {
   type TeamVoiceEvent,
 } from '@ai-xiutu/contracts';
 import { api, errorMessage, jsonRequest, withRequestDeadline } from '../lib/api';
+import captureWorkletUrl from '../ai/capture-worklet.js?url&no-inline';
 import { voiceErrorMessage } from '../ai/voice-error';
 import { appendCaption, type CaptionState } from '../ai/VoiceCaptions';
 import {
@@ -122,7 +123,11 @@ class TeamVoiceTransport {
       },
     });
     try {
-      await audio.audioWorklet.addModule(new URL('../ai/capture-worklet.js', import.meta.url).href);
+      try {
+        await audio.audioWorklet.addModule(captureWorkletUrl);
+      } catch (cause) {
+        throw new Error('无法初始化麦克风音频。请刷新页面后重试。', { cause });
+      }
       if (this.closed || generation !== this.captureGeneration) throw new Error('团队通话已离开');
       this.stream = stream;
       const capture = (this.capture = new AudioWorkletNode(audio, 'editor-microphone'));
