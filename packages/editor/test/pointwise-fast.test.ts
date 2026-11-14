@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createRecipe, srgbToLinear } from '../src/index.js';
+import { createRecipe, createRecipeV4, renderEditorRecipe, srgbToLinear } from '../src/index.js';
 import { createRenderSession, renderValidatedRegion } from '../src/engine.js';
+import { preparePointPreview } from '../src/point-preview.js';
 
 test('pointwise lookups equal the original floating-point stages, including byte boundaries and hidden RGB', () => {
   const width = 257,
@@ -60,5 +61,26 @@ test('pointwise lookups equal the original floating-point stages, including byte
         }),
       );
     }
+  }
+});
+
+test('indexed exposure uses exactly the same pixels during dragging, including transparent pixels and crop rotation', () => {
+  const width = 1024, height = 1025;
+  const data = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < width * height; i++) {
+    data[i * 4] = (i >> 3) & 63;
+    data[i * 4 + 1] = i % 83;
+    data[i * 4 + 2] = (i >> 9) % 31;
+    data[i * 4 + 3] = i % 23 ? 255 : 0;
+  }
+  const image = { width, height, data };
+  const render = preparePointPreview(image);
+  assert.ok(render);
+  for (const exposure of [-0.73, 0, 0.73]) {
+    const recipe = createRecipeV4({
+      adjustments: { exposure },
+      geometry: { rotation: 90, crop: { x: 0.13, y: 0.11, width: 0.75, height: 0.67 }, flipX: true },
+    });
+    assert.deepEqual(render(recipe), renderEditorRecipe(image, recipe));
   }
 });

@@ -156,7 +156,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
         images: native && original ? originalImages : images,
         warpPreviewCache: cache,
       };
-      if (native && !warpDetail && mode && mode !== 'simple') {
+      if (interactive && native && !warpDetail && mode) {
         if (pointPreview === undefined) pointPreview = preparePointPreview(input);
         const mapped = pointPreview?.(recipe, recycledBuffer);
         if (mapped) {

@@ -49,7 +49,11 @@ jobs:
         run: google-chrome --version
       - name: Measure continuous slider, curve and touch paints
         if: matrix.round == 1
-        run: node --import tsx scripts/qa/interactive-preview.browser.mjs
+        env:
+          PREVIEW_BUILT_DIST: apps/web/dist
+        run: |
+          npm run build -w @ai-xiutu/web
+          node --import tsx scripts/qa/interactive-preview.browser.mjs
       - name: Complete workbench regression on this commit
         env:
           BROWSER_ARTIFACT_DIR: artifacts/browser-v4/round-${{ matrix.round }}

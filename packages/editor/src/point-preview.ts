@@ -112,7 +112,7 @@ export function preparePointPreview(image: RGBAImage) {
   const keys = Uint32Array.from(colors, (rgb) => offsets[rgb >>> 8]! + (rgb & 255));
   return (recipe: EditorRecipe, buffer?: ArrayBuffer): RGBAImage | null => {
     const mode = pointPreviewMode(recipe);
-    if (mode === null || mode === 'simple') return null;
+    if (mode === null) return null;
     const { geometry } = recipe;
     const dimensions = getOutputDimensions(image, geometry);
     const crop = pixelCrop(image, geometry);

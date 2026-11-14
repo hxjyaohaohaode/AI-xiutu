@@ -253,11 +253,13 @@ try {
   assert.equal(await gallery.locator('.library-folder-disclosure').getAttribute('open'), null);
   assert.equal(await narrow.evaluate(() => document.documentElement.scrollWidth), 320);
   await take(narrow, 'narrow-phone-library');
+  result.cases.push('operator replaces code and updates the visible exchange on another context');
+  await narrow.getByRole('button', { name: '打开空间与项目', exact: true }).click();
+  await narrow.locator('.project-list:visible').first().getByRole('button', { name: 'V4 project', exact: true }).click();
   await selectView(narrow, 'collaborate');
   await narrow.locator('.collaboration-view:visible').first().waitFor();
   assert.equal(await narrow.evaluate(() => document.documentElement.scrollWidth), 320);
   await take(narrow, 'narrow-phone-collaboration');
-  result.cases.push('operator replaces code and updates the visible exchange on another context');
   const landscape = await pageFor('owner', { width: 844, height: 390 });
   await landscape.locator('input[type=file]').first().setInputFiles(sample);
   await landscape.locator('.canvas-stage.has-image .image-frame canvas').first().waitFor();
