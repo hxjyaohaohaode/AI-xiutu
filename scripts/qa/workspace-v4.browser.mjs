@@ -112,11 +112,12 @@ async function caseRun(name, run) {
 }
 async function changeView(page, id, label) {
   await showEditorTopbar(page);
-  const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
-  const project = page.getByRole('button', { name: '项目与用量', exact: true });
+  const compact = page.getByRole('button', { name: '切换工作视图', exact: true }).filter({ visible: true });
+  const project = page.getByRole('button', { name: '项目与用量', exact: true }).filter({ visible: true });
   const tab = page
     .getByRole('navigation', { name: '工作视图', exact: true })
-    .getByRole('button', { name: label, exact: true });
+    .getByRole('button', { name: label, exact: true })
+    .filter({ visible: true });
   await compact.or(tab).or(project).first().waitFor();
   if (await compact.isVisible() || !['editor', 'works'].includes(id)) {
     await (await compact.isVisible() ? compact : project).click();
