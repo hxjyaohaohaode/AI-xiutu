@@ -225,7 +225,9 @@ async function settle(page) {
         timing.endTime<3000 && animation.playState==='running';
     });
     let previous=signature(),stable=0;
-    const deadline=performance.now()+3500;
+    // The tablet can be rendering several full-window canvases at once.
+    // Require the same four stable frames even when the runner misses frames.
+    const deadline=performance.now()+7000;
     while(stable<4 && performance.now()<deadline) {
       await new Promise(done=>requestAnimationFrame(done));
       const current=signature();
