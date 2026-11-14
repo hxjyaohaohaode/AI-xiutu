@@ -83,6 +83,13 @@ export default defineConfig(({ mode }) => {
         '@mediapipe/tasks-vision',
       ],
     },
-    build: { target: 'es2022', sourcemap: false },
+    build: {
+      target: 'es2022',
+      sourcemap: false,
+      assetsInlineLimit: (file) => {
+        // AudioWorklet must load from the application origin under the production CSP.
+        if (/(?:^|[/\\])capture-worklet\.js$/.test(file)) return false;
+      },
+    },
   };
 });

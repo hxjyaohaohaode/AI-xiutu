@@ -1,5 +1,4 @@
 import type { VoiceClientEvent, VoiceServerEvent, AssistantContext } from '@ai-xiutu/contracts';
-import captureWorkletUrl from './capture-worklet.js?url&no-inline';
 import {
   AI_VOICE_BUFFER_SECONDS,
   audiblePlayback,
@@ -73,7 +72,7 @@ export class EditorVoiceClient {
     this.audio = new AudioContext({ latencyHint: 'interactive' });
     await this.audio.resume();
     try {
-      await this.audio.audioWorklet.addModule(captureWorkletUrl);
+      await this.audio.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
     } catch (cause) {
       throw new Error('无法初始化麦克风音频。请刷新页面后重试。', { cause });
     }
