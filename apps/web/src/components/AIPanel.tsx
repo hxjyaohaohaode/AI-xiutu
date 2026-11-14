@@ -489,6 +489,7 @@ export function AIPanel({
     modelResponse?.availableOperations?.includes(operation) ??
     (operation === 'edit-plan' && !!modelResponse?.executionEnabled);
   const ready = !!enabled && modelReady(selected);
+  const emptyImageCatalog = operation === 'generate-image' && !!modelResponse && !eligible.length;
   const sourceTask = tasks.find((item) => item.id === operation)!;
   const task = {
     ...sourceTask,
@@ -522,7 +523,7 @@ export function AIPanel({
           : null
       : null;
   const reason =
-    selected?.runtimeReason ||
+    (emptyImageCatalog ? '暂无适用模型' : selected?.runtimeReason) ||
     opStatus?.reason ||
     modelResponse?.reason ||
     config?.capabilities.aiUnavailableReason ||
@@ -1401,9 +1402,6 @@ export function AIPanel({
               </div>
             </header>
             <div className="ai-conversation-body" aria-label={t('创作内容')}>
-              {operation === 'generate-image' && isLoggedIn && !loading && modelResponse && !eligible.length && (
-                <p className="ai-inline-error" role="status">{t('暂无适用模型')}</p>
-              )}
               {(needsContext || (!ready && !loading)) && (
                 <div className="ai-availability" role="status">
                   <span>{needsContext ? statusText : t(reason)}</span>

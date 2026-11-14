@@ -459,8 +459,8 @@ async function layout(page, label, selector = null) {
       let clipped = false;
       for (let p = node.parentElement; p && p !== document.body; p = p.parentElement) {
         const css = getComputedStyle(p), box = p.getBoundingClientRect();
-        if (/(auto|scroll|hidden|clip)/.test(css.overflowX) && (x < box.left || x > box.right)) clipped = true;
-        if (/(auto|scroll|hidden|clip)/.test(css.overflowY) && (y < box.top || y > box.bottom)) clipped = true;
+        if (/(auto|scroll|hidden|clip)/.test(css.overflowX) && (x < box.left || x >= box.right)) clipped = true;
+        if (/(auto|scroll|hidden|clip)/.test(css.overflowY) && (y < box.top || y >= box.bottom)) clipped = true;
       }
       if (clipped) continue;
       sampledControls++;

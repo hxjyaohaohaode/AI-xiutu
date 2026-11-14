@@ -1936,7 +1936,7 @@ try {
         };
         await selectTask('生图');
         const task = page.locator('.ai-workbench:visible');
-        await task.getByText('暂无适用模型', { exact: true }).waitFor();
+        await task.locator('.ai-availability[role="status"]').getByText('暂无适用模型', { exact: true }).waitFor();
         assert.equal(await task.getByRole('button', { name: '生图参数', exact: true }).isDisabled(), true);
         const taskSettingsGeometry = await task.evaluate((region) => {
           const elements = {

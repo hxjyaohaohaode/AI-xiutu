@@ -234,11 +234,17 @@ async function editorReturnAndHistory(page) {
       true,
       'tool switching and local history keep the original canvas owner mounted',
     );
-    const topbar = await page.locator('.floating-topbar').boundingBox();
+    const topbarControl = page.locator('.mobile-inspector-actions button[aria-pressed]:visible');
+    if (await topbarControl.isVisible()) {
+      assert.equal(await page.locator('.floating-topbar:visible').count(), 0, 'the tool hides the top bar');
+      await topbarControl.click();
+    }
+    const topbar = await page.locator('.floating-topbar:visible').boundingBox();
     assert.ok(
       topbar && topbar.height <= (page.viewportSize().width < 760 ? 44.5 : 56.5),
-      'compact studio chrome leaves room for the photograph',
+      'compact studio chrome remains reachable and leaves room for the photograph',
     );
+    if (await topbarControl.isVisible()) await topbarControl.click();
     return {
       toolSwitchReturn: true,
       actualHistoryDelta: [0, -0.35],
@@ -979,9 +985,10 @@ try {
         assert.equal(await panel.getAttribute('data-attached'), 'true');
         assert.equal(await panel.locator('.panel-resize-edge, .panel-layout-trigger').count(), 0);
         assert.equal(normal.panel.width, size.width);
-        assert.ok(normal.panel.height >= (size.height <= 500 ? 104 : 146));
-        assert.ok(await panel.locator('.inspector-scroll').evaluate((node) => node.scrollHeight <= node.clientHeight + 1),
-          'the measured inspector fits the active adjustment without vertical scrolling');
+        assert.equal(normal.panel.height, size.height <= 500 ? 128 : 178);
+        const rail = await panel.locator('.parameter-shelf-options').boundingBox();
+        assert.ok(rail && rail.y + rail.height <= normal.scroll.bottom + 1,
+          'the active control and its parameter choices fit without vertical scrolling');
         await leaveMobileTool(page);
         await panel.waitFor({ state: 'hidden' });
         await tool(page, '明暗');
