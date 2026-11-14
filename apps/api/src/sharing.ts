@@ -90,12 +90,12 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
     const grant = await transaction(db, async (tx) => {
       const project = await projectAccess(tx, p.id, user.id, 'admin');
       const active = await tx.query(
-        "SELECT id,phone FROM users WHERE (id=$1 OR phone=$2) AND status='active' ORDER BY id FOR SHARE",
+        "SELECT id,phone=$2 AS is_target FROM users WHERE (id=$1 OR phone=$2) AND status='active' ORDER BY id FOR SHARE",
         [user.id, body.targetPhone],
       );
       if (!active.rows.some((row) => row.id === user.id))
         throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
-      const target = active.rows.find((row) => row.phone === body.targetPhone);
+      const target = active.rows.find((row) => row.is_target);
       if (!target)
         throw new HttpError(400, 'SHARE_TARGET_UNAVAILABLE', '无法向该账号发出邀请，请确认对方已注册');
       if (target.id === user.id)

@@ -244,6 +244,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
     const actor = requireUser(req),
       params = z.object({ id }).parse(req.params);
     const body = z.object({ targetUserId: id, expectedOwnerId: id }).strict().parse(req.body);
+    await spaceRole(db, params.id, actor.id, ['owner']);
     if (body.targetUserId === actor.id)
       throw new HttpError(400, 'OWNER_UNCHANGED', '请选择另一位现有成员');
     await transaction(db, async (tx) => {

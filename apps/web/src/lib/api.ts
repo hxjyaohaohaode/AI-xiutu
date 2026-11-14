@@ -60,7 +60,9 @@ export async function readModelCatalog<T>(path: string, signal: AbortSignal): Pr
     return await read(8_000);
   } catch (error) {
     signal.throwIfAborted();
-    if (!(error instanceof ApiError) || ![0, 502, 503, 504].includes(error.status)) throw error;
+    const transient = error instanceof SyntaxError ||
+      (error instanceof ApiError && [0, 502, 503, 504].includes(error.status));
+    if (!transient) throw error;
     return read(10_000);
   }
 }
