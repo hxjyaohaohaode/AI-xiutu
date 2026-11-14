@@ -19,6 +19,7 @@ import {
   type SiteRoute,
 } from './about/site-route';
 import './account/account-page.css';
+import { isAuthSession } from './account/auth-model';
 import { accountPageCopy } from './account/page-copy';
 import { t, useLocale } from './i18n';
 import { api } from './lib/api';
@@ -36,8 +37,15 @@ function StudioLoading({ route, logoUrl }: { route: SiteRoute; logoUrl: string |
   const locale = useLocale();
   const c = aboutCopy(locale);
   const account = isAccountSiteRoute(route);
+  const checkingSession = route === 'about';
   const layout =
-    route === 'usage' ? 'usage' : route === 'account' ? 'account' : account ? 'auth' : 'studio';
+    route === 'usage'
+      ? 'usage'
+      : route === 'account'
+        ? 'account'
+        : account || checkingSession
+          ? 'auth'
+          : 'studio';
   return (
     <div className="route-loading" data-layout={layout} role="status" aria-live="polite">
       <div className="route-loading-shell" aria-hidden="true">
@@ -63,7 +71,7 @@ function StudioLoading({ route, logoUrl }: { route: SiteRoute; logoUrl: string |
       <p className="route-loading-label">
         {route === 'usage'
           ? t('读取用量账本')
-          : account
+          : account || checkingSession
             ? accountPageCopy(locale).loading
             : c.loadingStudio}
       </p>
@@ -105,6 +113,7 @@ export function SiteShell() {
   const studioTheme = useStudioTheme();
   const c = aboutCopy(locale);
   const [route, setRoute] = useState<SiteRoute>(() => readSiteRoute(location.hash));
+  const [checkingEntrySession, setCheckingEntrySession] = useState(() => location.hash === '');
   const [opened, setOpened] = useState(() => route !== 'about');
   const [config, setConfig] = useState<PublicConfig | null>(null);
   useEffect(() => {
@@ -134,7 +143,7 @@ export function SiteShell() {
       delete document.body.dataset.sitePage;
     };
   }, [active, route]);
-  const applyRoute = (next: SiteRoute, sample?: SampleSettings) => {
+  const applyRoute = useCallback((next: SiteRoute, sample?: SampleSettings) => {
     if (currentRoute.current === next) return true;
     if (canLeaveStudio.current?.(next) === false) return false;
     if (isAccountSiteRoute(next) && !isAccountSiteRoute(currentRoute.current))
@@ -146,16 +155,20 @@ export function SiteShell() {
       setEntry({ key: ++sequence.current, mode: next === 'login' ? 'password' : next, sample });
     }
     return true;
-  };
-  const navigate = (next: SiteRoute, replace = false, sample?: SampleSettings) => {
-    if (!applyRoute(next, sample)) return;
-    const hash = siteRouteHash(next);
-    if (location.hash !== hash) history[replace ? 'replaceState' : 'pushState'](null, '', hash);
-    if (next === 'about' || isAccountSiteRoute(next))
-      window.scrollTo({ top: 0, behavior: 'instant' });
-  };
+  }, []);
+  const navigate = useCallback(
+    (next: SiteRoute, replace = false, sample?: SampleSettings) => {
+      if (!applyRoute(next, sample)) return;
+      const hash = siteRouteHash(next);
+      if (location.hash !== hash) history[replace ? 'replaceState' : 'pushState'](null, '', hash);
+      if (next === 'about' || isAccountSiteRoute(next))
+        window.scrollTo({ top: 0, behavior: 'instant' });
+    },
+    [applyRoute],
+  );
   useEffect(() => {
     const navigateFromHistory = () => {
+      setCheckingEntrySession(false);
       if (!applyRoute(readSiteRoute(location.hash)))
         history.replaceState(null, '', siteRouteHash(currentRoute.current));
     };
@@ -165,7 +178,22 @@ export function SiteShell() {
       window.removeEventListener('hashchange', navigateFromHistory);
       window.removeEventListener('popstate', navigateFromHistory);
     };
-  }, []);
+  }, [applyRoute]);
+  useEffect(() => {
+    if (!checkingEntrySession) return;
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(5000)]);
+    api<unknown>('/session', { signal })
+      .then((session) => {
+        if (!signal.aborted && location.hash === '' && isAuthSession(session) && session.user)
+          navigate('studio', true);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!controller.signal.aborted) setCheckingEntrySession(false);
+      });
+    return () => controller.abort();
+  }, [checkingEntrySession, navigate]);
   useEffect(() => {
     const controller = new AbortController();
     api<PublicConfig>('/public-config', { signal: controller.signal })
@@ -176,7 +204,12 @@ export function SiteShell() {
   const enter = (intent: AboutIntent, sample?: SampleSettings) => navigate(intent, false, sample);
   return (
     <ThemeContext.Provider value={studioTheme}>
-      {!active && <AboutPage config={config} onEnter={enter} hasStudio={opened} />}
+      {!active &&
+        (checkingEntrySession ? (
+          <StudioLoading route="about" logoUrl={brandLogoUrl(config?.brand)} />
+        ) : (
+          <AboutPage config={config} onEnter={enter} hasStudio={opened} />
+        ))}
       {opened && (
         <div className="site-studio" hidden={!active} inert={!active}>
           <StudioBoundary

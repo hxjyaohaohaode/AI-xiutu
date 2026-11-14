@@ -731,6 +731,29 @@ try {
   );
 
   await check(
+    'The bare site address opens the signed-in studio and the explicit About route stays accessible',
+    async () => {
+      const page = await main.context.newPage();
+      currentPage = page;
+      try {
+        await page.goto(origin);
+        await page.getByRole('button', { name: `账户：${primaryName}`, exact: true }).waitFor();
+        assert.equal(new URL(page.url()).hash, '#/studio');
+        assert.equal(await page.locator('.about-page').isVisible(), false);
+        await page.getByRole('button', { name: '返回介绍页', exact: true }).click();
+        await page.locator('.about-page').waitFor();
+        await page.reload();
+        await page.locator('.about-page').waitFor();
+        assert.equal(new URL(page.url()).hash, '#/');
+        assert.equal((await session(main.context)).user.id, primaryUserId);
+      } finally {
+        await page.close();
+        currentPage = main.page;
+      }
+    },
+  );
+
+  await check(
     'A failed account module retries locally while the photo, unsent AI text and session retain their owners',
     async () => {
       const page = main.page;
