@@ -258,6 +258,7 @@ export function AdvancedInspector({
                       {id === 'local' && (
                         <LocalControls
                           headerTarget={group === id ? chrome?.headerTarget : null}
+                          compact={fixed}
                           controller={controller}
                           scope={retainedScope}
                           onScope={(next) => chooseScope(next, id)}
@@ -283,6 +284,7 @@ export function AdvancedInspector({
                           />
                           {portraitTool === 'local' && (
                             <LocalControls
+                              compact={fixed}
                               controller={controller}
                               scope={scopeFor('local')}
                               onScope={(next) => chooseScope(next, 'local')}

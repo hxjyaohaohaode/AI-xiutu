@@ -498,7 +498,8 @@ async function setTheme(page, theme) {
   if (current === theme) return;
   const settings = page.getByRole('button', { name: '布局与工作台设置', exact: true });
   const expand = page.locator('.mobile-chrome-toggle[aria-expanded="false"]:visible');
-  if (!(await settings.isVisible()) && (await expand.isVisible())) await expand.click();
+  await settings.filter({ visible: true }).or(expand).first().waitFor();
+  if (await expand.isVisible()) await expand.click();
   await settings.click();
   const dialog = page.getByRole('dialog', { name: '工作台设置', exact: true });
   await dialog
@@ -1668,20 +1669,15 @@ try {
         () => canvas.evaluate((element) => element.width === 32 && element.height === 24),
         'previously imported local fixture remains available',
       );
-      async function saveThroughNewProject(title) {
-        const creation = page.waitForResponse(
-          (response) =>
-            new URL(response.url()).pathname === '/v1/projects' &&
-            response.request().method() === 'POST',
-        );
-        await page.getByRole('button', { name: '保存', exact: true }).click();
-        const dialog = page.getByRole('dialog', { name: '新建项目', exact: true });
-        await dialog.getByRole('textbox', { name: '项目名称', exact: true }).fill(title);
-        await dialog.getByRole('button', { name: '创建', exact: true }).click();
-        const response = await creation;
-        assert.equal(response.status(), 201);
+      async function saveIntoPersonalWorkspace() {
+        const [response] = await Promise.all([
+          page.waitForResponse((response) =>
+            new URL(response.url()).pathname === '/v1/me/creative-project' &&
+            response.request().method() === 'PUT'),
+          page.getByRole('button', { name: '保存', exact: true }).click(),
+        ]);
+        assert.equal(response.status(), 200);
         const { project } = await response.json();
-        await dialog.waitFor({ state: 'hidden' });
         await until(
           () => page.getByRole('button', { name: '保存', exact: true }).isEnabled(),
           'save attempt finishes',
@@ -1697,7 +1693,7 @@ try {
         if (/^\/v1\/projects\/[^/]+\/artworks$/.test(path)) artworks.push(response);
       };
       page.on('response', watchInitialSave);
-      const sourceProject = await saveThroughNewProject('原账号私有图像');
+      const sourceProject = await saveIntoPersonalWorkspace();
       page.off('response', watchInitialSave);
       assert.equal(uploads.length, 1);
       assert.equal(artworks.length, 1);
@@ -1716,16 +1712,13 @@ try {
           .getByRole('navigation', { name: '工作视图', exact: true })
           .getByRole('button', { name: '作品', exact: true })
           .click();
-      await page
-        .getByRole('button', { name: `工具与信息 · ${sourceArtwork.title}`, exact: true })
-        .click();
       const [cloudOpen] = await Promise.all([
         page.waitForResponse(
           (response) =>
             new URL(response.url()).pathname === `/v1/artworks/${sourceArtwork.id}` &&
             response.request().method() === 'GET',
         ),
-        page.locator('.library-version-links button').filter({ hasText: sourceArtwork.title }).click(),
+        page.locator('.saved-work-open:visible').filter({ hasText: sourceArtwork.title }).click(),
       ]);
       assert.equal(cloudOpen.status(), 200);
       await until(
@@ -1751,7 +1744,7 @@ try {
       };
       page.on('request', watchMutation);
       page.on('response', watchCopy);
-      const destination = await saveThroughNewProject('新账号隔离目标');
+      const destination = await saveIntoPersonalWorkspace();
       page.off('request', watchMutation);
       page.off('response', watchCopy);
       assert.equal(

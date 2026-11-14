@@ -61,6 +61,11 @@ jobs:
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
         if: matrix.round == 1
         run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Verify launch workflows on the built application
+        if: matrix.round == 1
+        env:
+          BROWSER_ARTIFACT_DIR: artifacts/launch-browser
+        run: node --import tsx scripts/qa/launch-readiness.browser.mjs
       - name: Team voice microphones, permissions and shared AI speaker
         if: matrix.round == 1
         run: node --import tsx scripts/qa/team-voice.browser.mjs
@@ -126,6 +131,13 @@ jobs:
           path: artifacts/browser-assistant
           retention-days: 14
           if-no-files-found: error
+      - name: Preserve launch browser evidence
+        if: always() && matrix.round == 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: launch-browser-${{ github.sha }}
+          path: artifacts/launch-browser
+          retention-days: 14
   baseline:
     runs-on: ubuntu-latest
     timeout-minutes: 25

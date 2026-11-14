@@ -2,7 +2,7 @@ import { Circle, Gradient, Polygon, Eyedropper, PaintBrush } from '@phosphor-ico
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
 import { ChoiceSelect } from '../components/ChoiceSelect';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ArrowUp, ArrowDown, Copy, Eye, EyeSlash, Plus, Trash } from '../components/ControlGlyph';
 import {
@@ -36,6 +36,7 @@ export function LocalControls({
   onSample,
   sampling,
   headerTarget,
+  compact = false,
 }: {
   controller: InspectorController;
   scope: EditScope;
@@ -45,11 +46,14 @@ export function LocalControls({
   onSample?: () => void;
   sampling?: boolean;
   headerTarget?: HTMLElement | null;
+  compact?: boolean;
 }) {
   const { editor, apply } = controller,
     recipe = currentV3(editor);
   const portrait = editor.portrait;
   const [checked, setChecked] = useState<string[]>([]);
+  const [manageRegions, setManageRegions] = useState(false);
+  const regionManagementId = useId();
   const root = useRef<HTMLElement>(null);
   const semanticPending = useRef(false);
   const selectedIds = checked.filter((id) => recipe.regionEdits.some((item) => item.id === id));
@@ -287,6 +291,7 @@ export function LocalControls({
             controller={controller}
             scope={colorScope}
             family={family}
+            compact={compact}
             pickedColor={pickedColor}
             onColorChange={onColorChange}
             onSample={onSample}
@@ -295,375 +300,392 @@ export function LocalControls({
           />
         </div>
       )}
-      <div className="local-region-summary">
-        <span>{editorFlowText('localCount')}</span>
-        <output aria-label={editorFlowText('localCount')}>
-          {recipe.regionEdits.length}
-          <span> / {MAX_V3_REGION_EDITS}</span>
-        </output>
-      </div>
-      <div className="advanced-object-list" aria-label={t('独立局部与编组选择')}>
-        {recipe.regionEdits.map((item) => (
-          <div className="advanced-row" data-selected={item.id === region?.id} key={item.id}>
-            <input
-              type="checkbox"
-              aria-label={editorFlowText('addNamedToGroup', { name: item.name })}
-              checked={checked.includes(item.id)}
-              onChange={(event) =>
-                setChecked((ids) =>
-                  event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id),
-                )
-              }
-            />
-            <button
-              className="object-name"
-              aria-pressed={item.id === region?.id && !group}
-              onClick={() => select(item.id)}
-            >
-              {item.name}
-              <small>
-                {t(maskLabels[item.mask.type])}
-                {item.groupId ? t(' · 已编组') : ''}
-              </small>
-            </button>
-            <IconButton
-              label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', { name: item.name })}
-              onClick={() => {
-                const latest = currentV3(editor);
-                apply(
-                  {
-                    ...latest,
-                    regionEdits: latest.regionEdits.map((r) =>
-                      r.id === item.id ? { ...r, enabled: !r.enabled } : r,
-                    ),
-                  },
-                  t('切换局部效果'),
-                  true,
-                );
-              }}
-            >
-              {item.enabled ? <Eye size={15} /> : <EyeSlash size={15} />}
-            </IconButton>
-          </div>
-        ))}
-      </div>
-      {!!selectedIds.length && (
-        <div className="advanced-row">
-          <small>
-            {t('已选')}
-            {selectedIds.length} {t('个局部')}
-          </small>
-          <button
-            className="text-button"
-            disabled={recipe.regionGroups.length >= MAX_V3_REGION_GROUPS}
-            onClick={makeGroup}
-          >
-            {t('编为一组统一调整')}
-          </button>
-        </div>
+      {compact && recipe.regionEdits.length > 0 && (
+        <button
+          type="button"
+          className="text-button local-manage-toggle"
+          aria-controls={regionManagementId}
+          aria-expanded={manageRegions}
+          onClick={() => setManageRegions((open) => !open)}
+        >
+          {t('管理选区')} <span>{recipe.regionEdits.length}</span>
+        </button>
       )}
-      {!!recipe.regionGroups.length && (
-        <div className="tonal-tabs" aria-label={t('局部分组')}>
-          {recipe.regionGroups.map((item) => (
-            <button
-              key={item.id}
-              aria-pressed={group?.id === item.id}
-              onClick={() => onScope({ kind: 'group', id: item.id })}
-            >
-              {item.name} · {recipe.regionEdits.filter((r) => r.groupId === item.id).length}
-            </button>
-          ))}
+      <div
+        id={regionManagementId}
+        className="local-region-management"
+        hidden={compact && !manageRegions}
+      >
+        <div className="local-region-summary">
+          <span>{editorFlowText('localCount')}</span>
+          <output aria-label={editorFlowText('localCount')}>
+            {recipe.regionEdits.length}
+            <span> / {MAX_V3_REGION_EDITS}</span>
+          </output>
         </div>
-      )}
-      {group && (
-        <>
-          <div className="local-selection-heading">
-            <span>{editorFlowText('currentGroup')}</span>
-            <strong>{group.name}</strong>
-          </div>
-          <MotionDetails className="advanced-disclosure control-context-help">
-            <summary>{editorFlowText('groupHelp')}</summary>
-            <p className="control-note">
-              {t(
-                '组参数作用于此组有效范围的并集。单独局部的参数仍会保留，可以返回单个局部继续精修。',
-              )}
-            </p>
-          </MotionDetails>
-          <ParameterShelf
-            label={t('分组强度')}
-            controls={[
-              {
-                id: 'opacity',
-                label: t('分组透明度'),
-                value: group.opacity * 100,
-                min: 0,
-                max: 100,
-                step: 0.1,
-                unit: '%',
-                onChange: (n) => {
-                  const latest = currentV3(editor);
-                  apply(
-                    {
-                      ...latest,
-                      regionGroups: latest.regionGroups.map((g) =>
-                        g.id === group.id ? { ...g, opacity: n / 100 } : g,
-                      ),
-                    },
-                    t('调整分组透明度'),
-                  );
-                },
-              },
-            ]}
-            onCommit={(label) => editor.commitCurrent(label)}
-            onCancel={editor.cancelPreview}
-          />
-          <div className="advanced-row">
-            <label className="object-title-edit">
-              {t('分组名称')}
-              <input
-                key={group.id + ':' + group.name}
-                aria-label={t('分组名称')}
-                type="text"
-                maxLength={120}
-                defaultValue={group.name}
-                onBlur={(event) => {
-                  const name = event.currentTarget.value.trim();
-                  if (!name || name === group.name) {
-                    event.currentTarget.value = group.name;
-                    return;
-                  }
-                  const latest = currentV3(editor);
-                  apply(
-                    {
-                      ...latest,
-                      regionGroups: latest.regionGroups.map((item) =>
-                        item.id === group.id ? { ...item, name } : item,
-                      ),
-                    },
-                    t('重命名局部分组'),
-                    true,
-                  );
-                }}
-                onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing) return;
-                  if (event.key === 'Enter') event.currentTarget.blur();
-                  if (event.key === 'Escape') {
-                    event.currentTarget.value = group.name;
-                    event.currentTarget.blur();
-                  }
-                }}
-              />
-            </label>
-          </div>
-          <div className="advanced-row">
-            <label className="compact-check">
+        <div className="advanced-object-list" aria-label={t('独立局部与编组选择')}>
+          {recipe.regionEdits.map((item) => (
+            <div className="advanced-row" data-selected={item.id === region?.id} key={item.id}>
               <input
                 type="checkbox"
-                checked={group.enabled}
-                onChange={(event) => {
+                aria-label={editorFlowText('addNamedToGroup', { name: item.name })}
+                checked={checked.includes(item.id)}
+                onChange={(event) =>
+                  setChecked((ids) =>
+                    event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id),
+                  )
+                }
+              />
+              <button
+                className="object-name"
+                aria-pressed={item.id === region?.id && !group}
+                onClick={() => select(item.id)}
+              >
+                {item.name}
+                <small>
+                  {t(maskLabels[item.mask.type])}
+                  {item.groupId ? t(' · 已编组') : ''}
+                </small>
+              </button>
+              <IconButton
+                label={editorFlowText(item.enabled ? 'hideNamed' : 'showNamed', { name: item.name })}
+                onClick={() => {
                   const latest = currentV3(editor);
                   apply(
                     {
                       ...latest,
-                      regionGroups: latest.regionGroups.map((g) =>
-                        g.id === group.id ? { ...g, enabled: event.target.checked } : g,
+                      regionEdits: latest.regionEdits.map((r) =>
+                        r.id === item.id ? { ...r, enabled: !r.enabled } : r,
                       ),
                     },
-                    t('切换分组'),
+                    t('切换局部效果'),
                     true,
                   );
                 }}
-              />
-              {t('显示组效果')}
-            </label>
+              >
+                {item.enabled ? <Eye size={15} /> : <EyeSlash size={15} />}
+              </IconButton>
+            </div>
+          ))}
+        </div>
+        {!!selectedIds.length && (
+          <div className="advanced-row">
+            <small>
+              {t('已选')}
+              {selectedIds.length} {t('个局部')}
+            </small>
             <button
               className="text-button"
-              onClick={() => {
-                const latest = currentV3(editor);
-                if (
-                  apply(
-                    {
-                      ...latest,
-                      regionGroups: latest.regionGroups.filter((g) => g.id !== group.id),
-                      regionEdits: latest.regionEdits.map((r) =>
-                        r.groupId === group.id ? { ...r, groupId: null } : r,
-                      ),
-                    },
-                    t('解除范围编组'),
-                    true,
-                  )
-                )
-                  onScope(region ? { kind: 'region', id: region.id } : { kind: 'global' });
-              }}
+              disabled={recipe.regionGroups.length >= MAX_V3_REGION_GROUPS}
+              onClick={makeGroup}
             >
-              {t('解组，可撤销')}
+              {t('编为一组统一调整')}
             </button>
           </div>
-        </>
-      )}
-      {region && !group && (
-        <>
-          <div className="local-selection-heading">
-            <span>{editorFlowText('currentRegion')}</span>
-            <strong>{region.name}</strong>
+        )}
+        {!!recipe.regionGroups.length && (
+          <div className="tonal-tabs" aria-label={t('局部分组')}>
+            {recipe.regionGroups.map((item) => (
+              <button
+                key={item.id}
+                aria-pressed={group?.id === item.id}
+                onClick={() => onScope({ kind: 'group', id: item.id })}
+              >
+                {item.name} · {recipe.regionEdits.filter((r) => r.groupId === item.id).length}
+              </button>
+            ))}
           </div>
-          <div className="advanced-row">
-            <IconButton
-              label={t('复制当前局部')}
-              disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
-              onClick={() => {
-                const copy = {
-                  ...structuredClone(region),
-                  id: secureUuid(),
-                  name: region.name.slice(0, 110) + t(' 副本'),
-                };
-                if (
-                  apply(
-                    { ...recipe, regionEdits: [...recipe.regionEdits, copy] },
-                    t('复制局部范围与参数'),
-                    true,
-                  )
-                )
-                  select(copy.id);
-              }}
-            >
-              <Copy size={16} />
-            </IconButton>
-            <IconButton
-              label={t('局部向前')}
-              disabled={recipe.regionEdits[0]?.id === region.id}
-              onClick={() => shift(-1)}
-            >
-              <ArrowUp size={16} />
-            </IconButton>
-            <IconButton
-              label={t('局部向后')}
-              disabled={recipe.regionEdits.at(-1)?.id === region.id}
-              onClick={() => shift(1)}
-            >
-              <ArrowDown size={16} />
-            </IconButton>
-            <IconButton
-              label={t('删除当前局部，可撤销')}
-              onClick={() => {
-                if (
-                  apply(
-                    {
-                      ...recipe,
-                      regionEdits: recipe.regionEdits.filter((r) => r.id !== region.id),
-                    },
-                    t('删除局部'),
-                    true,
-                  )
-                ) {
-                  const next = recipe.regionEdits.find((r) => r.id !== region.id);
-                  if (next) select(next.id);
-                  else {
-                    editor.setActiveRegionId(null);
-                    onScope({ kind: 'global' });
-                  }
-                }
-              }}
-            >
-              <Trash size={16} />
-            </IconButton>
-          </div>
-          <ParameterShelf
-            label={t('局部强度')}
-            controls={[
-              {
-                id: 'opacity',
-                label: t('局部透明度'),
-                value: region.opacity * 100,
-                min: 0,
-                max: 100,
-                step: 0.1,
-                unit: '%',
-                onChange: (n) => patch({ opacity: n / 100 }, t('调整局部强度'), false),
-              },
-            ]}
-            onCommit={(label) => editor.commitCurrent(label)}
-            onCancel={editor.cancelPreview}
-          />
-          <MotionDetails className="advanced-disclosure" defaultOpen>
-            <summary>{t('范围与过渡')}</summary>
-            <MaskControls
-              key={region.id}
-              controller={controller}
-              path={editor.activeMaskPath}
-              onPath={editor.setActiveMaskPath}
-              getMask={() => currentV3(editor).regionEdits.find((r) => r.id === region.id)!.mask}
-              onChange={(mask, commit) => patch({ mask }, t('调整局部范围'), commit)}
+        )}
+        {group && (
+          <>
+            <div className="local-selection-heading">
+              <span>{editorFlowText('currentGroup')}</span>
+              <strong>{group.name}</strong>
+            </div>
+            <MotionDetails className="advanced-disclosure control-context-help">
+              <summary>{editorFlowText('groupHelp')}</summary>
+              <p className="control-note">
+                {t(
+                  '组参数作用于此组有效范围的并集。单独局部的参数仍会保留，可以返回单个局部继续精修。',
+                )}
+              </p>
+            </MotionDetails>
+            <ParameterShelf
+              label={t('分组强度')}
+              controls={[
+                {
+                  id: 'opacity',
+                  label: t('分组透明度'),
+                  value: group.opacity * 100,
+                  min: 0,
+                  max: 100,
+                  step: 0.1,
+                  unit: '%',
+                  onChange: (n) => {
+                    const latest = currentV3(editor);
+                    apply(
+                      {
+                        ...latest,
+                        regionGroups: latest.regionGroups.map((g) =>
+                          g.id === group.id ? { ...g, opacity: n / 100 } : g,
+                        ),
+                      },
+                      t('调整分组透明度'),
+                    );
+                  },
+                },
+              ]}
+              onCommit={(label) => editor.commitCurrent(label)}
+              onCancel={editor.cancelPreview}
             />
-            {region.mask.type === 'color-range' && (
-              <MotionDetails className="advanced-disclosure">
-                <summary>{t('取色与完整色谱')}</summary>
-                <ColorPicker
-                  value={pickedColor}
-                  onChange={(value) => onColorChange?.(value)}
-                  label={t('连续选择颜色')}
+            <div className="advanced-row">
+              <label className="object-title-edit">
+                {t('分组名称')}
+                <input
+                  key={group.id + ':' + group.name}
+                  aria-label={t('分组名称')}
+                  type="text"
+                  maxLength={120}
+                  defaultValue={group.name}
+                  onBlur={(event) => {
+                    const name = event.currentTarget.value.trim();
+                    if (!name || name === group.name) {
+                      event.currentTarget.value = group.name;
+                      return;
+                    }
+                    const latest = currentV3(editor);
+                    apply(
+                      {
+                        ...latest,
+                        regionGroups: latest.regionGroups.map((item) =>
+                          item.id === group.id ? { ...item, name } : item,
+                        ),
+                      },
+                      t('重命名局部分组'),
+                      true,
+                    );
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return;
+                    if (event.key === 'Enter') event.currentTarget.blur();
+                    if (event.key === 'Escape') {
+                      event.currentTarget.value = group.name;
+                      event.currentTarget.blur();
+                    }
+                  }}
                 />
-                <div className="advanced-row">
-                  <button className="text-button" onClick={onSample}>
-                    {sampling ? t('结束取色') : t('从原图取色')}
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() => {
-                      const hue = hsv(rgba(pickedColor)).h;
-                      if (region.mask.type === 'color-range')
-                        patch({ mask: { ...region.mask, hue } }, t('使用所选色相'));
-                    }}
-                  >
-                    {t('使用所选色相')}
-                  </button>
-                </div>
-              </MotionDetails>
-            )}
-          </MotionDetails>
-          <MotionDetails className="advanced-disclosure">
-            <summary>{t('名称与分组')}</summary>
-            <label className="advanced-select">
-              {t('局部名称')}
-              <input
-                aria-label={t('局部名称')}
-                key={region.id + ':' + region.name}
-                defaultValue={region.name}
-                maxLength={120}
-                onBlur={(event) => {
-                  const name = event.currentTarget.value.trim();
-                  if (!name || name === region.name) {
-                    event.currentTarget.value = region.name;
-                    return;
-                  }
-                  patch({ name }, t('重命名局部'));
+              </label>
+            </div>
+            <div className="advanced-row">
+              <label className="compact-check">
+                <input
+                  type="checkbox"
+                  checked={group.enabled}
+                  onChange={(event) => {
+                    const latest = currentV3(editor);
+                    apply(
+                      {
+                        ...latest,
+                        regionGroups: latest.regionGroups.map((g) =>
+                          g.id === group.id ? { ...g, enabled: event.target.checked } : g,
+                        ),
+                      },
+                      t('切换分组'),
+                      true,
+                    );
+                  }}
+                />
+                {t('显示组效果')}
+              </label>
+              <button
+                className="text-button"
+                onClick={() => {
+                  const latest = currentV3(editor);
+                  if (
+                    apply(
+                      {
+                        ...latest,
+                        regionGroups: latest.regionGroups.filter((g) => g.id !== group.id),
+                        regionEdits: latest.regionEdits.map((r) =>
+                          r.groupId === group.id ? { ...r, groupId: null } : r,
+                        ),
+                      },
+                      t('解除范围编组'),
+                      true,
+                    )
+                  )
+                    onScope(region ? { kind: 'region', id: region.id } : { kind: 'global' });
                 }}
-                onKeyDown={(event) => {
-                  if (event.nativeEvent.isComposing) return;
-                  if (event.key === 'Enter') event.currentTarget.blur();
-                  if (event.key === 'Escape') {
-                    event.currentTarget.value = region.name;
-                    event.currentTarget.blur();
+              >
+                {t('解组，可撤销')}
+              </button>
+            </div>
+          </>
+        )}
+        {region && !group && (
+          <>
+            <div className="local-selection-heading">
+              <span>{editorFlowText('currentRegion')}</span>
+              <strong>{region.name}</strong>
+            </div>
+            <div className="advanced-row">
+              <IconButton
+                label={t('复制当前局部')}
+                disabled={recipe.regionEdits.length >= MAX_V3_REGION_EDITS}
+                onClick={() => {
+                  const copy = {
+                    ...structuredClone(region),
+                    id: secureUuid(),
+                    name: region.name.slice(0, 110) + t(' 副本'),
+                  };
+                  if (
+                    apply(
+                      { ...recipe, regionEdits: [...recipe.regionEdits, copy] },
+                      t('复制局部范围与参数'),
+                      true,
+                    )
+                  )
+                    select(copy.id);
+                }}
+              >
+                <Copy size={16} />
+              </IconButton>
+              <IconButton
+                label={t('局部向前')}
+                disabled={recipe.regionEdits[0]?.id === region.id}
+                onClick={() => shift(-1)}
+              >
+                <ArrowUp size={16} />
+              </IconButton>
+              <IconButton
+                label={t('局部向后')}
+                disabled={recipe.regionEdits.at(-1)?.id === region.id}
+                onClick={() => shift(1)}
+              >
+                <ArrowDown size={16} />
+              </IconButton>
+              <IconButton
+                label={t('删除当前局部，可撤销')}
+                onClick={() => {
+                  if (
+                    apply(
+                      {
+                        ...recipe,
+                        regionEdits: recipe.regionEdits.filter((r) => r.id !== region.id),
+                      },
+                      t('删除局部'),
+                      true,
+                    )
+                  ) {
+                    const next = recipe.regionEdits.find((r) => r.id !== region.id);
+                    if (next) select(next.id);
+                    else {
+                      editor.setActiveRegionId(null);
+                      onScope({ kind: 'global' });
+                    }
                   }
                 }}
+              >
+                <Trash size={16} />
+              </IconButton>
+            </div>
+            <ParameterShelf
+              label={t('局部强度')}
+              controls={[
+                {
+                  id: 'opacity',
+                  label: t('局部透明度'),
+                  value: region.opacity * 100,
+                  min: 0,
+                  max: 100,
+                  step: 0.1,
+                  unit: '%',
+                  onChange: (n) => patch({ opacity: n / 100 }, t('调整局部强度'), false),
+                },
+              ]}
+              onCommit={(label) => editor.commitCurrent(label)}
+              onCancel={editor.cancelPreview}
+            />
+            <MotionDetails className="advanced-disclosure" defaultOpen={!compact}>
+              <summary>{t('范围与过渡')}</summary>
+              <MaskControls
+                key={region.id}
+                controller={controller}
+                path={editor.activeMaskPath}
+                onPath={editor.setActiveMaskPath}
+                getMask={() => currentV3(editor).regionEdits.find((r) => r.id === region.id)!.mask}
+                onChange={(mask, commit) => patch({ mask }, t('调整局部范围'), commit)}
               />
-            </label>
-            <label className="advanced-select">
-              {t('所在分组')}
-              <ChoiceSelect
-                ariaLabel={t('局部所在分组')}
-                size="compact"
-                value={region.groupId ?? ''}
-                onValueChange={(value) => patch({ groupId: value || null }, t('移动局部分组'))}
-                options={[
-                  { value: '', label: t('独立调整') },
-                  ...recipe.regionGroups.map((g) => ({ value: g.id, label: g.name })),
-                ]}
-              />
-            </label>
-          </MotionDetails>
-        </>
-      )}
+              {region.mask.type === 'color-range' && (
+                <MotionDetails className="advanced-disclosure">
+                  <summary>{t('取色与完整色谱')}</summary>
+                  <ColorPicker
+                    value={pickedColor}
+                    onChange={(value) => onColorChange?.(value)}
+                    label={t('连续选择颜色')}
+                  />
+                  <div className="advanced-row">
+                    <button className="text-button" onClick={onSample}>
+                      {sampling ? t('结束取色') : t('从原图取色')}
+                    </button>
+                    <button
+                      className="text-button"
+                      onClick={() => {
+                        const hue = hsv(rgba(pickedColor)).h;
+                        if (region.mask.type === 'color-range')
+                          patch({ mask: { ...region.mask, hue } }, t('使用所选色相'));
+                      }}
+                    >
+                      {t('使用所选色相')}
+                    </button>
+                  </div>
+                </MotionDetails>
+              )}
+            </MotionDetails>
+            <MotionDetails className="advanced-disclosure">
+              <summary>{t('名称与分组')}</summary>
+              <label className="advanced-select">
+                {t('局部名称')}
+                <input
+                  aria-label={t('局部名称')}
+                  key={region.id + ':' + region.name}
+                  defaultValue={region.name}
+                  maxLength={120}
+                  onBlur={(event) => {
+                    const name = event.currentTarget.value.trim();
+                    if (!name || name === region.name) {
+                      event.currentTarget.value = region.name;
+                      return;
+                    }
+                    patch({ name }, t('重命名局部'));
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.nativeEvent.isComposing) return;
+                    if (event.key === 'Enter') event.currentTarget.blur();
+                    if (event.key === 'Escape') {
+                      event.currentTarget.value = region.name;
+                      event.currentTarget.blur();
+                    }
+                  }}
+                />
+              </label>
+              <label className="advanced-select">
+                {t('所在分组')}
+                <ChoiceSelect
+                  ariaLabel={t('局部所在分组')}
+                  size="compact"
+                  value={region.groupId ?? ''}
+                  onValueChange={(value) => patch({ groupId: value || null }, t('移动局部分组'))}
+                  options={[
+                    { value: '', label: t('独立调整') },
+                    ...recipe.regionGroups.map((g) => ({ value: g.id, label: g.name })),
+                  ]}
+                />
+              </label>
+            </MotionDetails>
+          </>
+        )}
+      </div>
     </section>
   );
 }

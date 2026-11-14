@@ -170,7 +170,7 @@ async function checkLocalCutout(browser, origin, image, view) {
         return route.fulfill({ status: 503, json: { message: 'offline' } });
       return route.continue();
     });
-    await page.goto(`${origin}/#/studio`);
+    await page.goto(`${origin}/#/studio`, { waitUntil: 'domcontentloaded' });
     const sourcePng = await png(image);
     await page.getByLabel('选择照片', { exact: true }).setInputFiles({
       name: 'public-portrait.png',
@@ -194,10 +194,9 @@ async function checkLocalCutout(browser, origin, image, view) {
         { cause: error },
       );
     }
-    await page
-      .locator('summary')
-      .filter({ hasText: /^选区与抠图$/ })
-      .click();
+    const extras = page.locator('.portrait-extras > summary:visible');
+    if (await extras.count()) await extras.click();
+    await page.locator('.portrait-source-actions > summary:visible').click();
     const button = page.getByRole('button', { name: '从原图提取人物素材', exact: true });
     await button.waitFor({ timeout: 60000 });
     if (view.fine) {
@@ -320,6 +319,7 @@ async function checkCloudCutout(sourcePng, settings, browserPixels) {
 let vite, browser;
 try {
   vite = await createServer({
+    cacheDir: join(output, 'vite-cache'),
     configFile: resolve('apps/web/vite.config.ts'),
     server: { host: '127.0.0.1', port: 4186, strictPort: true },
   });
@@ -336,7 +336,7 @@ try {
       ? route.continue()
       : route.abort();
   });
-  await page.goto('http://127.0.0.1:4186/#/studio');
+  await page.goto('http://127.0.0.1:4186/#/studio', { waitUntil: 'domcontentloaded' });
   for (const source of sources) {
     const decoded = await sharp(await getBytes(source))
       .autoOrient()

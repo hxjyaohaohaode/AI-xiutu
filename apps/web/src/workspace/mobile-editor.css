@@ -811,3 +811,12 @@
   display: none;
 }
 .studio-workspace .free-panel[data-fixed-inspector] .portrait-extras > summary { min-height: 30px; padding-block: 2px; }
+
+.local-region-management:not([hidden]) { display: contents; }
+.studio-workspace .free-panel[data-fixed-inspector] .local-controls-v3 > .local-manage-toggle {
+  justify-self: start;
+  min-height: 32px;
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.local-manage-toggle > span { color: var(--muted); font-variant-numeric: tabular-nums; }

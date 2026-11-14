@@ -1356,7 +1356,7 @@ async function productScreens(locale) {
     await importStoryPhoto(page, 'ceramics-original.webp');
     await tool(page, 'local');
     await page.locator('[data-motion="region-controls"]:visible [data-action="create-region"][data-mask-type="radial"]').click();
-    await page.locator('[data-motion="region-controls"]:visible .advanced-object-list .object-name').waitFor();
+    await page.locator('[data-motion="region-controls"]:visible .local-primary-controls').waitFor();
     await parameter(page, 'exposure', 0.25, '[data-motion="region-controls"]:visible');
     await layout(page, locale + ': local capture');
     await productCapture(page, 'local', locale, 'stories/ceramics-original.webp', 'Actual radial region created and adjusted through UI');

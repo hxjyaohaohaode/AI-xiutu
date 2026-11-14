@@ -58,7 +58,12 @@ export function phoneInspectorLayout(view: Viewport, contentHeight?: number): { 
     : Math.max(48, finite(view.toolShelfHeight ?? 44, 44) + 12);
   const landscape = view.width > view.height && view.height <= 500;
   const baseHeight = landscape ? 104 : 146;
-  const maxHeight = Math.max(0, body.height - bottom - (contentHeight === undefined ? 0 : (landscape ? 84 : 132)));
+  // Canvas padding and on-image controls also need room. A crowded tool can
+  // scroll its secondary controls without shrinking the actual photo to a dot.
+  const canvasReserve = contentHeight === undefined || body.height < 240
+    ? 0
+    : Math.min(Math.floor(body.height * (landscape ? 0.5 : 0.52)), landscape ? 174 : 250);
+  const maxHeight = Math.max(0, body.height - bottom - canvasReserve);
   const height = Math.min(Math.max(baseHeight, contentHeight ?? 0), maxHeight);
   return {
     rect: { x: 0, y: Math.max(0, body.height - bottom - height), width: body.width, height },

@@ -1843,28 +1843,68 @@ try {
         (await a.page.locator('.collaboration-status').getAttribute('data-state')) === 'ready',
       'owner commit completes',
     );
-    await a.page.locator('.free-panel[aria-hidden="false"] .panel-title-drag').focus();
-    await a.page.keyboard.press('Control+z');
-    await eventually(async () => {
-      const r = (await readHead()).revision.recipe;
-      return r.adjustments.contrast === 0 && r.adjustments.exposure === -0.65;
-    }, 'owned undo preserves the other user change');
+    // Hold the undo until its next heartbeat starts renewing the lease. Let
+    // that renewal finish only after the real undo and release have succeeded.
+    const roomPath = `**/artworks/${work.artwork.id}/collaboration`;
+    let letCommit, letRenew, renewalStarted = false;
+    const commitGate = new Promise((resolve) => { letCommit = resolve; });
+    const renewalGate = new Promise((resolve) => { letRenew = resolve; });
+    const holdCommit = async (route) => { await commitGate; await route.continue(); };
+    const holdRenewal = async (route) => {
+      if (route.request().method() !== 'PATCH' || renewalStarted) return route.continue();
+      renewalStarted = true;
+      await renewalGate;
+      await route.continue();
+    };
+    await a.page.route(`${roomPath}/commands`, holdCommit);
+    await a.page.route(`${roomPath}/leases/*`, holdRenewal);
+    const ownerStatus = a.page.locator('.collaboration-status');
+    try {
+      await a.page.locator('.free-panel[aria-hidden="false"] .panel-title-drag').focus();
+      await a.page.keyboard.press('Control+z');
+      await eventually(() => renewalStarted, 'lease renewal overlaps the pending undo');
+      letCommit();
+      await eventually(async () => {
+        const r = (await readHead()).revision.recipe;
+        return r.adjustments.contrast === 0 && r.adjustments.exposure === -0.65;
+      }, 'owned undo preserves the other user change');
+      await a.page.locator('.collaboration-status[data-state="ready"]').waitFor();
+      const rejectedRenewal = a.page.waitForResponse((response) =>
+        response.request().method() === 'PATCH' && new URL(response.url()).pathname.includes('/collaboration/leases/'),
+      );
+      letRenew();
+      const late = await rejectedRenewal;
+      assert.equal(late.status(), 409);
+      assert.equal((await late.json()).error.code, 'LEASE_EXPIRED');
+      await a.page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      assert.equal(await ownerStatus.getAttribute('data-state'), 'ready', 'a late renewal cannot turn a published undo into a conflict');
+      assert.equal(await ownerStatus.getByRole('button', { name: '重试同步', exact: true }).count(), 0);
+    } finally {
+      letCommit();
+      letRenew();
+      await a.page.unroute(`${roomPath}/commands`, holdCommit);
+      await a.page.unroute(`${roomPath}/leases/*`, holdRenewal);
+    }
     await a.page.screenshot({ path: join(artifacts, 'collaboration-owner.png') });
     await b.page.screenshot({ path: join(artifacts, 'collaboration-peer.png') });
-    return { accounts: 2, sameArtwork: true, peerDomViaRealPoll: true, ownedUndo: true };
+    return { accounts: 2, sameArtwork: true, peerDomViaRealPoll: true, ownedUndo: true, lateRenewalIgnored: true };
   });
   await caseRun('lease-conflict-visible-and-explicit-retry', async () => {
     // A committed head is observable before the writer's subsequent lease DELETE
     // is acknowledged. Do not confuse that normal release interval with this case.
+    let previous = '';
     await eventually(async () => {
       const statuses = await Promise.all(
         clients.map(({ page }) => page.locator('.collaboration-status').getAttribute('data-state')),
       );
-      if (statuses.some((state) => state !== 'ready')) return false;
       const response = await request(a, `/artworks/${work.artwork.id}/collaboration`);
       assert.equal(response.status(), 200);
-      return (await response.json()).snapshot.leases.length === 0;
-    }, 'previous commands acknowledged and their real leases released');
+      const leases = (await response.json()).snapshot.leases;
+      previous = `browser states ${statuses.join(', ')}, ${leases.length} active leases`;
+      return statuses.every((state) => state === 'ready') && leases.length === 0;
+    }, 'previous commands acknowledged and their real leases released').catch((error) => {
+      throw new Error(`${error.message} (${previous})`, { cause: error });
+    });
     const state = await (await request(a, `/artworks/${work.artwork.id}/collaboration`)).json();
     const session = state.snapshot.presences.find((item) => item.userId === a.actor.id);
     assert.ok(session);

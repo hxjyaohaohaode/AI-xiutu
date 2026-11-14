@@ -96,6 +96,7 @@ export function useCollaboration(options: Options) {
     head = useRef<Head | null>(null),
     draft = useRef<Draft | null>(null),
     lease = useRef<CollaborationLease | null>(null);
+  const leaseRelease = useRef<{ id: string; task: Promise<void> } | null>(null);
   const processing = useRef(false),
     timer = useRef<number | null>(null),
     lastPreview = useRef(0),
@@ -194,17 +195,27 @@ export function useCollaboration(options: Options) {
   async function release(r = room.current) {
     const owned = lease.current;
     if (!r?.session || !owned) return;
+    const sessionId = r.session.id;
+    if (leaseRelease.current?.id === owned.id) return leaseRelease.current.task;
     // Keep the proof until release is acknowledged; a failed response is safe to retry.
+    const task = (async () => {
+      try {
+        await api(endpoint(r, `/leases/${owned.id}`), {
+          ...jsonRequest('DELETE', { sessionId, fence: owned.fence }),
+          signal: r.controller.signal,
+        });
+      } catch (e) {
+        if (!(e instanceof ApiError && (e.code === 'LEASE_EXPIRED' || e.code === 'SESSION_EXPIRED')))
+          throw e;
+      }
+      if (lease.current?.id === owned.id) lease.current = null;
+    })();
+    leaseRelease.current = { id: owned.id, task };
     try {
-      await api(endpoint(r, `/leases/${owned.id}`), {
-        ...jsonRequest('DELETE', { sessionId: r.session.id, fence: owned.fence }),
-        signal: r.controller.signal,
-      });
-    } catch (e) {
-      if (!(e instanceof ApiError && (e.code === 'LEASE_EXPIRED' || e.code === 'SESSION_EXPIRED')))
-        throw e;
+      await task;
+    } finally {
+      if (leaseRelease.current?.task === task) leaseRelease.current = null;
     }
-    if (lease.current?.id === owned.id) lease.current = null;
   }
   async function install(
     headValue: Head,
@@ -608,7 +619,7 @@ export function useCollaboration(options: Options) {
           signal: controller.signal,
         });
         const own = lease.current;
-        if (own) {
+        if (own && leaseRelease.current?.id !== own.id) {
           renewingLeaseId = own.id;
           const renewed = await api<{ lease: CollaborationLease }>(
             endpoint(r, `/leases/${own.id}`),
@@ -617,10 +628,18 @@ export function useCollaboration(options: Options) {
               signal: controller.signal,
             },
           );
-          if (isCurrent(r) && lease.current?.id === own.id) lease.current = renewed.lease;
+          if (isCurrent(r) && lease.current?.id === own.id && leaseRelease.current?.id !== own.id)
+            lease.current = renewed.lease;
         }
       } catch (e) {
         if (isCurrent(r)) {
+          // A save/cancel can finish while its last renewal is in flight.
+          // A response for a lease being released cannot change the new edit's state.
+          if (
+            renewingLeaseId &&
+            (lease.current?.id !== renewingLeaseId || leaseRelease.current?.id === renewingLeaseId)
+          )
+            return;
           stateError(e, 'transport');
           recoverOwnership(e, r, renewingLeaseId);
         }

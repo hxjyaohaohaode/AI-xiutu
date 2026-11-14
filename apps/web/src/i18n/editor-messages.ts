@@ -489,6 +489,7 @@ export const editorEnglish: Readonly<Record<string, string>> = {
   '删除合成图层，可撤销': 'Delete image layer; can be undone',
   删除合成图层: 'Delete image layer',
   添加局部范围: 'Add a region',
+  管理选区: 'Manage regions',
   '个局部 · 每个局部拥有完整调色参数': 'regions · Full color controls per region',
   独立局部与编组选择: 'Independent regions & groups',
   将: 'Add',

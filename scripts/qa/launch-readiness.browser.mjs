@@ -193,6 +193,32 @@ try {
   assert.ok(portraitOverflow <= 1, 'recognized portrait controls fit in the visible inspector');
   result.cases.push('local portrait analysis ran without a manual click');
   await take(phone, 'phone-portrait-ready');
+  await phone.locator('[data-dock-tool="local"]:visible').click();
+  const local = phone.locator('[data-motion="region-controls"]:visible');
+  await local.locator('[data-action="create-region"][data-mask-type="radial"]').click();
+  const manage = local.getByRole('button', { name: /管理选区/ });
+  const handle = phone.locator('[data-handle="center"]:visible');
+  for (const viewport of [{width: 390, height: 844}, {width: 320, height: 568}, {width: 844, height: 390}]) {
+    await phone.setViewportSize(viewport);
+    await phone.waitForFunction(() => {
+      const image = document.querySelector('.image-frame');
+      const handle = image?.querySelector('[data-handle="center"]');
+      if (!image || !handle || image.getBoundingClientRect().height < 75) return false;
+      const {x, y, width, height} = handle.getBoundingClientRect();
+      return handle.contains(document.elementFromPoint(x + width / 2, y + height / 2));
+    });
+    assert.equal(await manage.getAttribute('aria-expanded'), 'false');
+    await handle.click({ trial: true });
+  }
+  await phone.setViewportSize({width: 390, height: 844});
+  const beforeMove = await handle.evaluate((node) => node.style.left);
+  await handle.press('ArrowRight');
+  assert.notEqual(await handle.evaluate((node) => node.style.left), beforeMove);
+  await take(phone, 'phone-local-selection');
+  await manage.click();
+  await local.locator('.advanced-object-list .object-name:visible').waitFor();
+  await manage.click();
+  result.cases.push('local mask controls stay reachable on short phones and in landscape');
   await works(desktop);
   await desktop.locator('.library-work-search').waitFor();
   await phone.getByRole('button', { name: '保存', exact: true }).click();
