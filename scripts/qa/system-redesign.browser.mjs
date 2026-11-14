@@ -880,6 +880,35 @@ async function inspectAbout(specification) {
     await page.keyboard.press('Control+Home');
     const seen = new Set();
     const positions = [];
+    const touch = specification.touch ? await context.newCDPSession(page) : null;
+    const nextScreen = async () => {
+      const { width, height } = specification.viewport;
+      // Start within the page instead of relying on the pointer's implicit
+      // initial location at (0, 0), which can be outside the scrolling content.
+      const x = Math.round(width * 0.54);
+      if (!touch) {
+        await page.mouse.move(x, Math.round(height * 0.68));
+        await page.mouse.wheel(0, Math.max(220, Math.floor(height * 0.68)));
+        return;
+      }
+      const start = Math.round(height * 0.84);
+      const distance = Math.round(height * 0.61);
+      await touch.send('Input.dispatchTouchEvent', {
+        type: 'touchStart',
+        touchPoints: [{ id: 1, x, y: start }],
+      });
+      for (let index = 1; index <= 8; index++) {
+        await touch.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: [{ id: 1, x, y: start - distance * index / 8 }],
+        });
+        await page.evaluate(() => new Promise((done) => requestAnimationFrame(done)));
+      }
+      // Let the finger come to rest before release so inertia cannot skip a
+      // whole section between two viewport samples.
+      await page.waitForTimeout(90);
+      await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    };
     for (let step = 0; step < 120; step++) {
       await settle(page);
       const position = await page.evaluate(() => {
@@ -901,8 +930,21 @@ async function inspectAbout(specification) {
       position.visible.forEach((section) => seen.add(section));
       positions.push(position.y);
       if (position.end) break;
-      await page.mouse.wheel(0, Math.max(220, Math.floor(specification.viewport.height * 0.72)));
-      await page.waitForFunction((y) => scrollY > y + 1 || scrollY + innerHeight >= document.documentElement.scrollHeight - 2, position.y);
+      await nextScreen();
+      const advanced = () => page.waitForFunction(
+        (y) => scrollY > y + 1 || scrollY + innerHeight >= document.documentElement.scrollHeight - 2,
+        position.y,
+        { timeout: 3200 },
+      );
+      try {
+        await advanced();
+      } catch (error) {
+        if (error.name !== 'TimeoutError') throw error;
+        // A dropped gesture is recoverable; a page swallowing both attempts
+        // still fails the native scrolling check.
+        await nextScreen();
+        await advanced();
+      }
     }
     assert.deepEqual([...seen].sort(), [...ABOUT_SECTIONS].sort(), 'Native scrolling must reach every section.');
     assert.ok(positions.length > 2 && positions.at(-1) > positions[0], 'About must use natural document scrolling.');
