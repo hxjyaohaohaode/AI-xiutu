@@ -516,7 +516,12 @@
   }
 }
 
-.assistant-reference-composer { display: grid; gap: 6px; min-inline-size: 0; }
+.assistant-reference-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 6px;
+  min-inline-size: 0;
+}
 .assistant-reference-prompt {
   --pb-bg: color-mix(in srgb, var(--surface-secondary) 76%, var(--surface-raised));
   --pb-ink: var(--ink);
