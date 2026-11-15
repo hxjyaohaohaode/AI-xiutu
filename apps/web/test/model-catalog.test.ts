@@ -1,6 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { preferredNarrationModel } from '../src/ai/model-guidance';
+import type { AIModel } from '../src/ai/types';
 import { readModelCatalog, withRequestDeadline } from '../src/lib/api';
+
+test('reply narration uses a preferred speech model while the server reports it available', () => {
+  const preferred: AIModel = {
+    id: 'gpt-4o-mini-tts',
+    label: 'GPT-4o mini TTS',
+    provider: 'openai',
+    enabled: true,
+    shutdownDate: '2027-01-06',
+    runtimeAvailable: true,
+    runtimeOperations: ['speak'],
+  };
+  const fallback = { ...preferred, id: 'tts-1-hd' };
+  assert.equal(preferredNarrationModel([fallback, preferred]), preferred);
+  assert.equal(preferredNarrationModel([{ ...preferred, runtimeAvailable: false }, fallback]), fallback);
+});
 
 test('model discovery retries transient empty responses without retrying authentication failures', async (t) => {
   let attempt = 0;

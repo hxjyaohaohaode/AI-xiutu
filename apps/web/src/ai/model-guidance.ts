@@ -46,7 +46,7 @@ const taskGuidance: Partial<Record<AIOperation | 'realtime-voice', string>> = {
 };
 
 export function preferredNarrationModel(models: readonly AIModel[]) {
-  const available = models.filter((model) => model.enabled && !model.shutdownDate &&
+  const available = models.filter((model) => model.enabled &&
     model.runtimeAvailable && model.runtimeOperations?.includes('speak'));
   return available.find((model) => model.id === 'gpt-4o-mini-tts') ??
     available.find((model) => model.id === 'tts-1-hd') ?? available[0];
