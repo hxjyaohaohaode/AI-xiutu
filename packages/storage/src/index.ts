@@ -293,7 +293,7 @@ export class LocalPrivateStorage {
     }
   }
   /** Unreferenced private file until caller has moderated THESE normalized bytes and committed an authorized asset. */
-  async storeGenerated(bytes: Uint8Array): Promise<StoredImage> {
+  async storeGenerated(bytes: Uint8Array, options: { adaptiveFiltering?: boolean } = {}): Promise<StoredImage> {
     if (bytes.byteLength < 16 || bytes.byteLength > this.config.maxUploadBytes)
       throw new StorageError(413, 'GENERATED_IMAGE_TOO_LARGE', '生成图像超过处理限制');
     this.acquire();
@@ -301,7 +301,7 @@ export class LocalPrivateStorage {
     const temporary = join(this.directory, `${randomUUID()}.generated`);
     try {
       await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
-      return await this.normalize(temporary, key, true);
+      return await this.normalize(temporary, key, options.adaptiveFiltering);
     } catch (error) {
       await this.discard(key);
       if (error instanceof StorageError) throw error;

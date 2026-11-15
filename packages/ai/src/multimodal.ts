@@ -1425,7 +1425,7 @@ export function createMultimodalService(
               raster = first;
               imageArtifacts.push({ index, format: 'gif', bytes: Buffer.from(item.bytes), frames: animation.count });
             }
-            const file = await storage.storeGenerated(raster);
+            const file = await storage.storeGenerated(raster, { adaptiveFiltering: isOpenAI });
             storedBatch.push(file);
             if (
               options?.size === 'auto'
