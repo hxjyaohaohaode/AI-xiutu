@@ -152,7 +152,7 @@ export const english: Readonly<Record<string, string>> = {
   笔触粗细: 'Stroke width',
   '发给 AI': 'Send to AI',
   下载: 'Download',
-  编辑界面截图: 'Editor screenshot',
+  当前编辑图: 'Current edited image',
   照片预览: 'Photo preview',
   移除附件: 'Remove attachment',
   查看附件: 'View attachment',

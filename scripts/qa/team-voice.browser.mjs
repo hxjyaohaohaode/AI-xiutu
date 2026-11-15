@@ -665,7 +665,7 @@ try {
       const composerControls = {
         input: callWorkspace.getByLabel('向智能体描述修改需求', { exact: true }),
         settings: callWorkspace.getByRole('button', { name: '助手设置', exact: true }),
-        preview: callWorkspace.getByRole('button', { name: '当前预览', exact: true }),
+        preview: callWorkspace.getByRole('button', { name: '共享当前预览', exact: true }),
         send: callWorkspace.getByRole('button', { name: '发送协作请求', exact: true }),
       };
       await composerControls.input.fill(supplement);

@@ -421,15 +421,24 @@ try {
   await take(photoChat, 'assistant-current-photo');
   const photoPrompt = photoChat.getByLabel('向智能体描述修改需求');
   await photoPrompt.fill('帮我看看正在编辑的图片。');
+  const previousCalls = requests.length;
   const imageTurn = photoChat.waitForResponse((response) => response.request().method() === 'POST' &&
     new URL(response.url()).pathname.endsWith('/assistant-turns'));
   await photoPrompt.press('Enter');
   const visual = await imageTurn;
   assert.equal(visual.status(), 202);
   assert.equal(visual.request().postDataJSON().visualAttachment.kind, 'editor');
-  await photoChat.getByText('浏览器验收完成', { exact: false }).last().waitFor();
-  assert.ok(requests.at(-1).input.some((entry) => Array.isArray(entry.content) &&
-    entry.content.some((part) => part.type === 'input_image')));
+  const { id: visualId } = await visual.json();
+  let visualState;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    const response = await photoChat.request.get(origin + '/v1/assistant-turns/' + visualId);
+    visualState = await response.json();
+    if (visualState.state !== 'running') break;
+    await photoChat.waitForTimeout(100);
+  }
+  assert.equal(visualState?.state, 'completed', String(visualState?.errorCode ?? visualState?.state));
+  assert.ok(requests.slice(previousCalls).some((call) => call.input.some((entry) => Array.isArray(entry.content) &&
+    entry.content.some((part) => part.type === 'input_image'))));
   result.cases.push('unsaved canvas pixels reach the text model from the ordinary composer');
   assert.deepEqual(result.errors, []);
 } catch (error) {

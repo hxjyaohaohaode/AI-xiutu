@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import type { AssistantVisualAttachment } from '@ai-xiutu/contracts';
 
 export function visualAttachmentLabel(kind: AssistantVisualAttachment['kind']) {
-  return kind === 'editor' ? t('编辑界面截图') : kind === 'sketch' ? t('草图') : t('照片预览');
+  return kind === 'editor' ? t('当前编辑图') : kind === 'sketch' ? t('草图') : t('照片预览');
 }
 
 export function DraftAttachmentCard({

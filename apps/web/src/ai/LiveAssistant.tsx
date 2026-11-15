@@ -321,6 +321,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     [voiceId, setVoiceId] = useState(''),
     [voice, setVoice] = useState('marin');
   const [liveDelegation, setLiveDelegation] = useState<LiveDelegationOptions>({ type: 'client' });
+  const [usingClientPreview, setUsingClientPreview] = useState(false);
   const [voiceTuningByModel, setVoiceTuningByModel] = useState<Record<string, PersonalVoiceTuning>>({});
   const [liveTranslation, setLiveTranslation] = useState<LiveTranslationOptions>({ language: 'en' });
   const [delegatedResult, setDelegatedResult] = useState<{ kind: 'responses' | 'decisions'; text: string } | null>(null);
@@ -397,9 +398,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
     null,
   );
   textDraft.current = { prompt, mode, conversationId };
-  const [excludedTextSource, setExcludedTextSource] = useState<number | null>(null);
-  const shareImage = !!props.captureCanvasPreview && props.canvasSourceId !== excludedTextSource;
-  const setShareImage = (enabled: boolean) => setExcludedTextSource(enabled ? null : props.canvasSourceId ?? null);
+  const [textPreviewChoice, setTextPreviewChoice] = useState<{ source: number | undefined; enabled: boolean } | null>(null);
+  const shareImage = !!props.captureCanvasPreview && (textPreviewChoice?.source === props.canvasSourceId && textPreviewChoice
+    ? textPreviewChoice.enabled : creative.mode !== 'auto');
+  const setShareImage = (enabled: boolean) => setTextPreviewChoice({ source: props.canvasSourceId, enabled });
   const [allowWebSearch, setAllowWebSearch] = useState(false),
     [memory, setMemory] = useState(false);
   const [sharedVoiceSource, setSharedVoiceSource] = useState<number | null>(null);
@@ -622,10 +624,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voiceOptions = selectedVoice?.voice?.voices ?? [];
   const translating = voiceId === OPENAI_TRANSLATION_MODEL;
   const actualDelegation = voiceId === 'gpt-live-1' ? liveDelegation : undefined;
-  const nativeMode = actualDelegation?.type === 'responses' || actualDelegation?.type === 'decisions';
+  const nativeMode = (actualDelegation?.type === 'responses' || actualDelegation?.type === 'decisions') &&
+    (callState === 'idle' || !usingClientPreview);
+  const liveCanDelegatePreview = selectedVoice?.voice?.protocol === 'live' && selected?.imageInput === true;
   const canShareVoicePreview = !translating && !nativeMode &&
-    (selectedVoice?.voice?.imageInput === true ||
-      (selectedVoice?.voice?.protocol === 'live' && selected?.imageInput === true));
+    (selectedVoice?.voice?.imageInput === true || liveCanDelegatePreview);
   const shareVoiceImage = canShareVoicePreview && !!props.captureCanvasPreview &&
     sharedVoiceSource !== null && sharedVoiceSource === props.canvasSourceId;
   const nativeBackends = models.filter((item) =>
@@ -824,7 +827,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setError('');
     setCallState('idle');
     setMuted(false);
-    setExcludedTextSource(null);
+    setTextPreviewChoice(null);
     setSharedVoiceSource(null);
     setAllowWebSearch(false);
     setPublicQuery('');
@@ -1274,8 +1277,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
       setCallState('active');
       setElapsed(0);
       setVoiceSearchRemaining(event.maxPublicSearches ?? 1);
-      setContextStatus(translating ? '正在同传' : nativeMode ? '使用本轮语音与文字' :
-        voiceCanvas.current.shared ? '当前画面已共享，调整后会更新' : '未共享画面');
+      setContextStatus(translating ? '正在同传' : voiceCanvas.current.shared
+        ? '当前画面已共享，调整后会更新' : nativeMode ? '使用本轮语音与文字' : '未共享画面');
     }
     if (event.type === 'closed') {
       setCallState('idle');
@@ -1378,7 +1381,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       }
     }
   }
-  async function startVoice(recovery?: VoiceSubmission) {
+  async function startVoice(recovery?: VoiceSubmission, withPreview = shareVoiceImage) {
     if (
       !isLoggedIn ||
       !actorId ||
@@ -1419,6 +1422,11 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const token = requests.current.begin();
     if (!token) return;
     const epoch = ++voiceEpoch.current;
+    const delegatePreview = withPreview && nativeMode && liveCanDelegatePreview;
+    const delegation = delegatePreview ? { type: 'client' as const } : actualDelegation;
+    const usesNative = nativeMode && !delegatePreview;
+    setUsingClientPreview(delegatePreview);
+    if (!recovery) setSharedVoiceSource(withPreview ? props.canvasSourceId ?? null : null);
     let prepared: VoiceSubmission | null = recovery ?? null;
     let dispatched = false;
     let settled = false;
@@ -1494,14 +1502,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
         return;
       }
       if (!prepared) {
-        const context = translating || nativeMode ? undefined : await getPreviewContext(shareVoiceImage);
+        const context = translating || usesNative ? undefined : await getPreviewContext(withPreview);
         if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
           voiceClient.dispose();
           return;
         }
-        const authorizedScope = translating || nativeMode
+        const authorizedScope = translating || usesNative
           ? { spaceIds: [], referenceAssetIds: [], usePersonalMemory: false,
-              allowWebSearch: actualDelegation?.type === 'responses' && liveWebSearch && Boolean(liveBackend?.webSearch) }
+              allowWebSearch: delegation?.type === 'responses' && liveWebSearch && Boolean(liveBackend?.webSearch) }
           : await requestScopeWithGrant();
         if (!requestIsActive(token) || epoch !== voiceEpoch.current) {
           voiceClient.dispose();
@@ -1520,9 +1528,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
             expectedUnits: selectedVoice?.unitCost,
             ...(voiceTuning ? { tuning: voiceTuning } : {}),
             ...(translating ? { translation: liveTranslation } : {
-              backendModelId: actualDelegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL :
-                actualDelegation?.type === 'responses' ? liveBackend?.id : modelId,
-              ...(actualDelegation ? { delegation: actualDelegation } : {}),
+              backendModelId: delegation?.type === 'decisions' ? OPENAI_DECISIONS_MODEL :
+                delegation?.type === 'responses' ? liveBackend?.id : modelId,
+              ...(delegation ? { delegation } : {}),
             }),
             voice,
             context,
@@ -2764,14 +2772,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
         {props.captureCanvasPreview && selectedVoice && (
           <div className="voice-canvas-share">
             <button type="button" className="voice-canvas-button"
-              aria-pressed={shareVoiceImage} aria-describedby={voiceContextId}
-              disabled={!canShareVoicePreview || !project || busy || callState === 'connecting' || callState === 'closing'}
-              onClick={() => setSharedVoiceSource(shareVoiceImage ? null : props.canvasSourceId ?? null)}>
+              aria-pressed={inCall ? shareVoiceImage : undefined} aria-describedby={voiceContextId}
+              disabled={inCall ? !canShareVoicePreview || !project || busy || callState !== 'active'
+                : !canStartVoice || (!canShareVoicePreview && !liveCanDelegatePreview)}
+              onClick={() => {
+                if (inCall) setSharedVoiceSource(shareVoiceImage ? null : props.canvasSourceId ?? null);
+                else { setVoiceParametersOpen(false); void startVoice(undefined, true); }
+              }}>
               <ImageSquare size={16} />
-              {t(shareVoiceImage ? '移除当前预览' : '共享当前预览')}
+              {t(inCall ? shareVoiceImage ? '移除当前预览' : '共享当前预览' : '共享画面并通话')}
             </button>
             <p className="voice-context-status" id={voiceContextId} role="status">
-              {t(!canShareVoicePreview ? '当前通话模型不能读取图片。' :
+              {t(!canShareVoicePreview && (inCall || !liveCanDelegatePreview) ? '当前通话模型不能读取图片。' :
                 !inCall ? shareVoiceImage ? '通话接通后共享' : '未共享画面' : contextStatus)}
             </p>
           </div>

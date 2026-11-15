@@ -12,6 +12,7 @@ export const aiEnglish: Record<string, string> = {
   当前助手模型不支持图片输入: 'This assistant model does not accept images',
   '当前通话模型不能读取图片。': 'This call model does not accept images.',
   通话接通后共享: 'Share when the call connects',
+  共享画面并通话: 'Call with current image',
   文案标题: 'Document title',
   文案内容: 'Document text',
   完成编辑: 'Done editing',
