@@ -759,15 +759,18 @@ export function attachVoiceBridge(
               }
               active = true;
               clearTimeout(startTimer);
+              const opening = live && liveOpeningText(row.config.voiceModel.live);
               send(client, {
                 type: 'ready',
                 sessionId: row.id,
                 modelId: row.model_id,
                 maxSeconds: row.config.voiceModel.maxSeconds,
                 maxPublicSearches: nativeMode || translation ? 0 : searchLimit,
+                ...(!row.config.teamArtworkId && !translation && !opening
+                  ? { opening: context?.imageDataUrl ? 'preview' as const : 'conversation' as const }
+                  : {}),
               });
               if (!translation && !nativeMode) publishContext();
-              const opening = live && liveOpeningText(row.config.voiceModel.live);
               if (opening) upstreamSend(liveContextAppend('commentary', opening));
               durationTimer = setTimeout(
                 () => stop('DURATION_BUDGET'),

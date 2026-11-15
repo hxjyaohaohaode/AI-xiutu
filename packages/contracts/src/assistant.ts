@@ -431,6 +431,7 @@ export type VoiceServerEvent =
       modelId: string;
       maxSeconds: number;
       maxPublicSearches?: number;
+      opening?: 'conversation' | 'preview';
     }
   | { type: 'audio'; pcm: string; itemId?: string }
   | {

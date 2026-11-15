@@ -1,4 +1,5 @@
 import type { VoiceClientEvent, VoiceServerEvent, VoiceContext } from '@ai-xiutu/contracts';
+import { prepareVoiceOpenings } from './voice-opening';
 import {
   AI_VOICE_BUFFER_SECONDS,
   audiblePlayback,
@@ -15,6 +16,7 @@ export class EditorVoiceClient {
   private cancelMicrophone: (() => void) | null = null;
   private playback = new Map<AudioBufferSourceNode, PlaybackSpan>();
   private completed = new Map<string, number>();
+  private openings: Awaited<ReturnType<typeof prepareVoiceOpenings>> | null = null;
   private nextAudioTime = 0;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private disconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -72,7 +74,11 @@ export class EditorVoiceClient {
     this.audio = new AudioContext({ latencyHint: 'interactive' });
     await this.audio.resume();
     try {
-      await this.audio.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url));
+      const [openings] = await Promise.all([
+        this.translation ? null : prepareVoiceOpenings(this.audio),
+        this.audio.audioWorklet.addModule(new URL('./capture-worklet.js', import.meta.url)),
+      ]);
+      this.openings = openings;
     } catch (cause) {
       throw new Error('无法初始化麦克风音频。请刷新页面后重试。', { cause });
     }
@@ -101,7 +107,17 @@ export class EditorVoiceClient {
     this.socket.onmessage = (message) => {
       try {
         const event = JSON.parse(String(message.data)) as VoiceServerEvent;
-        if (event.type === 'ready') this.ready = true;
+        if (event.type === 'ready') {
+          if (this.ready || this.ending) return;
+          this.ready = true;
+          this.onEvent(event);
+          const opening = event.opening && this.openings?.[event.opening];
+          if (opening) {
+            this.scheduleAudio(opening.audio);
+            this.onEvent({ type: 'transcript', role: 'assistant', text: opening.text, delta: false, itemId: 'opening' });
+          }
+          return;
+        }
         if (event.type === 'transcript' && event.role === 'user') this.outputPaused = false;
         if (
           event.type === 'audio' &&
@@ -156,10 +172,19 @@ export class EditorVoiceClient {
     const binary = atob(base64);
     if (!binary.length || binary.length % 2 || binary.length > 225000)
       throw new Error('Invalid audio');
+    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+    const values = new DataView(bytes.buffer);
+    const buffer = this.audio.createBuffer(1, bytes.length / 2, 24000);
+    const channel = buffer.getChannelData(0);
+    for (let i = 0; i < channel.length; i++) channel[i] = values.getInt16(i * 2, true) / 32768;
+    this.scheduleAudio(buffer, itemId);
+  }
+  private scheduleAudio(buffer: AudioBuffer, itemId?: string) {
+    if (!this.audio || this.disposed) return;
     const start = voicePlaybackTime(
       this.audio.currentTime,
       this.nextAudioTime,
-      binary.length / 48_000,
+      buffer.duration,
       AI_VOICE_BUFFER_SECONDS,
     );
     if (start === null) {
@@ -171,11 +196,6 @@ export class EditorVoiceClient {
       });
       return;
     }
-    const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-    const values = new DataView(bytes.buffer);
-    const buffer = this.audio.createBuffer(1, bytes.length / 2, 24000),
-      channel = buffer.getChannelData(0);
-    for (let i = 0; i < channel.length; i++) channel[i] = values.getInt16(i * 2, true) / 32768;
     const source = this.audio.createBufferSource();
     source.buffer = buffer;
     source.connect(this.audio.destination);

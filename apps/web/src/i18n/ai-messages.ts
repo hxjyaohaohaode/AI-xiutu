@@ -13,6 +13,8 @@ export const aiEnglish: Record<string, string> = {
   '当前通话模型不能读取图片。': 'This call model does not accept images.',
   通话接通后共享: 'Share when the call connects',
   共享画面并通话: 'Call with current image',
+  '你好。你想先调整哪里？': 'Hi. What would you like to adjust first?',
+  '你好，我能看到当前图片。想先调整哪里？': 'Hi. I can see your image. What would you like to adjust first?',
   文案标题: 'Document title',
   文案内容: 'Document text',
   完成编辑: 'Done editing',

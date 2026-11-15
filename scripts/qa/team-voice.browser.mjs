@@ -546,6 +546,16 @@ try {
       await sharing.click();
       await settings.getByRole('button', { name: '返回对话', exact: true }).click();
       await settings.waitFor({ state: 'hidden' });
+      await page.evaluate(() => {
+        const start = AudioBufferSourceNode.prototype.start;
+        window.__soloOpeningStarts = 0;
+        AudioBufferSourceNode.prototype.start = function (...args) {
+          if (this.buffer && this.buffer.duration > 1 &&
+            this.buffer.getChannelData(0).some((sample) => Math.abs(sample) > 0.05))
+            window.__soloOpeningStarts++;
+          return start.apply(this, args);
+        };
+      });
       const beforeSoloStarts = inbound.filter((event) => event.type === 'session.start').length;
       holdSoloReady = true;
       await callWorkspace.getByRole('button', { name: '开始实时通话', exact: true }).click();
@@ -567,6 +577,7 @@ try {
         'the solo handshake reached the local provider before readiness is released',
       );
       assert.equal(sockets.length, 2);
+      assert.equal(await page.evaluate(() => window.__soloOpeningStarts), 0);
       const voice = sockets[1];
       const beforeHiddenFrames = inbound.filter(
         (event) => event.type === 'session.input_audio.append',
@@ -588,6 +599,8 @@ try {
       holdSoloReady = false;
       voice.send(JSON.stringify({ type: 'session.started', session: { id: 'team-browser-live' } }));
       await ongoing.getByText('AI 通话进行中', { exact: true }).waitFor();
+      await wait(() => page.evaluate(() => window.__soloOpeningStarts === 1),
+        'one audible opening plays on readiness before the caller or provider has spoken');
       assert.equal(await panel.count(), 1, 'voice owner stays mounted while its panel is hidden');
       assert.equal(await panel.isVisible(), false);
       await wait(
@@ -624,6 +637,7 @@ try {
       await ongoing.getByRole('button', { name: '返回通话', exact: true }).click();
       await endCall.waitFor();
       assert.equal(sockets.length, 2, 'returning never creates another provider connection');
+      assert.equal(await page.evaluate(() => window.__soloOpeningStarts), 1, 'returning does not replay the opening');
       assert.ok(await hangupExposed(), 'hang-up is reachable after returning');
       report.soloPanelRestore = {
         retainedMountedOwner: true,

@@ -632,9 +632,11 @@ export function App({
     attemptedPhotoRecovery.current.add(localPhotoOwner);
     const owner = sessionFence.snapshot();
     const request = projectRequest.current;
+    const fileRequest = filePickerRequest.current;
     void readPhotoDraft(localPhotoOwner).then((draft) => {
-      if (draft && sessionFence.isCurrent(owner) && activeRef.current && projectRequest.current === request)
-        return restorePhotoDraft(draft);
+      if (draft && sessionFence.isCurrent(owner) && activeRef.current &&
+        projectRequest.current === request && filePickerRequest.current === fileRequest)
+        return restorePhotoDraft(draft, fileRequest);
     }).catch(() => {});
   }, [active, siteRoute, booting, localPhotoOwner, editor.file, opening, entryRequest?.mode]);
   const visualScope = JSON.stringify([session.user?.id, project?.id, artwork?.id, sourceIdentity]);
@@ -1652,11 +1654,12 @@ export function App({
     return references;
   }
 
-  async function restorePhotoDraft(draft: LocalPhotoDraft) {
+  async function restorePhotoDraft(draft: LocalPhotoDraft, fileRequest: number) {
     const owner = sessionFence.snapshot();
     if (draft.owner !== (owner.actor ?? 'guest')) return;
     const load = beginSourceLoad();
-    const current = () => load.isCurrent() && sessionFence.isCurrent(owner) && activeRef.current;
+    const current = () => load.isCurrent() && sessionFence.isCurrent(owner) && activeRef.current &&
+      filePickerRequest.current === fileRequest;
     setOpening(true);
     try {
       const recipe = parseEditorRecipe(draft.recipe);
@@ -1695,8 +1698,7 @@ export function App({
       if (!current()) return;
       const layerFiles = await resolveLayerReferences(recipe, current, new Map(draft.layerFiles));
       if (!current()) return;
-      if (!(await editor.loadFile(file, recipe, current, layerFiles)) ||
-        load.request !== projectRequest.current || !sessionFence.isCurrent(owner)) return;
+      if (!(await editor.loadFile(file, recipe, current, layerFiles)) || !current()) return;
       if (sourceAsset) cloudBaseSources.current.set(editor.getSourceIdentity(), sourceAsset);
       if (projectData) {
         const target = projectData.project;
@@ -2795,6 +2797,7 @@ export function App({
   }
   async function importSelectedFiles(files: File[]) {
     if (!files.length) return;
+    attemptedPhotoRecovery.current.add(localPhotoOwner);
     const request = ++filePickerRequest.current;
     const scope = projectRequest.current;
     const { needsMotionWorkspace } = await import('./media/collage-media');
