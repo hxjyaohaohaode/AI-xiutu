@@ -40,6 +40,7 @@ export const OPENAI_IMAGE_MODEL_PROFILES = Object.freeze({
 const standardSizes = ['1024x1024', '1536x1024', '1024x1536'] as const;
 const gifAutoSizes = ['512x512'] as const;
 export const OPENAI_MAX_IMAGE_BYTES = 7_000_000;
+const MAX_RASTER_OUTPUT_BYTES = 34_000_000;
 const MAX_REFERENCE_TOTAL_BYTES = 28_000_000;
 const MAX_REFERENCE_TOTAL_PIXELS = 33_554_432;
 
@@ -481,26 +482,26 @@ export function buildOpenAIImageRequest(input: ImageGenerationInput): {
     },
   };
 }
-function decode(value: unknown, requestId: string): Uint8Array {
+function decode(value: unknown, requestId: string, maxBytes: number): Uint8Array {
   if (
     typeof value !== 'string' ||
     !value.length ||
-    value.length > Math.ceil(OPENAI_MAX_IMAGE_BYTES / 3) * 4 ||
+    value.length > Math.ceil(maxBytes / 3) * 4 ||
     value.length % 4 ||
     !/^[A-Za-z0-9+/]*={0,2}$/.test(value)
   )
     unknown('OPENAI_INVALID_BASE64', requestId);
   const bytes = Buffer.from(value, 'base64');
-  if (!bytes.length || bytes.length > OPENAI_MAX_IMAGE_BYTES || bytes.toString('base64') !== value)
+  if (!bytes.length || bytes.length > maxBytes || bytes.toString('base64') !== value)
     unknown('OPENAI_INVALID_BASE64', requestId);
   return bytes;
 }
 
-function partialFrame(event: Record<string, unknown>, requestId: string) {
+function partialFrame(event: Record<string, unknown>, requestId: string, maxBytes: number) {
   const index = event.partial_image_index;
   if (typeof index !== 'number' || !Number.isInteger(index) || index < 0 || index > 2)
     unknown('OPENAI_PARTIAL_INDEX_INVALID', requestId);
-  const bytes = decode(event.b64_json, requestId);
+  const bytes = decode(event.b64_json, requestId, maxBytes);
   const header = readImageHeader(bytes.subarray(0, MAX_HEADER_BYTES));
   if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
     unknown('OPENAI_PARTIAL_FORMAT_INVALID', requestId);
@@ -544,7 +545,9 @@ export function createOpenAIImageProvider(
       const descriptor = models.find((model) => model.id === input.model)!;
       const request = buildOpenAIImageRequest(input);
       const responseBytes = Math.ceil(budgets.maxTotalBytes / 3) * 4 + 1_000_000;
-      const deadline = options.outputFormat === 'svg' || options.outputFormat === 'gif' ? 220_000 : 180_000;
+      const artifact = options.outputFormat === 'svg' || options.outputFormat === 'gif';
+      const deadline = artifact ? 220_000 : 180_000;
+      const maxOutputBytes = artifact ? OPENAI_MAX_IMAGE_BYTES : Math.min(MAX_RASTER_OUTPUT_BYTES, budgets.maxTotalBytes);
       let partialImageCount: number | undefined;
       async function streamResult(): Promise<{ data: Record<string, unknown>; requestId: string }> {
         const type = request.endpoint === OPENAI_IMAGE_EDITS_ENDPOINT ? 'image_edit' : 'image_generation';
@@ -558,7 +561,7 @@ export function createOpenAIImageProvider(
             else if (event.type === type + '.partial_image') {
               if (seen.size >= (options.partialImages ?? 0))
                 unknown('OPENAI_IMAGE_STREAM_UNEXPECTED_EVENT', id);
-              const frame = partialFrame(event, id);
+              const frame = partialFrame(event, id, maxOutputBytes);
               if (seen.has(frame.index)) unknown('OPENAI_PARTIAL_INDEX_INVALID', id);
               seen.add(frame.index);
               onPartial?.(frame);
@@ -586,7 +589,7 @@ export function createOpenAIImageProvider(
       for (const value of data.data) {
         if (!record(value) || value.error) unknown('OPENAI_IMAGE_RESULT_UNKNOWN', requestId);
         // URL-only replies, extra/missing images and malformed bytes never become success.
-        const bytes = decode(value.b64_json, requestId);
+        const bytes = decode(value.b64_json, requestId, maxOutputBytes);
         totalBytes += bytes.length;
         if (totalBytes > budgets.maxTotalBytes) unknown('OPENAI_BATCH_BYTE_LIMIT', requestId);
         if (options.outputFormat === 'svg' || options.outputFormat === 'gif') {

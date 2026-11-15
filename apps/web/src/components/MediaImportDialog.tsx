@@ -37,16 +37,18 @@ interface ImportJob {
 }
 export function MediaImportDialog({
   project,
+  initialFile = null,
   onImported,
   onClose,
 }: {
   project: Project;
+  initialFile?: File | null;
   onImported: (asset: Asset) => void | Promise<void>;
   onClose: () => void;
 }) {
   const [caps, setCaps] = useState<Capabilities | null>(null),
     [error, setError] = useState<string | null>(null),
-    [file, setFile] = useState<File | null>(null),
+    [file, setFile] = useState<File | null>(initialFile),
     [job, setJob] = useState<ImportJob | null>(null),
     [asset, setAsset] = useState<Asset | null>(null),
     [uploading, setUploading] = useState(false),
@@ -66,6 +68,12 @@ export function MediaImportDialog({
     openLock = useRef(false);
   const canWrite = ['owner', 'admin', 'editor'].includes(project.role);
   const checkpoint = `media-import:${project.id}`;
+  const invalidSize = !!(file && caps && (file.size < 1 || file.size > caps.maxInputBytes));
+  useEffect(() => {
+    setFile(initialFile);
+    setJob(null);
+    setAsset(null);
+  }, [checkpoint, initialFile]);
   useEffect(() => {
     alive.current = true;
     setRestorePending(true);
@@ -87,6 +95,7 @@ export function MediaImportDialog({
         })
           .then((value) => {
             if (cancel.signal.aborted) return;
+            if (initialFile && !['uploading', 'processing'].includes(value.job.state)) return;
             setJob(value.job);
             setAsset(value.asset);
           })
@@ -114,7 +123,7 @@ export function MediaImportDialog({
       cancel.abort();
       controller.current?.abort();
     };
-  }, [checkpoint, restoreAttempt]);
+  }, [checkpoint, initialFile, restoreAttempt]);
   useEffect(() => {
     if (job?.state !== 'processing') return;
     const cancel = new AbortController();
@@ -151,6 +160,7 @@ export function MediaImportDialog({
     if (
       !file ||
       !caps?.available ||
+      invalidSize ||
       uploadLock.current ||
       cancelLock.current ||
       restorePending ||
@@ -457,6 +467,10 @@ export function MediaImportDialog({
           </div>
         )}
         <InlineError message={error} />
+        {invalidSize && caps && (
+          <InlineError message={file?.size === 0 ? t('请选择有内容的原件文件。') :
+            t('文件超过当前 {v0} MiB 上限。', { v0: Math.floor(caps.maxInputBytes / 1024 ** 2) })} />
+        )}
         {restorePending && <Busy label={t('正在恢复上次导入状态')} />}
         {(restoreBlocked || (!caps && error)) && (
           <button
@@ -510,6 +524,7 @@ export function MediaImportDialog({
               disabled={
                 !file ||
                 !caps?.available ||
+                invalidSize ||
                 !canWrite ||
                 uploading ||
                 cancelling ||

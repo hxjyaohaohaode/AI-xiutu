@@ -147,13 +147,15 @@ export function ImportSettings({
         <h3>{t('原片与专业格式')}</h3>
         <button
           className="button button-secondary"
-          disabled={busy || (!!project && !canWrite)}
-          onClick={!loggedIn ? onAuth : !project ? onCreateProject : onProfessionalImport}
+          disabled={busy || (!file && !!project && !canWrite)}
+          onClick={!loggedIn ? onAuth : file || project ? onProfessionalImport : onCreateProject}
         >
           <CloudArrowUp size={18} />
           {!loggedIn
             ? t('登录后导入原片')
-            : !project
+            : file
+              ? t('导入原件')
+              : !project
               ? t('先选择保存项目')
               : t('打开原片与专业格式')}
         </button>

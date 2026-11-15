@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdtemp, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -29,6 +29,8 @@ type Control = {
   interrupted?: boolean;
   missingImage?: boolean;
   streamPartials?: number;
+  outputImage?: Buffer;
+  onImageReview?: (bytes: Uint8Array) => void;
 };
 async function fixture(db: Database, png: Buffer, transparent: Buffer) {
   const actorId = randomUUID(),
@@ -39,7 +41,7 @@ async function fixture(db: Database, png: Buffer, transparent: Buffer) {
   const storage = new LocalPrivateStorage({
     storageDir: join(root, 'private'),
     maxPixels: 4_194_304,
-    maxUploadBytes: 7_000_000,
+    maxUploadBytes: 20_000_000,
   });
   await storage.initialize();
   const source = await storage.storeGenerated(png);
@@ -136,7 +138,7 @@ async function fixture(db: Database, png: Buffer, transparent: Buffer) {
       }
       return new Response(
         JSON.stringify({
-          data: Array.from({ length: count }, () => ({ b64_json: png.toString('base64') })),
+          data: Array.from({ length: count }, () => ({ b64_json: (controls.outputImage ?? png).toString('base64') })),
           usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 },
         }),
         { headers: { 'content-type': 'application/json', 'x-request-id': 'req-lifecycle-openai' } },
@@ -158,6 +160,7 @@ async function fixture(db: Database, png: Buffer, transparent: Buffer) {
     configured: true,
     async check(bytes) {
       calls.imageReview++;
+      controls.onImageReview?.(bytes);
       return {
         decision: controls.blockImageAt === calls.imageReview ? 'review' : 'passed',
         inputHash: binaryHash(bytes),
@@ -260,6 +263,54 @@ test(
       .png()
       .toBuffer();
     try {
+      await t.test('large normalized PNGs publish after full-resolution tile review and settle once', async () => {
+        const f = await fixture(db, png, transparent);
+        try {
+          const edge = 2048;
+          f.controls.outputImage = await sharp(randomBytes(edge * edge * 3), {
+            raw: { width: edge, height: edge, channels: 3 },
+          }).png().toBuffer();
+          assert.ok(f.controls.outputImage.length > 7_000_000);
+          const reviewed: Uint8Array[] = [];
+          f.controls.onImageReview = (bytes) => {
+            assert.ok(bytes.length <= 7_000_000);
+            reviewed.push(bytes);
+          };
+          const imageRequest = () => ({
+            ...f.body(), width: edge, height: edge, imageOptions: { outputFormat: 'png' },
+          });
+          const { job } = await f.submit(imageRequest());
+          await f.service.runOnce();
+          const row = await f.row(job.id);
+          assert.equal(row.state, 'completed', row.error_code);
+          assert.equal(row.hold_state, 'settled');
+          const asset = (await db.query('SELECT storage_key,bytes FROM assets WHERE id=$1', [row.output.assetId])).rows[0]!;
+          assert.ok(Number(asset.bytes) > 7_000_000);
+          const canonical = await f.storage.readBytes(asset.storage_key, 28_000_000);
+          assert.equal(reviewed.length, 5);
+          assert.equal((await sharp(reviewed[0]!).metadata()).width, 1024);
+          for (const [index, tile] of reviewed.slice(1).entries()) {
+            const crop = await sharp(canonical).extract({
+              left: (index % 2) * 1024, top: Math.floor(index / 2) * 1024,
+              width: 1024, height: 1024,
+            }).raw().toBuffer();
+            assert.deepEqual(await sharp(tile).raw().toBuffer(), crop);
+          }
+          assert.equal(f.calls.provider, 1);
+          f.controls.blockImageAt = f.calls.imageReview + 3;
+          const blocked = (await f.submit(imageRequest())).job;
+          await f.service.runOnce();
+          const failure = await f.row(blocked.id);
+          assert.equal(failure.error_code, 'IMAGE_REVIEW_REQUIRED');
+          assert.equal(failure.state, 'unknown');
+          assert.equal(failure.hold_state, 'unknown');
+          assert.equal(await f.generated(), 1);
+          assert.equal(await f.service.runOnce(), false);
+          assert.equal(f.calls.provider, 2);
+        } finally {
+          await f.cleanup();
+        }
+      });
       await t.test(
         'lost acknowledgement after a real batch COMMIT keeps every published image and settles once',
         async () => {

@@ -345,6 +345,9 @@ export function App({
   const [sampling, setSampling] = useState(false);
   const [pendingImport, setPendingImport] = useState<File | null>(null);
   const [importReason, setImportReason] = useState<string | null>(null);
+  const [mediaImportSelection, setMediaImportSelection] = useState<{
+    project: Project; file: File | null; actor: string;
+  } | null>(null);
   const [referenceFile, setReferenceFile] = useState<File | null>(null);
   const [referenceSource, setReferenceSource] = useState<'sketch' | 'upload'>('sketch');
   const [initialAIOperation, setInitialAIOperation] = useState<AIOperation>('edit-plan');
@@ -1452,7 +1455,10 @@ export function App({
       ) {
         setPendingImport(file);
         setImportReason(e.message);
-        setDialog('importSettings');
+        if (e.code === 'LOCAL_SIZE_LIMIT' && session.user && project &&
+            ['owner', 'admin', 'editor'].includes(project.role))
+          showMediaImport(project, file);
+        else setDialog('importSettings');
       } else notify(errorMessage(e), 'error');
       return false;
     }
@@ -1805,21 +1811,21 @@ export function App({
     }
   }
 
-  async function openLibraryAsset(next: Asset) {
+  async function openLibraryAsset(next: Asset): Promise<boolean> {
     if (
       documentDirty &&
       !(await confirmNavigation(t('文档还有未保存的修改。打开素材会离开文档，继续吗？')))
     )
-      return;
+      return false;
     if (saveLock.current) {
       notify(t('作品正在保存，请稍等片刻。'));
-      return;
+      return false;
     }
     if (
       isEditorDirty() &&
       !(await confirmNavigation(t('当前还有未保存的编辑。打开素材原图会替换本地草稿，继续吗？')))
     )
-      return;
+      return false;
     const load = beginSourceLoad();
     setOpening(true);
     try {
@@ -1833,20 +1839,14 @@ export function App({
       const response = await fetch(next.url, { credentials: 'include' });
       if (!response.ok) throw new Error(t('无法读取素材，请刷新当前项目权限后重试。'));
       const blob = await response.blob();
-      if (!load.isCurrent()) {
-        load.abandoned();
-        return;
-      }
+      if (!load.isCurrent()) return load.abandoned();
       const loaded = await editor.loadFile(
         new File([blob], next.name, { type: blob.type || next.mime }),
         undefined,
         load.isCurrent,
       );
-      if (!loaded) {
-        load.abandoned();
-        return;
-      }
-      if (load.request !== projectRequest.current) return;
+      if (!loaded) return load.abandoned();
+      if (load.request !== projectRequest.current) return false;
       cloudBaseSources.current.set(editor.getSourceIdentity(), next);
       if (destination) {
         setProject(destination.project);
@@ -1864,12 +1864,11 @@ export function App({
       setInspectorOpen(false);
       setAiOpen(false);
       notify(t('原始素材已打开。保存时会建立独立作品，不会改写已有版本。'), 'success');
+      return true;
     } catch (error) {
-      if (!load.isCurrent()) {
-        load.abandoned();
-        return;
-      }
+      if (!load.isCurrent()) return load.abandoned();
       if (load.request === projectRequest.current) notify(errorMessage(error), 'error');
+      return false;
     } finally {
       if (load.request === projectRequest.current) setOpening(false);
     }
@@ -2304,6 +2303,30 @@ export function App({
     finally { if (personalProjectLoad.current?.promise === promise) personalProjectLoad.current = null; }
   }
 
+  function showMediaImport(destination: Project, file: File | null = null) {
+    const actor = sessionFence.snapshot().actor;
+    if (!actor) return;
+    setMediaImportSelection({ project: destination, file, actor });
+    setDialog('mediaImport');
+  }
+
+  async function openProfessionalImport(file: File | null = null) {
+    const owner = sessionFence.snapshot();
+    if (!owner.actor) { openAuth(); return; }
+    const context = projectRequest.current;
+    const currentDialog = dialogRef.current;
+    try {
+      const destination = project && (!file || ['owner', 'admin', 'editor'].includes(project.role))
+        ? project : file ? await ensurePersonalCreativeProject() : null;
+      if (!sessionFence.isCurrent(owner) || projectRequest.current !== context ||
+          dialogRef.current !== currentDialog) return;
+      if (destination) showMediaImport(destination, file);
+      else await openCreateProject();
+    } catch (error) {
+      if (sessionFence.isCurrent(owner)) notify(errorMessage(error), 'error');
+    }
+  }
+
   async function save() {
     if (editor.isLoading() || opening) {
       notify(t('图片正在准备中，请加载完成后再保存。'));
@@ -2657,11 +2680,7 @@ export function App({
       value={libraryTab}
       onChange={setLibraryTab}
       onPhotoTrash={() => setDialog('photoTrash')}
-      onProfessionalImport={() => {
-        if (!session.user) openAuth();
-        else if (!project) openCreateProject();
-        else setDialog('mediaImport');
-      }}
+      onProfessionalImport={() => void openProfessionalImport()}
     />
   );
 
@@ -4054,7 +4073,7 @@ export function App({
                 onCreateProject={openCreateProject}
                 onRetry={() => importFile()}
                 onServerImport={serverImport}
-                onProfessionalImport={() => setDialog('mediaImport')}
+                onProfessionalImport={() => void openProfessionalImport()}
                 onClose={closeDialog}
               />
             }
@@ -4148,17 +4167,23 @@ export function App({
             onCreateProject={openCreateProject}
             onRetry={() => importFile(pendingImport ?? undefined)}
             onServerImport={serverImport}
-            onProfessionalImport={() => setDialog('mediaImport')}
+            onProfessionalImport={() => void openProfessionalImport(pendingImport)}
             onBack={closeDialog}
             onClose={closeDialog}
           />
         )}
-        {renderedDialog === 'mediaImport' && project && (
+        {renderedDialog === 'mediaImport' && mediaImportSelection && mediaImportSelection.actor === session.user?.id && (
           <MediaImportDialog
-            project={project}
+            key={`${mediaImportSelection.actor}:${mediaImportSelection.project.id}`}
+            project={mediaImportSelection.project}
+            initialFile={mediaImportSelection.file}
             onClose={closeDialog}
             onImported={async (imported) => {
-              await openLibraryAsset(imported);
+              if (!(await openLibraryAsset(imported))) return;
+              if (mediaImportSelection.file === pendingImport) {
+                setPendingImport(null);
+                setImportReason(null);
+              }
               setRefreshToken((value) => value + 1);
               setDialog(null);
             }}

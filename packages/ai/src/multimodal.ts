@@ -1,5 +1,5 @@
 import { openAIModelShutdown } from '@ai-xiutu/contracts';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import {
   transaction,
@@ -44,7 +44,7 @@ import {
   type TextModerator,
   type ImageModerator,
 } from '@ai-xiutu/providers';
-import { createPrivateStorage, type LocalPrivateStorage } from '@ai-xiutu/storage';
+import { createPrivateStorage, StorageError, type LocalPrivateStorage, type StoredImage } from '@ai-xiutu/storage';
 import {
   createArkImageProvider,
   createOpenAIImageProvider,
@@ -55,6 +55,7 @@ import {
   normalizePartialImage,
   renderSvgForReview,
   reviewableGifFrames,
+  reviewableImageTiles,
   OPENAI_IMAGE_SOURCES,
   OPENAI_IMAGE_VERIFIED_AT,
   OPENAI_IMAGE_MODEL_PROFILES,
@@ -403,12 +404,20 @@ export function createMultimodalService(
   }
   async function assertImage(bytes: Uint8Array, mime: string, jobId: string) {
     const result = await imageReview.check(bytes, mime, jobId);
-    const binaryHash = (await import('node:crypto'))
-      .createHash('sha256')
-      .update(bytes)
-      .digest('hex');
+    const binaryHash = createHash('sha256').update(bytes).digest('hex');
     if (result.decision !== 'passed' || result.inputHash !== binaryHash)
       throw new AiError('IMAGE_REVIEW_REQUIRED', '图片未通过审核');
+  }
+  async function assertGeneratedImage(file: StoredImage, maxBytes: number, jobId: string) {
+    const bytes = await storage.readBytes(file.key, maxBytes);
+    if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.hash)
+      throw new AiError('IMAGE_OUTPUT_INTEGRITY_FAILED', '生成图片与存储记录不一致');
+    if (bytes.length <= 7_000_000) {
+      await assertImage(bytes, file.mime, jobId);
+      return;
+    }
+    for await (const tile of reviewableImageTiles(bytes, imagePixelLimit))
+      await assertImage(tile, file.mime, jobId);
   }
   async function publishImagePreview(job: Job, frame: { index: number; bytes: Uint8Array }) {
     const png = await normalizePartialImage(frame.bytes, imagePixelLimit);
@@ -1427,8 +1436,8 @@ export function createMultimodalService(
             normalizedBytes += file.bytes;
             if (normalizedBytes > (isOpenAI ? openAIBudgets.maxTotalBytes : 7_000_000))
               throw new ProviderError('IMAGE_BATCH_BYTES_EXCEEDED', 'unknown');
-            const normalized = await storage.readBytes(file.key, 7_000_000);
-            if (item.mime !== 'image/gif') await assertImage(normalized, file.mime, job.id);
+            if (item.mime !== 'image/gif')
+              await assertGeneratedImage(file, isOpenAI ? openAIBudgets.maxTotalBytes : 7_000_000, job.id);
           }
           output = {
             kind: 'image',
@@ -1616,7 +1625,7 @@ export function createMultimodalService(
           modelCompleted ||
           (error instanceof ProviderError ? error.outcome === 'unknown' : uncertain);
         const code =
-          error instanceof AiError || error instanceof ProviderError
+          error instanceof AiError || error instanceof ProviderError || error instanceof StorageError
             ? error.code
             : error instanceof QuotaError
               ? error.code

@@ -27,7 +27,7 @@
 - 2.6 Flare/Sunburst 的 SVG 生成由 `OPENAI_IMAGE_SVG_ENABLED` 开放，单张、无参考图、无流、无压缩。可通过 `OPENAI_IMAGE_SVG_AUTHORS` 提供允许的作者模型。只有通过 XML 元素和属性验证的矢量可交付。界面显示审核后的光栅图，下载提供可编辑 SVG。
 - 2.6 Flare/Sunburst 的 GIF 由 `OPENAI_IMAGE_GIF_ENABLED` 开放，帧数 2–16（默认 9），帧延时至少 20ms（默认 200ms，GIF 编码按 10ms 舍入，上限 655,350ms）。可使用静态参考图，大小受所选帧数及总像素预算约束。逐帧合成及审核后才提供原 GIF。蒙版、流和输出压缩互斥于 GIF。[生成接口](https://developers.openai.com/api/reference/resources/images/methods/generate) · [编辑接口](https://developers.openai.com/api/reference/resources/images/methods/edit)
 
-规范编辑源为私有 PNG。JPEG/WebP 请求按真实返回容器检查后转为 PNG、保留 Alpha，审核实际存储字节。SVG 与 GIF 另保留已验证的原格式文件，计入空间储存配额。
+规范编辑源为私有 PNG。JPEG/WebP 请求按真实返回容器检查后转为 PNG 并保留 Alpha。超过单次审核字节预算的规范 PNG 先校验完整文件摘要，再审核全图概览和覆盖全部原像素的无损分块。SVG 与 GIF 另保留已验证的原格式文件，计入空间储存配额。
 
 ## 运行配置与预算
 
@@ -39,7 +39,8 @@
 | `OPENAI_IMAGE_MAX_REFERENCES`   | 默认4，允许1…16                                                               |
 | `OPENAI_IMAGE_MAX_TOTAL_PIXELS` | 默认16777216，硬上限67108864；按画幅、张数及 GIF 帧数或所请求部分图数准入       |
 | `OPENAI_IMAGE_MAX_TOTAL_BYTES`  | 默认28000000，允许7000000…70000000；分别限制原始输出总量和规范化输出总量      |
-| 单张输入/输出                   | ≤7000000字节；参考图单边须大于50，以满足审核链                                |
+| 单张参考图、SVG 和 GIF          | ≤7000000字节；参考图单边须大于50，以满足审核链                                |
+| 单张光栅回传                   | ≤34000000字节，并受整批回传和规范化输出预算约束                               |
 | 全部参考图+蒙版/标注            | ≤28000000字节、≤33554432像素；单张≤16777216像素                               |
 | 网络                            | 光栅单次180秒，SVG/GIF 220秒。读取上限按字节预算换算 Base64 加有限信封开销     |
 

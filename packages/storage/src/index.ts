@@ -184,7 +184,7 @@ export class LocalPrivateStorage {
       throw new StorageError(413, 'UPLOAD_TOO_LARGE', '图片超过上传大小限制');
     return inspectContainer(await readFile(source));
   }
-  private async normalize(source: string, key: string): Promise<StoredImage> {
+  private async normalize(source: string, key: string, adaptiveFiltering = false): Promise<StoredImage> {
     const format = await this.inspect(source);
     const meta = await sharp(source, {
       limitInputPixels: this.config.maxPixels,
@@ -217,7 +217,7 @@ export class LocalPrivateStorage {
     const output = sharp(source, { limitInputPixels: this.config.maxPixels, failOn: 'warning' })
       .rotate()
       .toColourspace('srgb')
-      .png();
+      .png({ adaptiveFiltering });
     output.on('info', (value) => {
       info = value;
     });
@@ -301,7 +301,7 @@ export class LocalPrivateStorage {
     const temporary = join(this.directory, `${randomUUID()}.generated`);
     try {
       await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
-      return await this.normalize(temporary, key);
+      return await this.normalize(temporary, key, true);
     } catch (error) {
       await this.discard(key);
       if (error instanceof StorageError) throw error;

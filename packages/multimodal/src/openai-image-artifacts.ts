@@ -156,6 +156,28 @@ export async function renderSvgForReview(bytes: Uint8Array, maxPixels: number) {
   return sharp(bytes, { limitInputPixels: maxPixels, failOn: 'warning' }).png().toBuffer();
 }
 
+/** Supply an overview for context and lossless crops covering every original pixel. */
+export async function* reviewableImageTiles(bytes: Uint8Array, maxPixels: number) {
+  const { data, info } = await sharp(bytes, { limitInputPixels: maxPixels, failOn: 'warning' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const { width, height, channels } = info;
+  const image = sharp(data, { raw: { width, height, channels } });
+  const edge = 1024;
+  yield await image.clone().resize({ width: edge, height: edge, fit: 'inside' }).png().toBuffer();
+  const columns = Math.ceil(width / edge);
+  const rows = Math.ceil(height / edge);
+  for (let row = 0; row < rows; row++) {
+    const top = Math.floor(row * height / rows);
+    const bottom = Math.floor((row + 1) * height / rows);
+    for (let column = 0; column < columns; column++) {
+      const left = Math.floor(column * width / columns);
+      const right = Math.floor((column + 1) * width / columns);
+      yield await image.clone().extract({ left, top, width: right - left, height: bottom - top }).png().toBuffer();
+    }
+  }
+}
+
 export async function normalizePartialImage(bytes: Uint8Array, maxPixels: number) {
   return sharp(bytes, { limitInputPixels: maxPixels, failOn: 'warning' })
     .rotate()
