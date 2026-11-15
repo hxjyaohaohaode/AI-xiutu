@@ -164,7 +164,10 @@ export async function* reviewableImageTiles(bytes: Uint8Array, maxPixels: number
   const { width, height, channels } = info;
   const image = sharp(data, { raw: { width, height, channels } });
   const edge = 1024;
-  yield await image.clone().resize({ width: edge, height: edge, fit: 'inside' }).png().toBuffer();
+  yield await image.clone()
+    .resize({ width: edge, height: edge, fit: 'inside' })
+    .png({ adaptiveFiltering: true })
+    .toBuffer();
   const columns = Math.ceil(width / edge);
   const rows = Math.ceil(height / edge);
   for (let row = 0; row < rows; row++) {
@@ -173,7 +176,10 @@ export async function* reviewableImageTiles(bytes: Uint8Array, maxPixels: number
     for (let column = 0; column < columns; column++) {
       const left = Math.floor(column * width / columns);
       const right = Math.floor((column + 1) * width / columns);
-      yield await image.clone().extract({ left, top, width: right - left, height: bottom - top }).png().toBuffer();
+      yield await image.clone()
+        .extract({ left, top, width: right - left, height: bottom - top })
+        .png({ adaptiveFiltering: true })
+        .toBuffer();
     }
   }
 }

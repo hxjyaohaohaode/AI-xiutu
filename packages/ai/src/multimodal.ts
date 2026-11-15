@@ -412,7 +412,8 @@ export function createMultimodalService(
     const bytes = await storage.readBytes(file.key, maxBytes);
     if (bytes.length !== file.bytes || createHash('sha256').update(bytes).digest('hex') !== file.hash)
       throw new AiError('IMAGE_OUTPUT_INTEGRITY_FAILED', '生成图片与存储记录不一致');
-    if (bytes.length <= 7_000_000) {
+    const wholeImageBytes = env.AI_MODERATION_PROVIDER === 'openai' ? 4_250_000 : 7_000_000;
+    if (bytes.length <= wholeImageBytes) {
       await assertImage(bytes, file.mime, jobId);
       return;
     }

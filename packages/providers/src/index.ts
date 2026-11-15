@@ -489,7 +489,7 @@ async function openAIReview(
   fetcher: typeof fetch,
 ): Promise<ModerationResult> {
   if (!key) throw new ProviderError('MODERATION_NOT_CONFIGURED', 'rejected');
-  const signal = AbortSignal.timeout(15_000);
+  const signal = AbortSignal.timeout(input.type === 'image_url' ? 45_000 : 15_000);
   let response: Response;
   try {
     response = await fetcher('https://api.openai.com/v1/moderations', {
@@ -575,13 +575,21 @@ export function createImageModerator(
       if (mime !== 'image/' + meta.format || (meta.pages ?? 1) > 1 || !meta.width || !meta.height)
         throw new ProviderError('IMAGE_MODERATION_INVALID_IMAGE', 'rejected');
       const url = 'data:' + mime + ';base64,' + buffer.toString('base64');
-      return openAIReview(
-        key,
-        model,
-        { type: 'image_url', image_url: { url } },
-        createHash('sha256').update(buffer).digest('hex'),
-        fetcher,
-      );
+      const inputHash = createHash('sha256').update(buffer).digest('hex');
+      const review = () =>
+        openAIReview(key, model, { type: 'image_url', image_url: { url } }, inputHash, fetcher);
+      try {
+        return await review();
+      } catch (error) {
+        // This is a free classification of the same bytes. Generation is never retried here.
+        if (
+          !(error instanceof ProviderError) ||
+          error.code !== 'MODERATION_UNAVAILABLE' ||
+          error.outcome !== 'unknown'
+        )
+          throw error;
+        return review();
+      }
     },
   };
 }

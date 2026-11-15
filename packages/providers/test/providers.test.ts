@@ -341,3 +341,27 @@ test('OpenAI moderation binds the exact submitted text and image and fails close
   await assert.rejects(text.check('no complete receipt'), unknown);
   assert.equal(seen.length, 3, 'unknown result is never retried automatically');
 });
+
+test('OpenAI image moderation repeats an unavailable review once using identical bytes', async () => {
+  const config = { AI_MODERATION_PROVIDER: 'openai', OPENAI_API_KEY: 'test-only' };
+  const png = await sharp({ create: { width: 64, height: 64, channels: 3, background: '#426fa1' } })
+    .png()
+    .toBuffer();
+  const bodies: string[] = [];
+  const statuses = [503, 200, 400, 503, 503];
+  const image = createImageModerator(config, fetchAs(async (_url, init) => {
+    bodies.push(String(init.body));
+    const status = statuses[bodies.length - 1];
+    if (status === 200) return Response.json({ id: 'review-retry', results: [{ flagged: false }] });
+    return new Response(null, { status });
+  }));
+  const reviewed = await image.check(png, 'image/png');
+  assert.equal(reviewed.decision, 'passed');
+  assert.equal(reviewed.inputHash, createHash('sha256').update(png).digest('hex'));
+  assert.equal(bodies.length, 2);
+  assert.equal(bodies[1], bodies[0]);
+  await assert.rejects(image.check(png, 'image/png'), { code: 'MODERATION_UNAVAILABLE', outcome: 'rejected' });
+  assert.equal(bodies.length, 3);
+  await assert.rejects(image.check(png, 'image/png'), { code: 'MODERATION_UNAVAILABLE', outcome: 'unknown' });
+  assert.equal(bodies.length, 5);
+});

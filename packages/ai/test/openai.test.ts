@@ -170,7 +170,7 @@ async function fixture(db: Database, png: Buffer, transparent: Buffer) {
   };
   const service = createAiService(
     withDatabaseFaults(db, dbFaults),
-    { AI_IMAGE_ENABLED: 'true', AI_DAILY_JOB_LIMIT: '1000' },
+    { AI_IMAGE_ENABLED: 'true', AI_DAILY_JOB_LIMIT: '1000', AI_MODERATION_PROVIDER: 'openai' },
     {
       openAIImageProvider: provider,
       moderator,
@@ -273,11 +273,11 @@ test(
           assert.ok(f.controls.outputImage.length > 7_000_000);
           const reviewed: Uint8Array[] = [];
           f.controls.onImageReview = (bytes) => {
-            assert.ok(bytes.length <= 7_000_000);
+            assert.ok(bytes.length <= 4_250_000);
             reviewed.push(bytes);
           };
-          const imageRequest = () => ({
-            ...f.body(), width: edge, height: edge, imageOptions: { outputFormat: 'png' },
+          const imageRequest = (size = edge) => ({
+            ...f.body(), width: size, height: size, imageOptions: { outputFormat: 'png' },
           });
           const { job } = await f.submit(imageRequest());
           await f.service.runOnce();
@@ -297,8 +297,13 @@ test(
             assert.deepEqual(await sharp(tile).raw().toBuffer(), crop);
           }
           assert.equal(f.calls.provider, 1);
+          const midSize = 1408;
+          f.controls.outputImage = await sharp(randomBytes(midSize * midSize * 3), {
+            raw: { width: midSize, height: midSize, channels: 3 },
+          }).png().toBuffer();
+          assert.ok(f.controls.outputImage.length > 4_250_000 && f.controls.outputImage.length < 7_000_000);
           f.controls.blockImageAt = f.calls.imageReview + 3;
-          const blocked = (await f.submit(imageRequest())).job;
+          const blocked = (await f.submit(imageRequest(midSize))).job;
           await f.service.runOnce();
           const failure = await f.row(blocked.id);
           assert.equal(failure.error_code, 'IMAGE_REVIEW_REQUIRED');
