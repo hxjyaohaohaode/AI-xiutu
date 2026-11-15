@@ -1,19 +1,26 @@
 import { getLocale, t } from '../i18n';
-import conversationEn from './voice-openings/opening-en.mp3';
-import previewEn from './voice-openings/opening-image-en.mp3';
-import previewZh from './voice-openings/opening-image-zh.mp3';
-import conversationZh from './voice-openings/opening-zh.mp3';
+
+const clips = {
+  en: {
+    conversation: new URL('./voice-openings/opening-en.mp3', import.meta.url),
+    preview: new URL('./voice-openings/opening-image-en.mp3', import.meta.url),
+  },
+  zh: {
+    conversation: new URL('./voice-openings/opening-zh.mp3', import.meta.url),
+    preview: new URL('./voice-openings/opening-image-zh.mp3', import.meta.url),
+  },
+};
 
 export async function prepareVoiceOpenings(audio: AudioContext) {
-  const english = getLocale() === 'en';
-  const decode = async (resource: string) => {
+  const selected = getLocale() === 'en' ? clips.en : clips.zh;
+  const decode = async (resource: URL) => {
     const response = await fetch(resource, { signal: AbortSignal.timeout(12_000) });
     if (!response.ok) throw new Error('Voice opening unavailable');
     return audio.decodeAudioData(await response.arrayBuffer());
   };
   const [conversation, preview] = await Promise.all([
-    decode(english ? conversationEn : conversationZh),
-    decode(english ? previewEn : previewZh),
+    decode(selected.conversation),
+    decode(selected.preview),
   ]);
   return {
     conversation: { audio: conversation, text: t('你好。你想先调整哪里？') },
