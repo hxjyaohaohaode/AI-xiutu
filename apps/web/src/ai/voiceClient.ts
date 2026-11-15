@@ -85,7 +85,7 @@ export class EditorVoiceClient {
     }
     if (this.disposed || !this.audio) throw new Error('通话已取消');
     const speaker = this.audio.createGain();
-    speaker.gain.value = 1.25;
+    speaker.gain.value = 1.5;
     const limiter = this.audio.createDynamicsCompressor();
     limiter.threshold.value = -3;
     limiter.knee.value = 0;

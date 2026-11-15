@@ -611,7 +611,7 @@ try {
         'one audible opening plays on readiness before the caller or provider has spoken');
       assert.deepEqual(await page.evaluate(() => ({
         gain: window.__soloSpeakerGain, limited: window.__soloSpeakerLimited,
-      })), { gain: 1.25, limited: true });
+      })), { gain: 1.5, limited: true });
       assert.equal(await panel.count(), 1, 'voice owner stays mounted while its panel is hidden');
       assert.equal(await panel.isVisible(), false);
       await wait(
