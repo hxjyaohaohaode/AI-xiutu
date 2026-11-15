@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
 import type { Database, Queryable } from '@ai-xiutu/db';
-import type { AssistantContext, AssistantScope } from '@ai-xiutu/contracts';
+import type { AssistantContext, AssistantScope, VoiceContext } from '@ai-xiutu/contracts';
 import type { ImageModerator, TextModerator } from '@ai-xiutu/providers';
 import { HttpError, id, lockActiveSession, projectAccess } from '../core.js';
 import type { LocalPrivateStorage } from '../storage.js';
@@ -138,7 +138,7 @@ export async function validateContext(
   }
   return { ...context, recipe };
 }
-export function retainedContext(context?: AssistantContext) {
+export function retainedContext(context?: VoiceContext) {
   if (!context) return {};
   const { imageDataUrl, ...rest } = context;
   return {

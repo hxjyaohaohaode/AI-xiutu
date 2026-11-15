@@ -16,6 +16,7 @@ import {
   OPENAI_TRANSLATION_MODEL,
   voiceClientEventSchema,
   type AssistantContext,
+  type VoiceContext,
   type LiveDelegationOptions,
   type VoiceClientEvent,
   type VoiceServerEvent,
@@ -148,7 +149,7 @@ export function attachVoiceBridge(
     perMessageDeflate: false,
     handleProtocols: (protocols) => (protocols.has('xiutu-voice') ? 'xiutu-voice' : false),
   });
-  const snapshots = new Map<string, { context?: AssistantContext; expiresAt: number }>();
+  const snapshots = new Map<string, { context?: VoiceContext; expiresAt: number }>();
   const connections = new Map<string, { stop(): void; done: Promise<void> }>();
   const upgrading = new Set<Promise<void>>();
   let accepting = true;
@@ -181,7 +182,8 @@ export function attachVoiceBridge(
     ws.send(JSON.stringify(event));
   };
   function connect(row: VoiceRow, client: VoicePort, authHash: string) {
-    const live = voiceModel(row.model_id).protocol === 'live';
+    const profile = voiceModel(row.model_id);
+    const live = profile.protocol === 'live';
     const translation = row.model_id === OPENAI_TRANSLATION_MODEL;
     const native = row.config.delegation?.type;
     const nativeMode = native === 'responses' || native === 'decisions';
@@ -308,7 +310,7 @@ export function attachVoiceBridge(
             liveContextAppend(
               'thinking',
               context.imageDataUrl
-                ? '编辑器已有新的授权画面与配方。涉及图片细节或编辑时，请使用后端当前画面。'
+                ? '编辑器已有新的授权画面。涉及图片细节或编辑时，请使用后端当前画面。'
                 : '编辑器共享了当前配方，未共享画面。可以查看参数，不能描述照片细节。',
             ),
           );
@@ -653,7 +655,7 @@ export function attachVoiceBridge(
                 tx,
                 row,
                 result,
-                frozenContext,
+                frozenContext && 'artworkId' in frozenContext ? frozenContext : undefined,
                 frozenEpoch,
               );
               if (ended || closing || frozenEpoch !== contextEpoch)
@@ -674,7 +676,7 @@ export function attachVoiceBridge(
             if (ended || closing || frozenEpoch !== contextEpoch) return;
             send(client, {
               type: 'assistant-result',
-              ...(frozenContext
+              ...(frozenContext && 'artworkId' in frozenContext
                 ? {
                     canvas: {
                       artworkId: frozenContext.artworkId,
@@ -1194,10 +1196,12 @@ export function attachVoiceBridge(
           await assertAccess();
           if (ended || closing) return;
           if (event.type === 'context') {
+            if (event.context.imageDataUrl && !(live ? row.config.backendModel.imageInput : profile.imageInput))
+              throw new Error('VOICE_IMAGE_UNAVAILABLE');
             if (Date.now() - lastContextAt < 2500) throw new Error('CONTEXT_RATE');
             lastContextAt = Date.now();
             const { epoch, persisted } = invalidateContext(false);
-            const checked = await service.currentContext(
+            const checked = await service.currentVoiceContext(
               row.actor_id,
               row.project_id,
               event.context,
@@ -1273,7 +1277,7 @@ export function attachVoiceBridge(
       }
     });
   }
-  function retain(id: string, context?: AssistantContext) {
+  function retain(id: string, context?: VoiceContext) {
     if (snapshots.size >= 128) {
       const oldest = snapshots.keys().next().value;
       if (oldest) snapshots.delete(oldest);

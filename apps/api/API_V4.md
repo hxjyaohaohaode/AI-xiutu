@@ -369,7 +369,7 @@ existing candidate/reference IDs; they cannot run arbitrary HTML or commands.
 
 `POST /v1/projects/:projectId/voice-sessions` accepts
 `{idempotencyKey:UUID,modelId,backendModelId?,voice,context?,scope?,delegation?,translation?,tuning?,expectedUnits?}` and returns
-`{id,ticket,websocketPath,maxSeconds,reservedUnits,billing}`. It reserves one
+`{id,ticket,websocketPath,maxSeconds,reservedUnits,billing}`. A personal call can also share `{imageDataUrl}` as its `context` on start or during the call. This supplies canvas pixels for discussion even before the image is saved. The API moderates the image and does not bind it to an editable artwork. It reserves one
 configured, time-limited voice service-unit block. Backend delegations share that
 declared block; provider token/second receipts are separate metadata. Limits are
 one prepared/connecting/active voice session per actor and12 preparations per

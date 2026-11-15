@@ -272,6 +272,32 @@
 .voice-call-workspace .voice-captions-lines b { color: var(--voice-accent); }
 .voice-tool-status, .voice-context-status { color: var(--voice-muted); font-size: 12px; }
 .voice-context-status { margin: 0; }
+.voice-canvas-share {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 3px 8px;
+  max-inline-size: 100%;
+}
+.voice-canvas-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-block-size: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--voice-border);
+  border-radius: 999px;
+  background: var(--voice-surface);
+  color: var(--voice-ink);
+  font-size: 12px;
+  pointer-events: auto;
+}
+.voice-canvas-button[aria-pressed='true'] {
+  color: var(--voice-accent);
+  background: var(--voice-selected);
+}
+.voice-canvas-button:disabled { opacity: .55; }
 .voice-results { display: grid; gap: 6px; }
 .voice-results .assistant-messages { max-block-size: none; overflow: visible; }
 .voice-results :is(.assistant-message, .assistant-candidate) {

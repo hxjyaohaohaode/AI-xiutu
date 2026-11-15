@@ -4,6 +4,28 @@
   line-height: 1.8;
   overflow-wrap: anywhere;
 }
+.assistant-prose[data-streaming] > :last-child:is(p, h4, blockquote)::after,
+.assistant-prose[data-streaming] > :last-child:is(ul, ol) > li:last-child::after {
+  content: '';
+  display: inline-block;
+  inline-size: .38em;
+  block-size: .72em;
+  margin-inline-start: .22em;
+  border-radius: .1em;
+  background: var(--accent-ink);
+  opacity: .6;
+  animation: assistant-caret 1.35s ease-in-out infinite alternate;
+}
+@keyframes assistant-caret { to { opacity: .16; } }
+@media (prefers-reduced-motion: reduce) {
+  .assistant-prose[data-streaming] ::after { animation: none; }
+}
+.assistant-reply-audio {
+  box-sizing: border-box;
+  inline-size: min(245px, 100%);
+  max-inline-size: 100%;
+  block-size: 36px;
+}
 .assistant-message .assistant-prose > :first-child {
   margin-top: 0;
 }

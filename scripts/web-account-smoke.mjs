@@ -734,6 +734,93 @@ try {
     },
   );
 
+  await check('Published open registration takes effect on a registration page already open', async () => {
+    const operator = await main.context.newPage();
+    const guest = await newContext({ width: 390, height: 844 });
+    const phone = makePhone();
+    ownedPhones.add(phone);
+    await db.query('INSERT INTO operator_users(user_id) VALUES($1)', [primaryUserId]);
+    try {
+      await operator.goto(origin + '/#/studio');
+      const side = await openNavigation(operator);
+      await side.getByRole('button', { name: '运营管理', exact: true }).click();
+      await operator.getByRole('button', { name: '站点与注册', exact: true }).click();
+      const mode = operator.getByRole('combobox', { name: '注册方式', exact: true });
+      async function publish(label, expected) {
+        await mode.click();
+        await operator.getByRole('option', { name: label, exact: true }).click();
+        await operator.getByLabel('操作原因', { exact: true }).fill('验证注册方式保存');
+        const saved = operator.waitForResponse((response) =>
+          new URL(response.url()).pathname === '/v1/ops/config' && response.request().method() === 'PATCH');
+        await operator.getByRole('button', { name: '保存配置', exact: true }).click();
+        const receipt = await saved;
+        assert.equal(receipt.status(), 200);
+        assert.equal((await receipt.json()).registrationMode, expected);
+        assert.equal((await request(guest.context, 'GET', '/v1/public-config')).body.registrationMode, expected);
+        await operator.getByText('配置已保存', { exact: true }).waitFor();
+      }
+      await publish('仅限邀请码', 'invite');
+      const page = guest.page;
+      await openAuth(page);
+      await page.getByRole('button', { name: '创建新账号', exact: true }).click();
+      await authControl(page, 'phone').fill(phone);
+      await page.getByRole('button', { name: '获取验证码', exact: true }).click();
+      await authControl(page, 'invite-code').waitFor();
+      assert.notEqual(await authControl(page, 'invite-code').getAttribute('required'), null);
+      await authControl(page, 'invite-code').fill('stale');
+      await fillRegistration(page, await codeFor(phone, 'register'), '开放注册验收');
+      await publish('开放注册', 'open');
+      const registered = page.waitForResponse((response) =>
+        new URL(response.url()).pathname === '/v1/auth/register' && response.request().method() === 'POST');
+      await page.getByRole('button', { name: '创建账号', exact: true }).click();
+      const result = await registered;
+      assert.equal(result.status(), 201);
+      assert.equal(Object.hasOwn(result.request().postDataJSON(), 'inviteCode'), false);
+      await finishWelcome(page, true);
+      assert.equal((await session(guest.context)).user.displayName, '开放注册验收');
+      assert.equal(await authControl(page, 'invite-code').count(), 0);
+      return { savedMode: 'open', registerStatus: 201, inviteFieldOmitted: true };
+    } finally {
+      await db.query('DELETE FROM operator_users WHERE user_id=$1', [primaryUserId]);
+      await operator.close();
+      await guest.context.close();
+      currentPage = main.page;
+    }
+  });
+
+  await check('The current local photo and exposure recover in a reopened workspace', async () => {
+    const other = await newContext();
+    let page = other.page;
+    try {
+      const { default: sharp } = await import('sharp');
+      const bytes = await sharp({ create: { width: 52, height: 30, channels: 4,
+        background: { r: 56, g: 79, b: 103, alpha: 1 } } }).png().toBuffer();
+      await page.getByLabel('选择照片', { exact: true }).setInputFiles({
+        name: 'reopened-photo.png', mimeType: 'image/png', buffer: bytes,
+      });
+      const canvas = () => page.locator('canvas[aria-label="照片编辑预览"]');
+      await canvas().waitFor();
+      const frame = () => canvas().evaluate((element) => element.toDataURL());
+      const original = await frame();
+      await page.locator('[data-dock-tool="light"]:visible').click();
+      await page.getByRole('button', { name: /^曝光数值/ }).click();
+      const exposure = page.getByRole('spinbutton', { name: '曝光精确数值' });
+      await exposure.fill('1.2');
+      await exposure.press('Enter');
+      await until(async () => (await frame()) !== original, 'changed frame');
+      const edited = await frame();
+      await page.close();
+      page = await other.context.newPage();
+      await page.goto(origin + '/#/studio');
+      await canvas().waitFor();
+      await until(async () => (await frame()) === edited, 'recovered adjusted pixels');
+      return { fileRecovered: true, editedPixelsIdentical: true };
+    } finally {
+      await other.context.close();
+      currentPage = main.page;
+    }
+  });
+
   await check(
     'The bare site address opens the signed-in studio and the explicit About route stays accessible',
     async () => {
@@ -1567,14 +1654,12 @@ try {
           ]);
           await field('phone').fill(phone);
           await button('已有验证码，继续').click();
-          // Optional invitation codes use progressive disclosure. Exercise the
-          // real expansion before checking this field's visible geometry.
-          if (!(await field('invite-code').isVisible())) await button('有邀请码？').click();
+          assert.equal(await field('invite-code').count(), 0);
+          assert.equal(await button('有邀请码？').count(), 0);
           await record('register-details', '注册账号', [
             ['code', field('code')],
             ['name', field('display-name')],
             ['password', field('password')],
-            ['invite', field('invite-code')],
             ['register', button('创建账号')],
             ['sign in to an existing account', existingAccount],
           ]);

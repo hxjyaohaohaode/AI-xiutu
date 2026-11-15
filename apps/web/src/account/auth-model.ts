@@ -54,10 +54,10 @@ export function validateAuthField(
     if (!value.trim()) return '请填写昵称。';
     if (value.trim().length > 120) return '昵称不能超过 120 个字符。';
   }
-  if (field === 'inviteCode') {
+  if (field === 'inviteCode' && inviteRequired) {
     const invite = value.trim();
-    if (!invite && inviteRequired) return '当前注册需要邀请码。';
-    if (invite && (invite.length < 10 || invite.length > 100)) return '请填写完整的注册邀请码。';
+    if (!invite) return '当前注册需要邀请码。';
+    if (invite.length < 10 || invite.length > 100) return '请填写完整的注册邀请码。';
   }
 }
 
@@ -74,7 +74,7 @@ export function validateAuthFields(
   return errors;
 }
 
-export function authPayload(fields: AuthFields, mode: AuthMode) {
+export function authPayload(fields: AuthFields, mode: AuthMode, inviteRequired = false) {
   const phone = normalizedAuthPhone(fields.phone);
   if (!phone) throw new Error('请输入有效手机号。');
   if (mode === 'password') return { phone, password: fields.password };
@@ -85,7 +85,7 @@ export function authPayload(fields: AuthFields, mode: AuthMode) {
     code: fields.code.trim(),
     password: fields.password,
     displayName: fields.displayName.trim(),
-    ...(fields.inviteCode.trim() ? { inviteCode: fields.inviteCode.trim() } : {}),
+    ...(inviteRequired ? { inviteCode: fields.inviteCode.trim() } : {}),
   };
 }
 

@@ -32,6 +32,7 @@ import { api, ApiError, downloadBlob, errorMessage, filenameBase, jsonRequest } 
 import { FloatingNotice } from './components/FloatingNotice';
 import { PhotoTrashDialog } from './resources/PhotoTrashDialog';
 import { pruneLocalPhotoTrash, removeLocalPhoto, storeLocalPhoto, type LocalPhotoTrashEntry } from './resources/localPhotoTrash';
+import { checkpointPhotoRecipe, readPhotoDraft, removePhotoDraft, writePhotoDraft, type LocalPhotoDraft } from './editor/localPhotoDraft';
 import { secureUuid } from './lib/uuid';
 import { t, useLocale } from './i18n';
 import { createSampleRecipe, getSampleImage, type SampleSettings } from './about/sample';
@@ -569,6 +570,73 @@ export function App({
   });
   const editor = collaboration.editor;
   const sourceIdentity = editor.getSourceIdentity();
+  const photoCheckpoint = useRef<{ source: number; signature: string; draft: LocalPhotoDraft } | null>(null);
+  const attemptedPhotoRecovery = useRef(new Set<string>());
+  const photoStorageError = useRef(false);
+  useEffect(() => {
+    if (booting || !editor.file || opening || editor.isLoading()) return;
+    const previous = photoCheckpoint.current;
+    const base = cloudBaseSources.current.get(sourceIdentity);
+    const owner = localPhotoOwner;
+    if (previous?.source === sourceIdentity && previous.draft.owner !== owner &&
+      (previous.draft.owner !== 'guest' || base)) return;
+    if (base && owner === 'guest') return;
+    const source: LocalPhotoDraft['source'] = base
+      ? { assetId: base.id, projectId: base.projectId, ...(artwork && revision && artwork.assetId === base.id
+        ? { artwork: { id: artwork.id, version: artwork.headVersion, revisionId: revision.id } } : {}) }
+      : { file: editor.file };
+    const signature = JSON.stringify([owner, sourceIdentity, base?.id, artwork?.headVersion, revision?.id]);
+    const sameSource = previous?.signature === signature;
+    const recipe = editor.recipe;
+    const layerIds = new Set('imageLayers' in recipe ? recipe.imageLayers.map(({ sourceId }) => sourceId) : []);
+    const draft: LocalPhotoDraft = {
+      owner,
+      key: sameSource ? previous.draft.key : secureUuid(),
+      source,
+      recipe,
+      layerFiles: [...rawEditor.getLayerFiles()].filter(([id]) => id.startsWith('local:') && layerIds.has(id)),
+      updatedAt: Date.now(),
+    };
+    photoCheckpoint.current = { source: sourceIdentity, signature, draft };
+    const save = () => {
+      if (photoCheckpoint.current?.draft !== draft) return;
+      void writePhotoDraft(draft).then(() => { photoStorageError.current = false; }).catch(() => {
+        if (photoCheckpoint.current?.draft === draft && !photoStorageError.current) {
+          photoStorageError.current = true;
+          notify(t('浏览器暂时无法保留照片草稿，请保存作品后再离开。'), 'error');
+        }
+      });
+    };
+    if (!sameSource) { save(); return; }
+    const timer = setTimeout(save, 350);
+    return () => clearTimeout(timer);
+  }, [booting, editor.file, editor.recipe, opening, sourceIdentity, localPhotoOwner, artwork?.id, artwork?.headVersion, revision?.id]);
+  useEffect(() => {
+    const flush = () => {
+      const value = photoCheckpoint.current?.draft;
+      if (!value) return;
+      checkpointPhotoRecipe(value);
+      void writePhotoDraft(value).catch(() => {});
+    };
+    const hidden = () => { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, []);
+  useEffect(() => {
+    if (!active || siteRoute !== 'studio' || booting || editor.file || opening ||
+      entryRequest?.mode === 'sample' || attemptedPhotoRecovery.current.has(localPhotoOwner)) return;
+    attemptedPhotoRecovery.current.add(localPhotoOwner);
+    const owner = sessionFence.snapshot();
+    const request = projectRequest.current;
+    void readPhotoDraft(localPhotoOwner).then((draft) => {
+      if (draft && sessionFence.isCurrent(owner) && activeRef.current && projectRequest.current === request)
+        return restorePhotoDraft(draft);
+    }).catch(() => {});
+  }, [active, siteRoute, booting, localPhotoOwner, editor.file, opening, entryRequest?.mode]);
   const visualScope = JSON.stringify([session.user?.id, project?.id, artwork?.id, sourceIdentity]);
   const visualScopeRef = useRef(visualScope);
   visualScopeRef.current = visualScope;
@@ -628,38 +696,45 @@ export function App({
       throw new Error(t('参考图生成期间画面已变化，请重新选择。'));
     return new File([blob], name, { type: 'image/png' });
   };
-  const captureCurrentImage = async () => {
-    const current = artworkRef.current;
-    if (
-      !current ||
-      !asset ||
-      !editor.rendered ||
-      !editor.renderedRecipe ||
-      editor.rendering ||
-      editor.isLoading() ||
-      collaboration.pendingCount > 0 ||
-      saving ||
-      opening
-    )
-      throw new Error(t('画面还在更新，请就绪后共享当前图片。'));
+  const canvasRender = useRef({ pixels: editor.rendered, recipe: editor.renderedRecipe, busy: false });
+  canvasRender.current = {
+    pixels: editor.rendered, recipe: editor.renderedRecipe,
+    busy: editor.rendering || editor.isLoading() || saving || opening,
+  };
+  const captureCanvasImage = async () => {
     const before = editor.getRecipe(),
       identity = editor.getSourceIdentity();
-    if (JSON.stringify(before) !== JSON.stringify(editor.renderedRecipe))
+    const requestedRecipe = JSON.stringify(before);
+    const stillCurrent = () => identity === editor.getSourceIdentity() && before === editor.getRecipe();
+    const ready = () => !canvasRender.current.busy && canvasRender.current.pixels &&
+      JSON.stringify(canvasRender.current.recipe) === requestedRecipe;
+    for (let attempt = 0; attempt < 20 && !ready() && stillCurrent(); attempt++) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 60));
+    }
+    if (!stillCurrent()) throw new Error(t('共享期间画面已变化，请重新获取上下文。'));
+    const pixels = canvasRender.current.pixels;
+    if (!pixels || !ready())
       throw new Error(t('最新编辑还没有完成渲染，请稍后再共享。'));
-    const imageDataUrl = await captureRenderedImage(editor.rendered);
+    const imageDataUrl = await captureRenderedImage(pixels);
+    if (!stillCurrent())
+      throw new Error(t('共享期间画面已变化，请重新获取上下文。'));
+    return { imageDataUrl, recipe: structuredClone(before) };
+  };
+  const captureCurrentImage = async () => {
+    const current = artworkRef.current;
+    if (!current || !asset || collaboration.pendingCount > 0)
+      throw new Error(t('画面还在更新，请就绪后共享当前图片。'));
+    const preview = await captureCanvasImage();
     if (
-      identity !== editor.getSourceIdentity() ||
-      before !== editor.getRecipe() ||
       artworkRef.current?.id !== current.id ||
       artworkRef.current.headVersion !== current.headVersion
     )
       throw new Error(t('共享期间画面已变化，请重新获取上下文。'));
     return {
-      imageDataUrl,
+      ...preview,
       assetId: asset.id,
       artworkId: current.id,
       expectedVersion: current.headVersion,
-      recipe: structuredClone(before),
     };
   };
   const brand = config?.brand.name || DEFAULT_BRAND;
@@ -1394,6 +1469,11 @@ export function App({
 
   function finishPhotoEditing() {
     const source = editor.getSourceIdentity();
+    const checkpoint = photoCheckpoint.current;
+    if (checkpoint?.source === source && checkpoint.draft.owner === localPhotoOwner) {
+      photoCheckpoint.current = null;
+      void removePhotoDraft(checkpoint.draft.owner, checkpoint.draft.key).catch(() => {});
+    }
     ++projectRequest.current;
     ++filePickerRequest.current;
     rawEditor.clearPhoto();
@@ -1552,10 +1632,11 @@ export function App({
   async function resolveLayerReferences(
     value: EditorRecipe,
     isCurrent: () => boolean,
+    references = new Map<string, File>(),
   ): Promise<Map<string, File>> {
-    const references = new Map<string, File>();
     if (value.schemaVersion !== 3 && value.schemaVersion !== 4) return references;
     for (const id of new Set(value.imageLayers.map((layer) => layer.sourceId))) {
+      if (references.has(id)) continue;
       if (!/^[a-f0-9-]{36}$/i.test(id)) throw new Error(t('云端作品包含不可解析的合成素材引用。'));
       if (!isCurrent()) return references;
       const response = await fetch(`/v1/assets/${id}/file`, { credentials: 'include' });
@@ -1569,6 +1650,73 @@ export function App({
       );
     }
     return references;
+  }
+
+  async function restorePhotoDraft(draft: LocalPhotoDraft) {
+    const owner = sessionFence.snapshot();
+    if (draft.owner !== (owner.actor ?? 'guest')) return;
+    const load = beginSourceLoad();
+    const current = () => load.isCurrent() && sessionFence.isCurrent(owner) && activeRef.current;
+    setOpening(true);
+    try {
+      const recipe = parseEditorRecipe(draft.recipe);
+      const source = draft.source;
+      let file: File;
+      let projectData: { project: Project; assets: Asset[]; artworks: Artwork[] } | undefined;
+      let head: { artwork: Artwork; asset: Asset; revision: Revision } | undefined;
+      let sourceAsset: Asset | undefined;
+      let changedVersion = false;
+      if ('file' in source) file = source.file;
+      else {
+        if (!owner.actor) return;
+        projectData = await api('/projects/' + source.projectId);
+        if (!current() || !projectData) return;
+        sourceAsset = projectData.assets.find((item) => item.id === source.assetId);
+        if (source.artwork) {
+          const latest = await api<{ artwork: Artwork; asset: Asset; revision: Revision }>('/artworks/' + source.artwork.id);
+          if (!current()) return;
+          changedVersion = latest.artwork.headVersion !== source.artwork.version;
+          const basis = changedVersion
+            ? await api<{ asset: Asset; revision: Revision }>(`/artworks/${source.artwork.id}/revisions/${source.artwork.revisionId}`)
+            : latest;
+          if (!current()) return;
+          assertRevisionSourceBinding({ artworkId: source.artwork.id, projectId: source.projectId,
+            revision: basis.revision, asset: basis.asset });
+          if (basis.asset.id !== source.assetId) throw new Error(t('当前图片已变化或无权引用'));
+          sourceAsset = basis.asset;
+          if (!changedVersion) head = latest;
+        }
+        if (!sourceAsset) throw new Error(t('无法读取素材，请刷新当前项目权限后重试。'));
+        const response = await fetch(sourceAsset.url, { credentials: 'include' });
+        if (!response.ok) throw new Error(t('无法读取素材，请刷新当前项目权限后重试。'));
+        const blob = await response.blob();
+        file = new File([blob], sourceAsset.name, { type: blob.type || sourceAsset.mime });
+      }
+      if (!current()) return;
+      const layerFiles = await resolveLayerReferences(recipe, current, new Map(draft.layerFiles));
+      if (!current()) return;
+      if (!(await editor.loadFile(file, recipe, current, layerFiles)) ||
+        load.request !== projectRequest.current || !sessionFence.isCurrent(owner)) return;
+      if (sourceAsset) cloudBaseSources.current.set(editor.getSourceIdentity(), sourceAsset);
+      if (projectData) {
+        const target = projectData.project;
+        setProject(target);
+        setAssets(projectData.assets);
+        setArtworks(projectData.artworks);
+        if (sessionRef.current.spaces.some(({ id }) => id === target.spaceId)) setSpaceId(target.spaceId);
+        for (const item of projectData.assets) if (layerFiles.has(item.id)) layerOwners.current.set(item.id, target.id);
+      }
+      setAsset(sourceAsset ?? null);
+      setArtwork(head?.artwork ?? null);
+      setRevision(head?.revision ?? null);
+      setSavedRecipe(head ? JSON.stringify(parseEditorRecipe(head.revision.recipe)) : null);
+      setView('editor');
+      notify(t(changedVersion ? '云端已有新版本。上次的编辑已恢复为独立草稿。' : '已恢复上次编辑。'), 'success');
+    } catch (error) {
+      if (current()) notify(errorMessage(error), 'error');
+    } finally {
+      if (load.request === projectRequest.current) setOpening(false);
+    }
   }
   async function openArtwork(
     next: Artwork | string,
@@ -3645,7 +3793,8 @@ export function App({
                           previewActive={editor.hasUncommittedPreview}
                           onConfirmPreview={() => editor.commitCurrent(t('确认 AI 调整'))}
                           onCancelPreview={editor.cancelPreview}
-                          captureCurrentImage={captureCurrentImage}
+                          captureCanvasPreview={editor.file ? async () => (await captureCanvasImage()).imageDataUrl : undefined}
+                          canvasSourceId={sourceIdentity}
                           onUseCanvasSource={
                             project && ['owner', 'admin', 'editor'].includes(project.role)
                               ? (item) => {

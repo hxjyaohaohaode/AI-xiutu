@@ -1,6 +1,17 @@
 /** App-owned AI, generation and voice interface copy; never applied to user messages or prompts. */
 export const aiEnglish: Record<string, string> = {
   朗读: 'Read aloud',
+  暂停朗读: 'Pause reading',
+  继续朗读: 'Resume reading',
+  正在生成朗读: 'Preparing narration',
+  朗读结果待核验: 'Narration outcome needs confirmation',
+  未能生成朗读: 'Narration could not be generated',
+  '请先完成当前 AI 任务或核对原请求，再使用朗读。': 'Finish or check the current AI task before starting narration.',
+  发送时附带当前画面: 'Send with current image',
+  发送时不附带画面: 'Send without an image',
+  当前助手模型不支持图片输入: 'This assistant model does not accept images',
+  '当前通话模型不能读取图片。': 'This call model does not accept images.',
+  通话接通后共享: 'Share when the call connects',
   文案标题: 'Document title',
   文案内容: 'Document text',
   完成编辑: 'Done editing',

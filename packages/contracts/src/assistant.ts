@@ -20,6 +20,12 @@ export const assistantContextSchema = z
   })
   .strict();
 export type AssistantContext = z.infer<typeof assistantContextSchema>;
+// A local photo can supply visual context for discussion without identifying a cloud artwork.
+const voiceContextSchema = z.union([
+  assistantContextSchema,
+  z.object({ imageDataUrl: assistantImageDataUrl }).strict(),
+]);
+export type VoiceContext = z.infer<typeof voiceContextSchema>;
 export const assistantVisualAttachmentSchema = z
   .object({
     kind: z.enum(['editor', 'photo', 'sketch']),
@@ -271,7 +277,7 @@ export const voiceSessionFields = z
       .string()
       .regex(/^[a-z][a-z0-9_-]{0,63}$/)
       .default('marin'),
-    context: assistantContextSchema.optional(),
+    context: voiceContextSchema.optional(),
     delegation: liveDelegationSchema.optional(),
     translation: liveTranslationSchema.optional(),
     tuning: personalVoiceTuningSchema.optional(),
@@ -305,7 +311,7 @@ export const voiceClientEventSchema = z.discriminatedUnion('type', [
   z
     .object({
       type: z.literal('context'),
-      context: assistantContextSchema,
+      context: voiceContextSchema,
       contextTag: z.uuid().optional(),
     })
     .strict(),

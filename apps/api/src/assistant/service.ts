@@ -25,6 +25,7 @@ import {
   responsesModel,
   type AssistantCandidate,
   type AssistantContext,
+  type VoiceContext,
   type AssistantScope,
   type AssistantSearchEvidence,
   type LiveDelegationOptions,
@@ -216,6 +217,13 @@ export function createAssistantService(
     }
     return checked;
   }
+  async function currentVoiceContext(actorId: string, projectId: string, context?: VoiceContext) {
+    if (!context || 'artworkId' in context) return currentContext(actorId, projectId, context);
+    await assistantAccess(db, actorId, projectId);
+    const imageDataUrl = await normalizeSharedImage(context.imageDataUrl, imageModerator);
+    await assistantAccess(db, actorId, projectId);
+    return { imageDataUrl };
+  }
   async function charge(
     tx: Queryable,
     actorId: string,
@@ -238,7 +246,7 @@ export function createAssistantService(
   }
   async function contextFor(
     row: PaidRow,
-    context: AssistantContext | undefined,
+    input: VoiceContext | undefined,
     prompt: string,
     events?: AgentContext['onTool'],
     sequenceOffset = 0,
@@ -251,6 +259,7 @@ export function createAssistantService(
       accessScope: AssistantScope;
     }
   > {
+    const context = input && 'artworkId' in input ? input : undefined;
     const scope = row.scope;
     await validateScope(db, row.actor_id, accessScope);
     const backendModel = await model(
@@ -348,7 +357,7 @@ export function createAssistantService(
       creativeBrief: scope.creativeBrief,
       recipe: context ? parseEditorRecipe(context.recipe) : undefined,
       canvasState,
-      imageDataUrl: context?.imageDataUrl,
+      imageDataUrl: input?.imageDataUrl,
       ...(context?.imageDataUrl
         ? {
             inspectCandidate: (recipe: import('@ai-xiutu/editor').EditorRecipe) =>
@@ -621,6 +630,7 @@ export function createAssistantService(
     dependencies,
     model,
     currentContext,
+    currentVoiceContext,
     contextFor,
     saveCandidates,
     recoverStale,
@@ -1317,7 +1327,9 @@ export function createAssistantService(
           throw new HttpError(400, 'LIVE_RESPONSES_PROFILE_MISMATCH', '委派参数与所选模型不匹配');
       }
       const requestHash = hash(JSON.stringify(teamArtworkId ? { ...body, teamArtworkId } : body));
-      const context = await currentContext(actorId, projectId, body.context);
+      if (teamArtworkId && body.context && !('artworkId' in body.context))
+        throw new HttpError(400, 'VOICE_TEAM_CONTEXT_REQUIRED', '团队语音需要共享当前团队作品。');
+      const context = await currentVoiceContext(actorId, projectId, body.context);
       await validateScope(db, actorId, body.scope);
       const reviewedVoice = await model(db, body.modelId, 'realtime-voice', false, true);
       function tuneVoice(base: AssistantModelConfig): AssistantModelConfig {
@@ -1388,6 +1400,8 @@ export function createAssistantService(
           throw new HttpError(409, 'ASSISTANT_MODEL_CHANGED', '语音配置已变化，请重新确认');
         const backendConfig = body.translation || body.delegation?.type === 'decisions'
           ? voiceConfig : await model(tx, backendModelId, 'assistant-turn', false, true);
+        if (context?.imageDataUrl && !(profile.protocol === 'live' ? backendConfig.imageInput : profile.imageInput))
+          throw new HttpError(400, 'VOICE_IMAGE_UNAVAILABLE', '当前通话模型不能读取图片。');
         if (body.delegation?.type === 'responses' &&
           (backendConfig.responses?.temperature !== undefined || backendConfig.responses?.topP !== undefined))
           throw new HttpError(400, 'LIVE_RESPONSES_SAMPLING_UNSUPPORTED', '原生委派接口未公开采样字段');

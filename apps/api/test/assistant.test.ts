@@ -3302,7 +3302,18 @@ test(
       await t.test(
         'typed moderation and single in-flight responses stop unbounded Realtime request queues',
         async () => {
-          const stream = await openVoice('gpt-realtime-2.1');
+          const stream = await openVoice('gpt-realtime-2.1', 'owner', { context: undefined });
+          const png = await sharp({ create: { width: 8, height: 6, channels: 3, background: '#7089a3' } }).png().toBuffer();
+          const contextTag = randomUUID();
+          stream.ws.send(JSON.stringify({
+            type: 'context', context: { imageDataUrl: 'data:image/png;base64,' + png.toString('base64') }, contextTag,
+          }));
+          const accepted = await stream.wait('context');
+          assert.equal(accepted.contextTag, contextTag);
+          assert.equal(accepted.accepted, true);
+          assert.equal(accepted.imageShared, true);
+          await until(async () => received.some((event) => event.type === 'conversation.item.create' &&
+            event.item?.content?.some((item: { type: string }) => item.type === 'input_image')), Boolean);
           const count = received.length;
           stream.ws.send(JSON.stringify({ type: 'text', text: '审核拦截测试' }));
           await stream.wait('error');

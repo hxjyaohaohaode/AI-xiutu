@@ -1,4 +1,4 @@
-import type { VoiceClientEvent, VoiceServerEvent, AssistantContext } from '@ai-xiutu/contracts';
+import type { VoiceClientEvent, VoiceServerEvent, VoiceContext } from '@ai-xiutu/contracts';
 import {
   AI_VOICE_BUFFER_SECONDS,
   audiblePlayback,
@@ -217,7 +217,7 @@ export class EditorVoiceClient {
     if (event.type === 'text' || event.type === 'search') this.outputPaused = false;
     this.socket.send(JSON.stringify(event));
   }
-  updateContext(context: AssistantContext, contextTag: string) {
+  updateContext(context: VoiceContext, contextTag: string) {
     this.send({ type: 'context', context, contextTag });
   }
   mute(muted: boolean) {

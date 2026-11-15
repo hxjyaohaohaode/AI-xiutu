@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { voiceSessionFields, type AssistantSearchEvidence } from './assistant.js';
+import { assistantContextSchema, voiceSessionFields, type AssistantSearchEvidence } from './assistant.js';
 import { OPENAI_TRANSLATION_MODEL } from './openai-live.js';
 
 export const TEAM_VOICE_PROTOCOL = 'xiutu-team-voice';
@@ -10,6 +10,7 @@ export const teamVoiceInviteSchema = voiceSessionFields
   .pick({ idempotencyKey: true, modelId: true, backendModelId: true, voice: true, context: true })
   .extend({
     confirmed: z.literal(true),
+    context: assistantContextSchema.optional(),
     backendModelId: voiceSessionFields.shape.backendModelId.unwrap(),
     modelId: voiceSessionFields.shape.modelId.exclude([OPENAI_TRANSLATION_MODEL]),
   })

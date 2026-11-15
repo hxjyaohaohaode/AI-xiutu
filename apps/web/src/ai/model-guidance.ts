@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import type { AIOperation } from './types';
+import type { AIModel, AIOperation } from './types';
 
 const modelGuidance: Record<string, string> = {
   'gpt-6-astra': '旗舰推理，适合最复杂的任务',
@@ -44,6 +44,13 @@ const taskGuidance: Partial<Record<AIOperation | 'realtime-voice', string>> = {
   embed: '把文本转成可检索的向量',
   'translate-audio': '翻译语音并播报',
 };
+
+export function preferredNarrationModel(models: readonly AIModel[]) {
+  const available = models.filter((model) => model.enabled && !model.shutdownDate &&
+    model.runtimeAvailable && model.runtimeOperations?.includes('speak'));
+  return available.find((model) => model.id === 'gpt-4o-mini-tts') ??
+    available.find((model) => model.id === 'tts-1-hd') ?? available[0];
+}
 
 export function describeModel(id: string, task?: AIOperation | 'realtime-voice', imageInput?: boolean) {
   const family = id.replace(/-(?:\d{4}-\d{2}-\d{2}|\d{4})$/, '');

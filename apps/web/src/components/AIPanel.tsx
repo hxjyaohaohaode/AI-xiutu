@@ -74,7 +74,8 @@ import type { OnResultApplied } from '../ai/ResultActions';
 import { recipeDifferences, additionalRecipeChanges } from '../ai/recipeDiff';
 import { ImageParameters } from '../ai/ImageParameters';
 import { describeModel } from '../ai/model-guidance';
-import { LiveAssistant, type CaptureCurrentImage } from '../ai/LiveAssistant';
+import { LiveAssistant } from '../ai/LiveAssistant';
+import { preferredNarrationModel } from '../ai/model-guidance';
 import {
   acceptJobSubmission,
   clearJobSubmission,
@@ -214,7 +215,8 @@ export function AIPanel({
   isDirty = true,
   isLoggedIn,
   onAuth,
-  captureCurrentImage,
+  captureCanvasPreview,
+  canvasSourceId,
   captureReferenceCanvas,
   referenceCanvasLabel = '用当前编辑图',
   onUseCanvasSource,
@@ -260,7 +262,8 @@ export function AIPanel({
   isDirty?: boolean;
   isLoggedIn: boolean;
   onAuth: () => void;
-  captureCurrentImage?: CaptureCurrentImage;
+  captureCanvasPreview?: () => Promise<string>;
+  canvasSourceId?: number;
   captureReferenceCanvas?: () => Promise<File>;
   referenceCanvasLabel?: string;
   onUseCanvasSource?: (item: AssistantCloudResource) => void;
@@ -473,6 +476,7 @@ export function AIPanel({
   taskChanged.current = onTaskChanged;
   const inputLocked = busy || !!pendingSubmission || (isLoggedIn && !recovery.ready);
   const selected = (modelResponse?.models ?? []).find((model) => model.id === modelId);
+  const narrationModel = preferredNarrationModel(modelResponse?.models ?? []);
   const operationModels = (modelResponse?.models ?? []).filter(
     (model) => model.enabled !== false && (model.operations ?? ['edit-plan']).includes(operation),
   );
@@ -611,10 +615,11 @@ export function AIPanel({
       setIdempotency(secureUuid());
     }
   }
-  function rememberReceipt(saved: JobSubmission, job: AIJob) {
+  function rememberReceipt(saved: JobSubmission, job: AIJob, clearDraft = true) {
     const accepted = acceptJobSubmission(saved, job);
     rememberSubmission(accepted);
     if (jobSubmissionResolved(job.state)) resolveSubmission(accepted);
+    if (!clearDraft || (saved.operation === 'speak' && !saved.recipeSnapshot)) return accepted;
     const key = `${saved.actorId}:${saved.projectId}`;
     const old = draftCache.get(key);
     if (old?.prompt.trim() === saved.prompt) draftCache.set(key, { ...old, prompt: '' });
@@ -781,7 +786,7 @@ export function AIPanel({
           const receipt = result.jobs.find((job) => job.id === saved.jobId);
           if (receipt && (receipt.state !== saved.state || jobSubmissionResolved(receipt.state))) {
             rememberReceipt(saved, receipt);
-            setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
+            if (saved.recipeSnapshot) setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
           }
         }
         setJobs(result.jobs);
@@ -1080,6 +1085,7 @@ export function AIPanel({
     saved: JobSubmission,
     expectedGeneration: number,
     firstAttempt = false,
+    focusThread = true,
   ) {
     let job: AIJob;
     try {
@@ -1100,10 +1106,15 @@ export function AIPanel({
       throw error;
     }
     // Persist a late acknowledgement even if the panel closed while POST was pending.
-    rememberReceipt(saved, job);
-    if (expectedGeneration !== generation.current || !mounted.current) return;
+    rememberReceipt(saved, job, focusThread);
+    if (expectedGeneration !== generation.current || !mounted.current) return job;
     submittedRecipes.current.set(job.id, saved.recipeSnapshot);
     setJobs((previous) => [job, ...previous.filter((item) => item.id !== job.id)]);
+    if (!focusThread) {
+      setRefresh((value) => value + 1);
+      taskChanged.current();
+      return job;
+    }
     setThreadId(job.threadId ?? job.id);
     setParentJobId(null);
     setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
@@ -1113,6 +1124,24 @@ export function AIPanel({
     }
     setRefresh((value) => value + 1);
     taskChanged.current();
+    return job;
+  }
+  async function narrateReply(text: string): Promise<AIJob> {
+    if (!project || !userId || !narrationModel || !recovery.ready || pending.current || submitLock.current)
+      throw new Error(t('请先完成当前 AI 任务或核对原请求，再使用朗读。'));
+    submitLock.current = true;
+    try {
+      const saved = freezeJobSubmission({
+        actorId: userId, projectId: project.id, projectTitle: project.title,
+        recipeSnapshot: '',
+        body: {
+          idempotencyKey: secureUuid(), operation: 'speak', modelId: narrationModel.id,
+          prompt: text.trim(), options: { voice: 'alloy', format: 'mp3' },
+        },
+      });
+      rememberSubmission(saved);
+      return await runSubmission(saved, generation.current, true, false);
+    } finally { submitLock.current = false; }
   }
   async function recoverSubmission() {
     if (!userId || !project || submitLock.current) return;
@@ -1366,7 +1395,11 @@ export function AIPanel({
             onBeforeArtworkWrite={onBeforeArtworkWrite}
             onAfterArtworkWrite={onAfterArtworkWrite}
             onApplied={onDecisionApplied ?? onOpenArtwork}
-            captureCurrentImage={captureCurrentImage}
+            captureCanvasPreview={captureCanvasPreview}
+            canvasSourceId={canvasSourceId}
+            replyNarration={narrationModel && {
+              model: narrationModel.label, points: narrationModel.pointsPerPlan, jobs, start: narrateReply,
+            }}
             visualAttachment={visualAttachment ?? (uploadForAssistant && uploadForAssistant.file === referenceFile ? uploadForAssistant.attachment : null)}
             onClearVisualAttachment={(attachment) => {
               if (attachment === uploadForAssistant?.attachment) removeLocalReference();

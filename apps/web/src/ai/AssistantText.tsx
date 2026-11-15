@@ -34,9 +34,12 @@ function inline(text: string): ReactNode[] {
 }
 
 /** Keeps the message owner mounted while streaming. No HTML, remote images or executable UI. */
-export const AssistantText = memo(function AssistantText({ text }: { text: string }) {
+export const AssistantText = memo(function AssistantText({ text, streaming = false }: {
+  text: string;
+  streaming?: boolean;
+}) {
   return (
-    <div className="assistant-prose">
+    <div className="assistant-prose" data-streaming={streaming || undefined}>
       {messageBlocks(text).map((block) => {
         const key = `${block.line}:${block.kind}`;
         if (block.kind === 'code')

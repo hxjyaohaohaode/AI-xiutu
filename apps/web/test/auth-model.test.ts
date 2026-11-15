@@ -66,7 +66,8 @@ test('registration validates required invitation and whitespace; login retains i
   assert.deepEqual(validateAuthFields(fields, 'register'), {});
   assert.equal(validateAuthFields(fields, 'register', true).inviteCode, '当前注册需要邀请码。');
   assert.ok(validateAuthFields({ ...fields, displayName: '   ' }, 'register').displayName);
-  assert.ok(validateAuthFields({ ...fields, inviteCode: 'short' }, 'register').inviteCode);
+  assert.equal(validateAuthFields({ ...fields, inviteCode: 'short' }, 'register').inviteCode, undefined);
+  assert.ok(validateAuthFields({ ...fields, inviteCode: 'short' }, 'register', true).inviteCode);
   assert.ok(validateAuthFields({ ...fields, code: '12345a' }, 'otp').code);
   assert.ok(validateAuthFields({ ...fields, password: '123456789' }, 'reset').password);
   assert.deepEqual(validateAuthFields({ ...fields, password: 'x' }, 'password'), {});
@@ -92,14 +93,14 @@ test('each mode produces only its strict server payload and does not trim a pass
     code: '123456',
     newPassword: '  passphrase  ',
   });
-  assert.deepEqual(authPayload(fields, 'register'), {
+  assert.deepEqual(authPayload(fields, 'register', true), {
     phone: '+8613800138000',
     code: '123456',
     password: '  passphrase  ',
     displayName: 'Lin',
     inviteCode: 'invitation-123',
   });
-  assert.equal('inviteCode' in authPayload({ ...fields, inviteCode: '  ' }, 'register'), false);
+  assert.equal('inviteCode' in authPayload(fields, 'register'), false);
   assert.throws(() => authPayload({ ...fields, phone: 'wrong' }, 'register'));
 });
 

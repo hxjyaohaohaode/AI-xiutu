@@ -411,6 +411,26 @@ try {
   await landscape.locator('.free-panel[data-fixed-inspector="true"]:visible').waitFor();
   await take(landscape, 'landscape-editor');
   result.cases.push('320 px library and collaboration; landscape editor visible');
+  const photoChat = await pageFor('owner', { width: 1440, height: 960 });
+  await photoChat.locator('input[type=file]').first().setInputFiles(sample);
+  await photoChat.locator('.canvas-stage.has-image .image-frame canvas').first().waitFor();
+  await photoChat.locator('[data-dock-tool="ai"]:visible').click();
+  const sendCanvas = photoChat.getByRole('button', { name: '发送时附带当前画面', exact: true });
+  await sendCanvas.waitFor();
+  assert.equal(await sendCanvas.getAttribute('aria-pressed'), 'true');
+  await take(photoChat, 'assistant-current-photo');
+  const photoPrompt = photoChat.getByLabel('向智能体描述修改需求');
+  await photoPrompt.fill('帮我看看正在编辑的图片。');
+  const imageTurn = photoChat.waitForResponse((response) => response.request().method() === 'POST' &&
+    new URL(response.url()).pathname.endsWith('/assistant-turns'));
+  await photoPrompt.press('Enter');
+  const visual = await imageTurn;
+  assert.equal(visual.status(), 202);
+  assert.equal(visual.request().postDataJSON().visualAttachment.kind, 'editor');
+  await photoChat.getByText('浏览器验收完成', { exact: false }).last().waitFor();
+  assert.ok(requests.at(-1).input.some((entry) => Array.isArray(entry.content) &&
+    entry.content.some((part) => part.type === 'input_image')));
+  result.cases.push('unsaved canvas pixels reach the text model from the ordinary composer');
   assert.deepEqual(result.errors, []);
 } catch (error) {
   console.error(error);

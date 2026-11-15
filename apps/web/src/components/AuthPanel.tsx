@@ -1,5 +1,6 @@
 import {
   useContext,
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -15,13 +16,13 @@ import {
   EyeSlash,
   LockKey,
 } from '@phosphor-icons/react';
-import { api, errorMessage, jsonRequest } from '../lib/api';
+import { api, errorMessage, jsonRequest, withRequestDeadline } from '../lib/api';
 import type { PublicConfig, Session } from '../lib/types';
 import { Busy, DialogMotionContext, IconButton, InlineError } from './Ui';
 import { RubberSegment } from './control-motion';
 import { AccountPageFrame } from '../account/AccountPageFrame';
 import { accountPageCopy } from '../account/page-copy';
-import { MotionDisclosure, MotionSwitch } from '../motion/Presence';
+import { MotionSwitch } from '../motion/Presence';
 import { t, useLocale } from '../i18n';
 import {
   AuthCooldowns,
@@ -111,19 +112,43 @@ export function AuthPanel({
   const [recoveredSession, setRecoveredSession] = useState<Session | null>(null);
   const [recoveryMessage, setRecoveryMessage] = useState('');
   const [direction, setDirection] = useState<'forward' | 'back'>('forward');
-  const [inviteExpanded, setInviteExpanded] = useState(false);
+  const [registrationMode, setRegistrationMode] = useState<PublicConfig['registrationMode']>();
+  const policyRead = useRef(0);
   const phoneInput = useRef<HTMLInputElement>(null);
   const form = useRef<HTMLFormElement>(null);
   const id = useId();
   const dialogMotion = useContext(DialogMotionContext);
   const busy = activeKind !== null;
   const smsUnavailable = config?.capabilities.smsConfigured === false;
-  const inviteRequired = config?.registrationMode === 'invite';
+  const inviteRequired = (registrationMode ?? config?.registrationMode) === 'invite';
   const phone = normalizedAuthPhone(fields.phone);
   const smsCooldown = cooldowns.remaining(fields.phone, clock);
   const submitCooldown = cooldowns.remaining(fields.phone, clock, 'submit');
   const isRegisterPhone = mode === 'register' && registerStep === 'phone';
   const resumeRegistration = isRegisterPhone && smsState !== 'idle';
+
+  const refreshRegistrationMode = useCallback(async (signal: AbortSignal) => {
+    const read = ++policyRead.current;
+    try {
+      const latest = await withRequestDeadline(signal, 5000, (signal) =>
+        api<PublicConfig>('/public-config', { cache: 'no-store', signal }),
+      );
+      const policy = latest?.registrationMode;
+      if (policy !== 'open' && policy !== 'invite') return;
+      if (!signal.aborted && read === policyRead.current) setRegistrationMode(policy);
+      return policy;
+    } catch {
+      // The last known policy still guides the form. The server checks it on submission.
+      return;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mode !== 'register') return;
+    const controller = new AbortController();
+    void refreshRegistrationMode(controller.signal);
+    return () => controller.abort();
+  }, [mode, registerStep, refreshRegistrationMode]);
 
   useEffect(() => {
     onRegisterExitGuard?.(() => accepted.current || !operations.busy);
@@ -289,7 +314,7 @@ export function AuthPanel({
       return;
     }
     if (cooldowns.remaining(fields.phone, Date.now(), 'submit')) return;
-    const validation = validateAuthFields(fields, mode, inviteRequired);
+    const validation = validateAuthFields(fields, mode);
     if (Object.keys(validation).length) return showErrors(validation);
     const operation = operations.begin('submit');
     if (!operation) return;
@@ -298,10 +323,18 @@ export function AuthPanel({
     setError(null);
     setErrors({});
     try {
+      const latestPolicy = mode === 'register'
+        ? await refreshRegistrationMode(operation.controller.signal)
+        : undefined;
+      if (!operations.owns(operation)) return;
+      const needsInvite = mode === 'register' &&
+        (latestPolicy ? latestPolicy === 'invite' : inviteRequired);
+      const inviteError = validateAuthField('inviteCode', fields, mode, needsInvite);
+      if (inviteError) return showErrors({ inviteCode: inviteError });
       const endpoint = mode === 'password' ? 'login' : mode === 'otp' ? 'login-otp' : mode;
       const result = await withAuthDeadline(operation, (signal) =>
         api<Session | { ok: true }>(`/auth/${endpoint}`, {
-          ...jsonRequest('POST', authPayload(fields, mode)),
+          ...jsonRequest('POST', authPayload(fields, mode, needsInvite)),
           signal,
         }),
       );
@@ -328,6 +361,10 @@ export function AuthPanel({
         setFields((current) => ({ ...current, password: '', code: '' }));
         setVisible(false);
       } else {
+        if (mode === 'register' && authFailure(failure).code === 'INVITE_REQUIRED') {
+          ++policyRead.current;
+          setRegistrationMode('invite');
+        }
         const field = authFieldForFailure(failure);
         if (field) showErrors({ [field]: errorMessage(failure) });
         else setError(errorMessage(failure));
@@ -768,55 +805,28 @@ export function AuthPanel({
                       </div>
                     )}
                     {mode !== 'otp' && passwordField}
-                    {mode === 'register' && (
-                      <div className="auth-invite-section">
-                        {!inviteRequired && (
-                          <button
-                            type="button"
-                            className="auth-text-button auth-invite-trigger"
-                            aria-expanded={
-                              inviteExpanded || !!fields.inviteCode || !!errors.inviteCode
-                            }
-                            aria-controls={`${id}-invitation`}
-                            onClick={() => setInviteExpanded((value) => !value)}
-                          >
-                            {t('有邀请码？')}
-                          </button>
-                        )}
-                        <MotionDisclosure
-                          id={`${id}-invitation`}
-                          open={
-                            inviteRequired ||
-                            inviteExpanded ||
-                            !!fields.inviteCode ||
-                            !!errors.inviteCode
-                          }
-                        >
-                          <div className="auth-field auth-invite-field">
-                            <label htmlFor={fieldId('inviteCode')}>
-                              {t('注册邀请码')}
-                              <small>{inviteRequired ? t('必填') : t('选填')}</small>
-                            </label>
-                            <input
-                              id={fieldId('inviteCode')}
-                              data-testid="auth-invite-code"
-                              name="inviteCode"
-                              value={fields.inviteCode}
-                              onChange={(event) => updateField('inviteCode', event.target.value)}
-                              onBlur={(event) => blurField('inviteCode', event.relatedTarget)}
-                              placeholder={
-                                inviteRequired ? t('填写收到的注册邀请码') : t('如果你收到过邀请码')
-                              }
-                              autoComplete="off"
-                              required={inviteRequired}
-                              minLength={10}
-                              maxLength={100}
-                              aria-invalid={!!errors.inviteCode}
-                              aria-describedby={descriptions('inviteCode')}
-                            />
-                            {fieldError('inviteCode')}
-                          </div>
-                        </MotionDisclosure>
+                    {mode === 'register' && inviteRequired && (
+                      <div className="auth-field auth-invite-field">
+                        <label htmlFor={fieldId('inviteCode')}>
+                          {t('注册邀请码')}
+                          <small>{t('必填')}</small>
+                        </label>
+                        <input
+                          id={fieldId('inviteCode')}
+                          data-testid="auth-invite-code"
+                          name="inviteCode"
+                          value={fields.inviteCode}
+                          onChange={(event) => updateField('inviteCode', event.target.value)}
+                          onBlur={(event) => blurField('inviteCode', event.relatedTarget)}
+                          placeholder={t('填写收到的注册邀请码')}
+                          autoComplete="off"
+                          required
+                          minLength={10}
+                          maxLength={100}
+                          aria-invalid={!!errors.inviteCode}
+                          aria-describedby={descriptions('inviteCode')}
+                        />
+                        {fieldError('inviteCode')}
                       </div>
                     )}
                   </>
