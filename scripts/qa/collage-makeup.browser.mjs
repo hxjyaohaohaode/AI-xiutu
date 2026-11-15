@@ -313,6 +313,17 @@ export async function reviewCollage({ page, until, capture, portrait, coast }) {
   await avifStudio.getByRole('button', { name: '暂停实况', exact: true }).click();
 
   await page.reload();
+  const restoredPhoto = page.locator('.image-frame canvas[aria-label]:visible');
+  await restoredPhoto.waitFor();
+  await page.locator('[data-action="exit-photo"]:visible').click();
+  const discard = page.getByRole('dialog', { name: '退出编辑', exact: true })
+    .getByRole('button', { name: '放弃并退出', exact: true });
+  await until(async () => {
+    if (await discard.isVisible()) await discard.click();
+    return !(await restoredPhoto.isVisible());
+  }, 'the unrelated restored photo is explicitly discarded before the new collage');
+  await page.reload();
+  await page.locator('.studio-welcome:visible').waitFor();
   const tracked = await openCollage(page);
   const trackedCanvas = tracked.getByRole('img', { name: '拼图预览' });
   await tracked
