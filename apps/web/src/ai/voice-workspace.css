@@ -284,7 +284,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-block-size: 34px;
+  min-block-size: var(--voice-hit);
   padding: 0 10px;
   border: 1px solid var(--voice-border);
   border-radius: 999px;

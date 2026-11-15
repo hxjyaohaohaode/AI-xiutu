@@ -135,7 +135,14 @@ async function openProject(target, selectModel = true) {
     .locator('.saved-works-grid')
     .locator('.saved-work-open').filter({ hasText: 'Collaborative portrait' })
     .click();
-  await target.locator('.collaboration-status[data-state="ready"]').waitFor();
+  const collaborationReady = target.locator('.collaboration-status[data-state="ready"]');
+  const discardRestoredDraft = target.getByRole('dialog', { name: '确认操作', exact: true })
+    .filter({ hasText: '当前还有未保存的编辑。打开云端作品前' })
+    .getByRole('button', { name: '确认继续', exact: true });
+  await collaborationReady.or(discardRestoredDraft).first().waitFor();
+  // A refresh can restore an unsaved draft. These cases explicitly reopen the cloud work.
+  if (await discardRestoredDraft.isVisible()) await discardRestoredDraft.click();
+  await collaborationReady.waitFor();
   await target.locator('[data-dock-tool="ai"]:visible').click();
   await target.getByLabel('向智能体描述修改需求').waitFor();
   if (selectModel) {
