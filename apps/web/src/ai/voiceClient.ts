@@ -12,6 +12,7 @@ export class EditorVoiceClient {
   private audio: AudioContext | null = null;
   private capture: AudioWorkletNode | null = null;
   private stream: MediaStream | null = null;
+  private speaker: GainNode | null = null;
   private microphoneTimer: ReturnType<typeof setTimeout> | undefined;
   private cancelMicrophone: (() => void) | null = null;
   private playback = new Map<AudioBufferSourceNode, PlaybackSpan>();
@@ -83,6 +84,18 @@ export class EditorVoiceClient {
       throw new Error('无法初始化麦克风音频。请刷新页面后重试。', { cause });
     }
     if (this.disposed || !this.audio) throw new Error('通话已取消');
+    const speaker = this.audio.createGain();
+    speaker.gain.value = 1.25;
+    const limiter = this.audio.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.08;
+    speaker.connect(limiter);
+    limiter.connect(this.audio.destination);
+    this.speaker = speaker;
+
     this.capture = new AudioWorkletNode(this.audio, 'editor-microphone');
     const input = this.audio.createMediaStreamSource(this.stream);
     const silence = this.audio.createGain();
@@ -180,7 +193,7 @@ export class EditorVoiceClient {
     this.scheduleAudio(buffer, itemId);
   }
   private scheduleAudio(buffer: AudioBuffer, itemId?: string) {
-    if (!this.audio || this.disposed) return;
+    if (!this.audio || !this.speaker || this.disposed) return;
     const start = voicePlaybackTime(
       this.audio.currentTime,
       this.nextAudioTime,
@@ -198,7 +211,7 @@ export class EditorVoiceClient {
     }
     const source = this.audio.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.audio.destination);
+    source.connect(this.speaker);
     this.nextAudioTime = start + buffer.duration;
     this.playback.set(source, { itemId, start, duration: buffer.duration });
     source.onended = () => {
@@ -286,6 +299,8 @@ export class EditorVoiceClient {
     this.capture?.disconnect();
     this.capture = null;
     this.clearPlayback();
+    this.speaker?.disconnect();
+    this.speaker = null;
     void this.audio?.close();
     this.audio = null;
     this.socket?.close(1000);

@@ -548,7 +548,15 @@ try {
       await settings.waitFor({ state: 'hidden' });
       await page.evaluate(() => {
         const start = AudioBufferSourceNode.prototype.start;
+        const connect = AudioNode.prototype.connect;
         window.__soloOpeningStarts = 0;
+        AudioNode.prototype.connect = function (target, ...args) {
+          if (this instanceof AudioBufferSourceNode && target instanceof GainNode)
+            window.__soloSpeakerGain = target.gain.value;
+          if (this instanceof GainNode && target instanceof DynamicsCompressorNode)
+            window.__soloSpeakerLimited = true;
+          return connect.call(this, target, ...args);
+        };
         AudioBufferSourceNode.prototype.start = function (...args) {
           if (this.buffer && this.buffer.duration > 1 &&
             this.buffer.getChannelData(0).some((sample) => Math.abs(sample) > 0.05))
@@ -601,6 +609,9 @@ try {
       await ongoing.getByText('AI 通话进行中', { exact: true }).waitFor();
       await wait(() => page.evaluate(() => window.__soloOpeningStarts === 1),
         'one audible opening plays on readiness before the caller or provider has spoken');
+      assert.deepEqual(await page.evaluate(() => ({
+        gain: window.__soloSpeakerGain, limited: window.__soloSpeakerLimited,
+      })), { gain: 1.25, limited: true });
       assert.equal(await panel.count(), 1, 'voice owner stays mounted while its panel is hidden');
       assert.equal(await panel.isVisible(), false);
       await wait(
