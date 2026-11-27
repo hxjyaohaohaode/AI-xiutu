@@ -1,7 +1,7 @@
 import { memo, useState, type ReactNode } from 'react';
 import { Check, Copy } from '@phosphor-icons/react';
 import { useLocale } from '../i18n';
-import { messageBlocks, messageLink } from './message-format';
+import { messageBlocks, messageLink } from '@ai-xiutu/contracts/office-data';
 import './assistant-reading.css';
 
 function inline(text: string): ReactNode[] {

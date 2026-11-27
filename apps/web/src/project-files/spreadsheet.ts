@@ -2,7 +2,7 @@ import { unzipSync, zipSync } from 'fflate';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import * as XLSX from 'xlsx';
-import { delimited, numericCell } from './content';
+import { delimited, numericCell } from '@ai-xiutu/contracts/office-data';
 
 type Value = { text: string; literal: boolean; formula?: boolean; unreadable?: boolean };
 export type ImportedSheet = {

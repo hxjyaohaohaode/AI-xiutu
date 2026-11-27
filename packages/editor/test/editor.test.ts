@@ -15,10 +15,12 @@ import {
   getOutputDimensions,
   mapOutputToSource,
   mapSourceToOutput,
+  measureSceneTone,
   parseRecipe,
   radialMaskWeight,
   renderRecipe,
   sampleCurveLut,
+  sceneBalanceChanges,
   validateImage,
   validateRecipe,
 } from '../src/index.js';
@@ -203,6 +205,25 @@ test('saturation -100 is grayscale and vibrance leaves neutral gray neutral', ()
   const down = renderRecipe(source, createRecipe({ adjustments: { vibrance: -75 } })).data;
   assert.ok(up[0]! - up[2]! > 150);
   assert.ok(down[0]! - down[2]! < 150);
+});
+
+test('neutral correction reduces cast in the reference engine and ignores unreliable samples', () => {
+  const source = image(96, 32, (x, y) => {
+    const v = 82 + (x % 12) * 8;
+    if (y < 4) return [220, 75, 35, 255]; // Saturated colors are not neutral references.
+    if (y < 8) return [250, 85, 76, 0];
+    return [v + 8, v - 3, v, 255];
+  });
+  const before = measureSceneTone(source);
+  const changes = sceneBalanceChanges(DEFAULT_RECIPE.adjustments, before, 'neutral-color', .8);
+  assert.ok(changes.some(change => change.id === 'temperature' && change.value < 0));
+  assert.ok(changes.some(change => change.id === 'tint' && change.value < 0));
+  const rendered = renderRecipe(source, createRecipe({ adjustments: Object.fromEntries(changes.map(change => [change.id, change.value])) }));
+  const after = measureSceneTone(rendered);
+  assert.ok(Math.hypot(after.neutral.warmBias, after.neutral.greenBias) <
+    Math.hypot(before.neutral.warmBias, before.neutral.greenBias));
+  const saturated = image(32, 32, () => [232, 30, 145, 255]);
+  assert.deepEqual(sceneBalanceChanges(DEFAULT_RECIPE.adjustments, measureSceneTone(saturated), 'neutral-color', 1), []);
 });
 
 test('temperature and tint have signed, distinct relative color semantics', () => {

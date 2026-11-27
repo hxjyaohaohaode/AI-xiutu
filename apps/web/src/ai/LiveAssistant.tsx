@@ -98,6 +98,7 @@ import { modelCopy } from './model-copy';
 import { CreativeControls, initialCreativeSettings } from './CreativeControls';
 import { observeAssistantTurn, type RunEvent } from './turnStream';
 import { ContextEvidence } from './ContextEvidence';
+import { PhotoWorkflows } from './PhotoWorkflows';
 import { ResearchGraph } from './ResearchGraph';
 import { AssistantText, CopyMessage } from './AssistantText';
 import { SpeakButton } from './SpeakButton';
@@ -423,7 +424,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
     ? textPreviewChoice.enabled : creative.mode !== 'auto');
   const setShareImage = (enabled: boolean) => setTextPreviewChoice({ source: props.canvasSourceId, enabled });
   const [allowWebSearch, setAllowWebSearch] = useState(false),
-    [memory, setMemory] = useState(false);
+    [memory, setMemory] = useState(false),
+    [projectMemory, setProjectMemory] = useState(false);
   const [sharedVoiceSource, setSharedVoiceSource] = useState<number | null>(null);
   const [liveWebSearch, setLiveWebSearch] = useState(false);
   const [liveBackendId, setLiveBackendId] = useState('');
@@ -1224,6 +1226,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
         }
       : {}),
     usePersonalMemory: memory,
+    useProjectMemory: projectMemory,
     creativeBrief: creative.brief,
   };
   const publicSearchInput = useRef<HTMLInputElement>(null);
@@ -3181,8 +3184,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <ImageSquare size={14} /><span>{t('移除当前预览')}</span>
             </button> : <small className="ai-attachment-status" role="status">{t('当前助手模型不支持图片输入')}</small>
           )}
+          {mode === 'text' && props.captureCanvasPreview && (
+            <PhotoWorkflows references={referenceIds.length} shared={shareImage || !!props.visualAttachment}
+              disabled={busy || submissionBlocked || !!pendingSubmission}
+              onChoose={text => {
+                setPrompt(old => (old.trim() ? old.trimEnd() + '\n' + text : text).slice(0, 4000));
+                composerInput.current?.focus({ preventScroll: true });
+              }} />
+          )}
           {(referenceIds.length > 0 ||
             memory ||
+            projectMemory ||
             allowWebSearch ||
             (mode === 'text' && researchLibrary.trim() && spaceIds.length > 0)) && (
             <button
@@ -3198,6 +3210,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 {[
                   referenceIds.length ? t('{v0} 张参考', { v0: referenceIds.length }) : '',
                   memory ? t('已确认偏好') : '',
+                  projectMemory ? t('已确认项目记忆') : '',
                   allowWebSearch
                     ? mode === 'text' && secondPublicQuery.trim()
                       ? t('2 项公开检索')
@@ -3550,7 +3563,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
                   disabled={inCall || busy || submissionBlocked}
                   onChange={(event) => setMemory(event.target.checked)}
                 />
-                {t('使用已确认的偏好、项目要求与素材标注')}
+                {t('使用个人记忆与素材标注')}
+              </label>
+              <label>
+                <input type="checkbox" checked={projectMemory} disabled={inCall || busy || submissionBlocked}
+                  onChange={event => setProjectMemory(event.target.checked)} />
+                {t('使用当前项目与团队记忆')}
               </label>
               <fieldset disabled={inCall || busy || submissionBlocked}>
                 <legend>

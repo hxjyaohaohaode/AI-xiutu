@@ -60,32 +60,48 @@ export function planHistory(
   const sizes = messages.map(size);
   const originalTokens = sizes.reduce((sum, count) => sum + count, 0);
   let tokens = originalTokens;
-  const compacted: string[] = [];
+  const compacted = new Map<number, { pointer: string; original: number; tier: 'excerpt' | 'archive' }>();
   for (let i = 0; i < messages.length && tokens > available; i++) {
     const item = messages[i]!;
     if (item.role !== 'assistant') continue;
     const before = sizes[i]!;
-    // The archive pointer replaces the whole assistant message. It is not a
-    // generated summary and never pretends a missing visual result was observed.
-    const replacement = `[Earlier assistant response archived${item.sourceTurnId ? `; read_history sourceTurnId=${item.sourceTurnId}` : ''}. Earlier user requirements remain context for this task. The current request and current application permissions govern new actions.]`;
+    const pointer = `[Earlier assistant response archived${item.sourceTurnId ? `; read_history sourceTurnId=${item.sourceTurnId}` : ''}. Current requirements and permissions govern new actions.]`;
+    const codepoints = Array.from(item.content);
+    const excerpt = codepoints.length > 260
+      ? codepoints.slice(0, 85).join('') + ' … ' + codepoints.slice(-125).join('') : '';
+    const replacement = excerpt ? pointer + '\nHistorical excerpt (reference only): ' + JSON.stringify(excerpt) : pointer;
     const after = size({ ...item, content: replacement });
     if (after >= before) continue;
     item.content = replacement;
     tokens += after - before;
-    if (item.sourceTurnId) compacted.push(item.sourceTurnId);
+    sizes[i] = after;
+    compacted.set(i, { pointer, original: before, tier: excerpt ? 'excerpt' : 'archive' });
+  }
+  for (const [i, record] of compacted) {
+    if (tokens <= available) break;
+    if (record.tier === 'archive') continue;
+    messages[i]!.content = record.pointer;
+    const after = size(messages[i]!);
+    tokens += after - sizes[i]!;
+    sizes[i] = after;
+    record.tier = 'archive';
   }
   if (tokens > available) throw new ContextBudgetError('CONTEXT_CONSTRAINT_BUDGET');
   return {
     messages,
     manifest: {
-      strategy: 'verbatim-user/candidate-trace/archive-assistant-v2',
+      strategy: 'verbatim-user/candidate-trace/excerpt-then-archive-v3',
       tokenizer: 'o200k_base',
       originalTokens,
       retainedTokens: tokens,
       mandatoryTokens,
       reservedTokens: reserved,
       contextWindowTokens: budget.contextWindowTokens,
-      compactedSourceIds: compacted,
+      compactedSourceIds: [...compacted.keys()].flatMap(i => messages[i]!.sourceTurnId ?? []),
+      compaction: [...compacted].map(([i, record]) => ({
+        sourceTurnId: messages[i]!.sourceTurnId ?? null, tier: record.tier,
+        originalTokens: record.original, retainedTokens: sizes[i]!,
+      })),
       candidateTraceSourceIds: history.flatMap((item) =>
         item.sourceTurnId && item.candidateTrace ? [item.sourceTurnId] : [],
       ),

@@ -14,6 +14,63 @@
   padding-block: 4px;
   border-block-end: 1px solid var(--line);
 }
+.office-new-files,
+.office-live-status,
+.office-live-recovery,
+.office-autosave {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.office-new-files { padding-block: .3rem; }
+.office-live { min-inline-size: 0; }
+.office-live-status {
+  justify-content: space-between;
+  padding: .45rem .6rem;
+  margin-block-end: .4rem;
+  border-radius: 10px;
+  background: var(--accent-soft);
+}
+.office-live-status[data-state='offline'],
+.office-live-status[data-state='blocked'],
+.office-live-status[data-state='reset'] {
+  background: color-mix(in srgb, #ad813b 16%, transparent);
+}
+.office-live-export { display: flex; flex-wrap: wrap; justify-content: end; margin-block: .65rem; }
+.office-autosave { white-space: nowrap; margin-inline: .15rem; }
+.office-insert,
+.office-insert-choice {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.office-insert {
+  padding-block: .4rem;
+  min-inline-size: 0;
+}
+.office-insert select,
+.office-insert input { min-inline-size: 0; max-inline-size: min(100%, 22rem); }
+.office-insert-choice select { inline-size: auto; }
+.office-upload { display: grid; gap: .3rem; min-inline-size: 0; }
+.office-embed {
+  min-inline-size: 0;
+  margin: .9rem 0;
+  padding: .6rem .8rem;
+  background: color-mix(in srgb, var(--accent-soft) 56%, transparent);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.office-embed :is(audio, img) {
+  display: block;
+  max-inline-size: 100%;
+  margin-inline: auto;
+}
+.office-embed img { block-size: auto; max-block-size: 38vh; object-fit: contain; }
+.office-embed figcaption { margin-block: .35rem; }
+.office-reference { display: flex; align-items: center; gap: .7rem; flex-wrap: wrap; }
 .office-toolbar button {
   display: inline-flex;
   align-items: center;

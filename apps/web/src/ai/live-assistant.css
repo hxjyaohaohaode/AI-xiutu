@@ -1183,3 +1183,16 @@
   min-width: 0;
   max-width: 100%;
 }
+.ai-photo-workflows {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.ai-photo-workflows summary,
+.ai-photo-workflows > div {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  flex-wrap: wrap;
+}
+.ai-photo-workflows select { min-inline-size: 0; max-inline-size: 100%; }
+.ai-photo-workflows p { margin: .35rem 0; }

@@ -1,10 +1,12 @@
-import { defaultLayout } from '@ai-xiutu/contracts';
+import { defaultLayout, readOfficeBlock, type OfficeBlock } from '@ai-xiutu/contracts';
 import { headingScales } from './formatting';
 import type { OfficeLayout } from './office-layout';
 import type { IParagraphOptions } from 'docx';
 import type pptxgen from 'pptxgenjs';
-import type { MessageBlock } from '../ai/message-format';
-import { chartSeries } from './content';
+import type { MessageBlock } from '@ai-xiutu/contracts/office-data';
+import { chartSeries } from '@ai-xiutu/contracts/office-data';
+import { snapshotSvg } from '@ai-xiutu/contracts/office-data';
+import { loadOfficePicture, officePng } from './office-images';
 
 export async function wordDocument(title: string, blocks: MessageBlock[], layout?: OfficeLayout, pageStyle = defaultLayout) {
   let textLines = 0;
@@ -27,6 +29,8 @@ export async function wordDocument(title: string, blocks: MessageBlock[], layout
     Paragraph,
     HeadingLevel,
     TextRun,
+    ImageRun,
+    ExternalHyperlink,
     Table,
     TableRow,
     TableCell,
@@ -50,6 +54,35 @@ export async function wordDocument(title: string, blocks: MessageBlock[], layout
     return new Paragraph({ ...extra, ...(p?.align ? {alignment: p.align === 'justify' ? 'both' : p.align} : {}),
       ...(p?.after !== undefined ? {spacing:{after:p.after * 20}} : {}),
       children: [...(prefix ? [new TextRun(prefix)] : []), ...runs] });
+  }
+  let media = 0;
+  async function embedded(block: OfficeBlock) {
+    if (block.kind === 'note') {
+      children.push(new Paragraph({ indent: { left: 360 }, children: [new TextRun({ text: block.text, italics: true })] }));
+      return;
+    }
+    if (block.kind === 'audio' || block.kind === 'reference') {
+      const url = block.kind === 'audio' ? '/v1/office-audio/' + block.id :
+        '/v1/documents/' + block.documentId + '/versions/' + block.version;
+      const text = block.title + (block.kind === 'reference' ? ' · v' + block.version : '');
+      const run = new TextRun({ text, style: 'Hyperlink' });
+      children.push(new Paragraph({ children: [typeof location === 'undefined' ? run :
+        new ExternalHyperlink({ link: new URL(url, location.origin).href, children: [run] })] }));
+      return;
+    }
+    if (++media > 32) throw new Error('Word 最多导出 32 张嵌入图片和图表，请分段导出。');
+    const image = await officePng(block.kind === 'chart'
+      ? new Blob([snapshotSvg(block.chart)], { type: 'image/svg+xml' }) : await loadOfficePicture(block.assetId));
+    const scale = Math.min(1, 576 / image.width, 440 / image.height);
+    const title = block.kind === 'chart' ? block.chart.title : block.title;
+    children.push(new Paragraph({
+      alignment: 'center',
+      children: [new ImageRun({
+        type: 'png', data: Uint8Array.from(atob(image.url.split(',')[1]!), ch => ch.charCodeAt(0)),
+        transformation: { width: Math.round(image.width * scale), height: Math.round(image.height * scale) },
+        altText: { name: title, description: title, title },
+      })],
+    }));
   }
   for (const block of blocks) {
     if (block.kind === 'table') {
@@ -78,7 +111,13 @@ export async function wordDocument(title: string, blocks: MessageBlock[], layout
     } else if (block.kind === 'heading') {
       children.push(formatted(block.text, block.line, { heading: headings[(block.level ?? 1) - 1] }));
     } else if (layout) {
-      block.text.split('\n').forEach((text, i) => children.push(formatted(text, block.line + i + (block.kind === 'code' ? 1 : 0), block.kind === 'quote' ? { indent: {left:360} } : {}, '', block.kind === 'code')));
+      const words = block.text.split('\n');
+      for (let i = 0; i < words.length; i++) {
+        const text = words[i]!, attachment = block.kind === 'paragraph' ? readOfficeBlock(text) : null;
+        if (attachment) await embedded(attachment);
+        else children.push(formatted(text, block.line + i + (block.kind === 'code' ? 1 : 0),
+          block.kind === 'quote' ? { indent: {left:360} } : {}, '', block.kind === 'code'));
+      }
     } else children.push(new Paragraph({ children: lines(block.text) }));
   }
   return Packer.toBlob(

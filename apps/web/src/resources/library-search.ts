@@ -49,6 +49,22 @@ function timeWindow(value: string, now: Date): TimeWindow | null {
     start.setDate(start.getDate() - 1);
     return { start, end };
   }
+  if (['本周', '本週', '上周', '上週', 'thisweek', 'lastweek'].includes(value)) {
+    start.setDate(start.getDate() - (start.getDay() + 6) % 7);
+    if (['上周', '上週', 'lastweek'].includes(value)) start.setDate(start.getDate() - 7);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    return { start, end };
+  }
+  const month = /^(\d{4})(?:-|年)(0?[1-9]|1[0-2])月?$/.exec(value);
+  if (['本月', '上月', 'thismonth', 'lastmonth'].includes(value) || (month && Number(month[1]) >= 1000)) {
+    start.setDate(1);
+    if (month) start.setFullYear(Number(month[1]), Number(month[2]) - 1);
+    if (value === '上月' || value === 'lastmonth') start.setMonth(start.getMonth() - 1);
+    const end = new Date(start);
+    end.setMonth(end.getMonth() + 1);
+    return { start, end };
+  }
   const day = /^(\d{4})-(\d\d)-(\d\d)$/.exec(value);
   if (!day || Number(day[1]) < 1000) return null;
   start.setFullYear(Number(day[1]), Number(day[2]) - 1, Number(day[3]));
@@ -74,6 +90,9 @@ export function parseLibrarySearch(input: string, now: Date): LibrarySearch {
       continue;
     }
     let lower = token.toLowerCase();
+    if ((lower === 'last' || lower === 'this') && /^(?:week|month)$/i.test(parts[i + 1] ?? '')) {
+      lower += parts[++i]!.toLowerCase();
+    }
     if (lower === 'ai' && parts[i + 1] === '生成') {
       lower = 'ai生成';
       i++;

@@ -2,6 +2,10 @@ import type { Adjustments, RGBAImage } from './types.js';
 import { TOOLS } from './registry.js';
 import { srgbToLinear } from './transfer.js';
 
+const stops = Float64Array.from({ length: 256 }, (_, value) =>
+  Math.log2(Math.max(1e-7, srgbToLinear(value / 255))),
+);
+
 /** Display-encoded sRGB measurements, weighted by visible alpha coverage. */
 export function measureSceneTone(image: RGBAImage, sampleStride = 1) {
   const luma = new Float64Array(256),
@@ -10,7 +14,12 @@ export function measureSceneTone(image: RGBAImage, sampleStride = 1) {
     sum = 0,
     squared = 0,
     blacks = 0,
-    whites = 0;
+    whites = 0,
+    neutralPixels = 0,
+    warmSum = 0,
+    warmSquare = 0,
+    greenSum = 0,
+    greenSquare = 0;
   const stride = 4 * Math.max(1, Math.floor(sampleStride));
   for (let at = 0; at < image.data.length; at += stride) {
     const alpha = image.data[at + 3]! / 255;
@@ -26,6 +35,16 @@ export function measureSceneTone(image: RGBAImage, sampleStride = 1) {
     squared += y * y * alpha;
     luma[level] = luma[level]! + alpha;
     peak[maximum] = peak[maximum]! + alpha;
+    const minimum = Math.min(r, g, b);
+    if (minimum >= 28 && maximum <= 235 && maximum - minimum <= maximum * 0.19) {
+      const warmth = stops[r]! - stops[b]!;
+      const green = stops[g]! - (stops[r]! + stops[b]!) / 2;
+      neutralPixels += alpha;
+      warmSum += warmth * alpha;
+      warmSquare += warmth * warmth * alpha;
+      greenSum += green * alpha;
+      greenSquare += green * green * alpha;
+    }
     if (y <= 1 / 255) blacks += alpha;
     if (y >= 254 / 255) whites += alpha;
   }
@@ -40,6 +59,8 @@ export function measureSceneTone(image: RGBAImage, sampleStride = 1) {
     return 1;
   };
   const meanLuma = visiblePixels ? sum / visiblePixels : 0;
+  const warmBias = neutralPixels ? warmSum / neutralPixels : 0;
+  const greenBias = neutralPixels ? greenSum / neutralPixels : 0;
   return {
     width: image.width,
     height: image.height,
@@ -50,6 +71,13 @@ export function measureSceneTone(image: RGBAImage, sampleStride = 1) {
       : 0,
     blackFraction: visiblePixels ? blacks / visiblePixels : 0,
     whiteFraction: visiblePixels ? whites / visiblePixels : 0,
+    neutral: {
+      samples: neutralPixels, fraction: visiblePixels ? neutralPixels / visiblePixels : 0,
+      warmBias, greenBias,
+      spread: neutralPixels ? Math.sqrt(Math.max(0,
+        (warmSquare + greenSquare) / neutralPixels - warmBias ** 2 - greenBias ** 2,
+      )) : 0,
+    },
     tone: {
       low: quantile(luma, 0.1),
       mid: quantile(luma, 0.5),
@@ -60,15 +88,15 @@ export function measureSceneTone(image: RGBAImage, sampleStride = 1) {
   };
 }
 
-export const sceneBalanceStrategies = ['balanced', 'open-shadows', 'retain-highlights', 'preserve-night'] as const;
+export const sceneBalanceStrategies = ['balanced', 'open-shadows', 'retain-highlights', 'preserve-night', 'neutral-color'] as const;
 export type SceneBalanceStrategy = typeof sceneBalanceStrategies[number];
 const clamp = (number: number, min: number, max: number) => Math.min(max, Math.max(min, number));
 
-/** Absolute input values for the existing render engine. This helper only
- * changes light controls and uses visible sRGB samples, not source highlights. */
+/** Absolute input values for the existing render engine. Uses visible sRGB samples. */
 export function sceneBalanceChanges(
   base: Adjustments,
-  before: Pick<ReturnType<typeof measureSceneTone>, 'visiblePixels' | 'blackFraction' | 'tone'>,
+  before: Pick<ReturnType<typeof measureSceneTone>, 'visiblePixels' | 'blackFraction' | 'tone'> &
+    Partial<Pick<ReturnType<typeof measureSceneTone>, 'neutral'>>,
   strategy: SceneBalanceStrategy,
   strength: number,
 ) {
@@ -76,6 +104,21 @@ export function sceneBalanceChanges(
   if (low > mid || mid > high || high > peak + 1 / 255)
     throw new Error('INVALID_SCENE_MEASUREMENTS');
   if (before.visiblePixels < 16 || high < 0.025 || strength === 0) return [];
+  const bounded = (deltas: readonly [keyof Adjustments, number][]) => deltas.flatMap(([id, delta]) => {
+    const { step, min, max } = TOOLS.find((tool) => tool.id === id)!;
+    const difference = Math.round((delta * strength) / step) * step;
+    const value = clamp(Number((base[id] + difference).toFixed(8)), min, max);
+    return difference !== 0 && value !== base[id] ? [{ id, value }] : [];
+  });
+  if (strategy === 'neutral-color') {
+    const sample = before.neutral;
+    if (!sample || sample.samples < 24 || sample.fraction < 0.12 || sample.spread > 0.28) return [];
+    const confidence = clamp(1 - sample.spread / 0.35, 0.2, 1);
+    return bounded([
+      ['temperature', Math.abs(sample.warmBias) < .024 ? 0 : clamp(-sample.warmBias / .007, -24, 24) * confidence],
+      ['tint', Math.abs(sample.greenBias) < .018 ? 0 : clamp(sample.greenBias / .003, -20, 20) * confidence],
+    ]);
+  }
 
   const shoulder = clamp((peak - 0.87) / 0.13 + channelClipFraction * 2, 0, 1);
   const headroom = Math.log2(srgbToLinear(0.96) / srgbToLinear(Math.max(0.03, peak)));
@@ -98,11 +141,5 @@ export function sceneBalanceChanges(
     highlights = -shoulder * 14;
   }
   if (before.blackFraction > 0.12) shadows *= 0.65;
-  return ([['exposure', exposure], ['shadows', shadows], ['highlights', highlights]] as const)
-    .flatMap(([id, delta]) => {
-      const { step, min, max } = TOOLS.find((tool) => tool.id === id)!;
-      const difference = Math.round((delta * strength) / step) * step;
-      const value = clamp(Number((base[id] + difference).toFixed(8)), min, max);
-      return difference !== 0 && value !== base[id] ? [{ id, value }] : [];
-    });
+  return bounded([['exposure', exposure], ['shadows', shadows], ['highlights', highlights]]);
 }

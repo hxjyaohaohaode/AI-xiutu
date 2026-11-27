@@ -13,7 +13,7 @@ export const documentGaps = [0, 6, 12, 18] as const;
 export const documentAlignments = ['left', 'center', 'right', 'justify'] as const;
 export const officeSizes = [10, 11.5, 12, 14, 16, 18] as const;
 export const officeSpacing = [1, 1.15, 1.5, 2] as const;
-export const officeCharts = ['bar', 'line'] as const;
+export const officeCharts = ['bar', 'line', 'stream', 'sankey', 'radar', 'scatter3d'] as const;
 const pageLayout = z
   .object({
     font: z.enum(documentFonts),
@@ -109,6 +109,23 @@ export type ParagraphFormat = DocumentFormat['paragraphs'][number];
 export type TextStyle = z.infer<typeof style>;
 export type FormattedRun = z.infer<typeof run>;
 export type DocumentFont = (typeof documentFonts)[number];
+
+/** Unstyled gaps are deliberately absent from persistent format ranges. */
+export function splitDocumentRuns(text: string, ranges: FormattedRun[] = [], from = 0) {
+  const out: { text: string; style: TextStyle }[] = [];
+  const until = from + text.length;
+  let cursor = from;
+  for (const { from: first, to: last, ...style } of ranges) {
+    if (first >= until) break;
+    if (last <= from) continue;
+    const a = Math.max(from, first), b = Math.min(until, last);
+    if (a > cursor) out.push({ text: text.slice(cursor - from, a - from), style: {} });
+    out.push({ text: text.slice(a - from, b - from), style });
+    cursor = b;
+  }
+  if (cursor < until) out.push({ text: text.slice(cursor - from), style: {} });
+  return out;
+}
 
 export function formatMatchesBody(body: string, format: DocumentFormat): boolean {
   const lines = body.split(/\r\n?|\n/);

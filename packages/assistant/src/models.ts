@@ -340,6 +340,7 @@ export const ASSISTANT_TOOL_NAMES = [
   'consult_specialists',
   'delegate_studio_task',
   'draft_project_file',
+  'draft_data_chart',
   'describe_editor',
   'propose_edit',
   'propose_curve',

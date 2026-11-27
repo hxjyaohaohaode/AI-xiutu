@@ -260,6 +260,8 @@ contain up to four moderated drafts with `title`, `format` (`docx`, `pptx` or
 `xlsx`) and editable `body`. The user may export them or open them as a project
 draft and save through the normal document endpoint.
 
+When the explicitly selected document contains one supported table, `draft_data_chart` offers a deterministic derived draft. The model selects a chart kind, title and Office format. The server reads rows from the frozen document version, evaluates supported formulas, and binds the result to the source ID, version and SHA-256. The Office draft carries the source snapshot and can be rendered as SVG or high-resolution PNG without a separate image-model request. It follows the same moderation, permission and confirmation path as other drafts.
+
 `scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,publicSearch?,usePersonalMemory,creativeBrief?,executionGrantId?}`
 defaults to empty resource lists and false flags. There are at most12 spaces and8
 explicit image references, without duplicates. Each space requires current

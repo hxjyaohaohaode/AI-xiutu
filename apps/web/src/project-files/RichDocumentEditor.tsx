@@ -11,7 +11,8 @@ import { EditorView } from 'prosemirror-view';
 import { baseKeymap, toggleMark } from 'prosemirror-commands';
 import { keymap } from 'prosemirror-keymap';
 import { history, undo, redo } from 'prosemirror-history';
-import { Slice, Fragment } from 'prosemirror-model';
+import { Slice, Fragment, DOMSerializer } from 'prosemirror-model';
+import { collab } from 'prosemirror-collab';
 import {
   defaultLayout,
   withDocumentLayout,
@@ -20,15 +21,25 @@ import {
   documentGaps,
   documentAlignments,
   sameDocumentFormat,
+  readOfficeBlock,
   type DocumentFormat,
 } from '@ai-xiutu/contracts';
-import { documentSchema, readRichDocument, writeRichDocument } from './rich-document';
+import { documentSchema, readRichDocument, validatedRichContent } from '@ai-xiutu/contracts/rich-document';
 import { t, useLocale } from '../i18n';
+import { chartDataUrl, snapshotSvg } from '@ai-xiutu/contracts/office-data';
 import 'prosemirror-view/style/prosemirror.css';
 import './rich-document.css';
 
-type Content = { body: string; formatting?: DocumentFormat | null };
-type Props = Content & { readOnly: boolean; onChange: (next: Content) => boolean };
+export type RichDocumentContent = { body: string; formatting?: DocumentFormat | null };
+type Content = RichDocumentContent;
+type Props = Content & { readOnly: boolean; onChange: (next: Content) => boolean;
+  onReference?: (id: string, version: number) => void;
+  live?: {
+  version: number; clientId: string;
+  onAttach: (view: EditorView | null) => void;
+  onTransaction: (view: EditorView, content: Content) => void;
+} };
+export const receivedDocumentStep = 'xiutu-received-document-step';
 const alignLabels = { left: '左对齐', center: '居中', right: '右对齐', justify: '两端对齐' };
 export function RichDocumentEditor(props: Props) {
   const locale = useLocale();
@@ -49,6 +60,7 @@ export function RichDocumentEditor(props: Props) {
         doc: readRichDocument(latest.current.body, latest.current.formatting),
         plugins: [
           history(),
+          ...(latest.current.live ? [collab({ version: latest.current.live.version, clientID: latest.current.live.clientId })] : []),
           keymap({
             'Mod-b': mark('bold'),
             'Mod-i': mark('italic'),
@@ -62,8 +74,32 @@ export function RichDocumentEditor(props: Props) {
       }),
       editable: () => !latest.current.readOnly,
       attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': t('文档内容') },
+      nodeViews: {
+        office_block(node) {
+          const dom = DOMSerializer.fromSchema(documentSchema).serializeNode(node) as HTMLElement;
+          const block = readOfficeBlock(node.attrs.data);
+          if (block?.kind === 'chart') {
+            try {
+              const image = document.createElement('img');
+              image.src = chartDataUrl(snapshotSvg(block.chart));
+              image.alt = block.chart.title;
+              dom.prepend(image);
+            } catch { dom.textContent = t('图表数据不可用'); }
+          }
+          return { dom };
+        },
+      },
       // Intercept before the default HTML clipboard parser touches external markup.
       handleDOMEvents: {
+        click(_, event) {
+          const target = event.target instanceof Element
+            ? event.target.closest<HTMLElement>('[data-office-reference]') : null;
+          const id = target?.dataset.officeReference, version = Number(target?.dataset.officeVersion);
+          if (!id || !version || !latest.current.onReference) return false;
+          event.preventDefault();
+          latest.current.onReference(id, version);
+          return true;
+        },
         paste(editor, event) {
           if (!event.clipboardData) return false;
           event.preventDefault();
@@ -79,21 +115,20 @@ export function RichDocumentEditor(props: Props) {
         },
       },
       dispatchTransaction(tr) {
-        if (tr.docChanged && latest.current.readOnly) return;
+        if (tr.docChanged && latest.current.readOnly && !tr.getMeta(receivedDocumentStep)) return;
         const next = v.state.apply(tr);
+        let data: Content | undefined;
         if (tr.docChanged) {
-          const content = writeRichDocument(next.doc);
-          const data = {
-            ...content,
-            formatting: withDocumentLayout(
-              content.formatting,
-              latest.current.formatting?.layout ?? defaultLayout,
-            ),
-          };
+          try { data = validatedRichContent(next.doc, latest.current.formatting); }
+          catch {
+            setPasteError(t('文字超过草稿保留范围，本次输入未应用。'));
+            return;
+          }
           if (!latest.current.onChange(data)) return;
           last.current = data;
         }
         v.updateState(next);
+        if (data) latest.current.live?.onTransaction(v, data);
         redraw((n) => n + 1);
       },
     });
@@ -117,17 +152,19 @@ export function RichDocumentEditor(props: Props) {
       );
     }
     view.current = v;
+    latest.current.live?.onAttach(v);
     last.current = latest.current;
     redraw((n) => n + 1);
     return () => {
       view.current = null;
+      latest.current.live?.onAttach(null);
       v.destroy();
     };
   }, []);
   useLayoutEffect(() => {
     const v = view.current;
     if (
-      !v ||
+      !v || props.live ||
       (props.body === last.current.body &&
         sameDocumentFormat(
           withDocumentLayout(props.formatting, defaultLayout),
@@ -144,7 +181,7 @@ export function RichDocumentEditor(props: Props) {
     );
     last.current = props;
     redraw((n) => n + 1);
-  }, [props.body, props.formatting]);
+  }, [props.body, props.formatting, props.live]);
   useEffect(() => {
     view.current?.setProps({
       editable: () => !latest.current.readOnly,

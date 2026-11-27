@@ -3,8 +3,16 @@ import { z } from 'zod';
 import { transaction, audit, type Database, type Queryable } from '@ai-xiutu/db';
 import { assistantMemorySchema, type AssistantMemory } from '@ai-xiutu/contracts';
 import { assistantAccess, lockedAssistantAccess } from './context.js';
-import { id, requireUser, HttpError, assertVersion, rateLimit } from '../core.js';
+import { id, requireUser, HttpError, assertVersion, rateLimit, hash } from '../core.js';
 import { mandatoryMemory } from './memory-context.js';
+
+async function assertMemorySource(tx: Queryable, actorId: string, projectId: string, sourceTurnId?: string) {
+  if (sourceTurnId && !(await tx.query(
+    'SELECT 1 FROM assistant_turns WHERE id=$1 AND actor_id=$2 AND project_id=$3',
+    [sourceTurnId, actorId, projectId],
+  )).rowCount)
+    throw new HttpError(404, 'MEMORY_SOURCE_NOT_FOUND', '来源必须是当前项目中自己的对话');
+}
 
 function dto(row: Record<string, any>, actorId: string, role: string): AssistantMemory {
   return {
@@ -35,6 +43,7 @@ export async function assistantMemories(
   artworkId?: string,
   management?: { includeExpired: boolean; offset: number },
   lock = false,
+  selection: { personal: boolean; project: boolean } = { personal: true, project: true },
 ) {
   const access = await assistantAccess(db, actorId, projectId);
   if (
@@ -48,8 +57,9 @@ export async function assistantMemories(
     await db.query(
       `SELECT * FROM assistant_memories WHERE deleted_at IS NULL
     AND ($5::boolean OR expires_at IS NULL OR expires_at>clock_timestamp())
-    AND ((scope='user' AND owner_id=$1) OR (scope='team' AND space_id=$2)
-      OR (scope='project' AND project_id=$3) OR (scope='artwork' AND project_id=$3 AND artwork_id=$4))
+    AND (($7::boolean AND scope='user' AND owner_id=$1) OR ($8::boolean AND (
+      (scope='team' AND space_id=$2) OR (scope='project' AND project_id=$3)
+      OR (scope='artwork' AND project_id=$3 AND artwork_id=$4))))
     ORDER BY CASE category WHEN 'constraint' THEN 0 WHEN 'correction' THEN 1 ELSE 2 END,updated_at DESC,id LIMIT 101 OFFSET $6${lock ? ' FOR SHARE' : ''}`,
       [
         actorId,
@@ -58,6 +68,8 @@ export async function assistantMemories(
         artworkId ?? null,
         management?.includeExpired ?? false,
         management?.offset ?? 0,
+        selection.personal,
+        selection.project,
       ],
     )
   ).rows;
@@ -131,7 +143,7 @@ export function registerAssistantMemory(app: FastifyInstance, db: Database) {
     const body = assistantMemorySchema.parse(req.body);
     await rateLimit(db, `assistant-memory:${actorId}`, 120, 3600);
     return transaction(db, async (tx) => {
-      const access = await lockedAssistantAccess(tx, actorId, projectId);
+      const access = await lockedAssistantAccess(tx, actorId, projectId, undefined, hash(req.cookies.xiutu_session ?? ''));
       if (body.scope === 'team' && !['owner', 'admin'].includes(access.role))
         throw new HttpError(403, 'MEMORY_FORBIDDEN', '团队要求由团队管理员维护');
       if (body.scope === 'artwork') {
@@ -147,16 +159,7 @@ export function registerAssistantMemory(app: FastifyInstance, db: Database) {
           throw new HttpError(404, 'ARTWORK_NOT_FOUND', '请指定当前项目中的作品');
       } else if (body.artworkId)
         throw new HttpError(400, 'MEMORY_SCOPE_INVALID', '只有作品记忆可以指定作品');
-      if (
-        body.sourceTurnId &&
-        !(
-          await tx.query(
-            'SELECT 1 FROM assistant_turns WHERE id=$1 AND actor_id=$2 AND project_id=$3',
-            [body.sourceTurnId, actorId, projectId],
-          )
-        ).rowCount
-      )
-        throw new HttpError(404, 'MEMORY_SOURCE_NOT_FOUND', '来源必须是当前项目中自己的对话');
+      await assertMemorySource(tx, actorId, projectId, body.sourceTurnId);
       const row = (
         await tx.query(
           `INSERT INTO assistant_memories(scope,owner_id,space_id,project_id,artwork_id,category,title,content,source_turn_id,expires_at)
@@ -196,6 +199,7 @@ export function registerAssistantMemory(app: FastifyInstance, db: Database) {
                   content: assistantMemorySchema.shape.content,
                   category: assistantMemorySchema.shape.category,
                   expiresAt: assistantMemorySchema.shape.expiresAt,
+                  sourceTurnId: assistantMemorySchema.shape.sourceTurnId,
                 })
                 .strict()
                 .parse(req.body)
@@ -204,7 +208,7 @@ export function registerAssistantMemory(app: FastifyInstance, db: Database) {
           update ??
           z.object({ expectedVersion: z.number().int().positive() }).strict().parse(req.body);
         return transaction(db, async (tx) => {
-          const access = await lockedAssistantAccess(tx, actorId, projectId);
+          const access = await lockedAssistantAccess(tx, actorId, projectId, undefined, hash(req.cookies.xiutu_session ?? ''));
           const row = (
             await tx.query(
               'SELECT * FROM assistant_memories WHERE id=$1 AND deleted_at IS NULL FOR UPDATE',
@@ -223,11 +227,13 @@ export function registerAssistantMemory(app: FastifyInstance, db: Database) {
           if (row.scope === 'team' && !['owner', 'admin'].includes(access.role))
             throw new HttpError(403, 'MEMORY_FORBIDDEN', '团队要求由管理员维护');
           assertVersion(row.version, envelope.expectedVersion);
+          if (update?.sourceTurnId) await assertMemorySource(tx, actorId, projectId, update.sourceTurnId);
           const updated = update
             ? (
                 await tx.query(
-                  `UPDATE assistant_memories SET title=$2,content=$3,category=$4,expires_at=$5,version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *`,
-                  [memoryId, update.title, update.content, update.category, update.expiresAt],
+                  `UPDATE assistant_memories SET title=$2,content=$3,category=$4,expires_at=$5,
+                   source_turn_id=COALESCE($6::uuid,source_turn_id),version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *`,
+                  [memoryId, update.title, update.content, update.category, update.expiresAt, update.sourceTurnId ?? null],
                 )
               ).rows[0]!
             : (

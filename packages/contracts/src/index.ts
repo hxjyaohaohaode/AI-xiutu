@@ -20,3 +20,4 @@ export * from './openai-specialist.js';
 export * from './openai-lifecycle.js';
 
 export * from './document-format.js';
+export * from './office-content.js';

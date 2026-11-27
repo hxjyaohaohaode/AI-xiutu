@@ -1,0 +1,195 @@
+.presentation-editor,
+.presentation-preview {
+  min-inline-size: 0;
+  display: grid;
+  gap: 0.9rem;
+}
+.slide-insert,
+.slide-inspector {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--text, #26443e) 4%, transparent);
+}
+.slide-inspector label {
+  display: grid;
+  gap: 0.35rem;
+  min-inline-size: 0;
+}
+.slide-inspector input[type='number'] {
+  inline-size: 5.1rem;
+  max-inline-size: 100%;
+}
+.slide-inspector .slide-object-text {
+  flex: 1 0 100%;
+}
+.slide-inspector :is(input, select, textarea),
+.slide-insert select,
+.slide-layers {
+  min-inline-size: 0;
+  max-inline-size: min(100%, 22rem);
+  min-block-size: 2.4rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: 8px;
+  border: 1px solid var(--line, #bac6c4);
+  background: var(--surface, #fff);
+  color: inherit;
+  font: inherit;
+  box-sizing: border-box;
+}
+.slide-inspector .slide-object-text textarea {
+  max-inline-size: 100%;
+  resize: vertical;
+}
+.slide-inspector :is(input[type='color'], input[type='checkbox']) {
+  min-block-size: 0;
+}
+.slide-inspector input[type='color'] {
+  block-size: 2.4rem;
+  inline-size: 3rem;
+  padding: 0.25rem;
+}
+.slide-layers {
+  margin-inline-start: auto;
+}
+.slide-workspace {
+  display: grid;
+  grid-template-columns: minmax(6.5rem, 9rem) minmax(0, 1fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+.slide-page-strip {
+  display: grid;
+  gap: 0.3rem;
+  min-inline-size: 0;
+  max-block-size: 29rem;
+  overflow: auto;
+}
+.slide-page-strip button {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  text-align: start;
+  overflow-wrap: anywhere;
+  min-block-size: 2.6rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+}
+.slide-page-strip button[aria-current] {
+  background: color-mix(in srgb, #328578 13%, transparent);
+  border-color: color-mix(in srgb, #328578 35%, transparent);
+}
+.slide-page-strip span {
+  font-variant-numeric: tabular-nums;
+}
+.slide-canvas {
+  position: relative;
+  inline-size: 100%;
+  aspect-ratio: 16 / 9;
+  container-type: inline-size;
+  isolation: isolate;
+  overflow: hidden;
+  color: #253c37;
+  box-shadow:
+    0 8px 28px #142a2422,
+    0 0 0 1px var(--line, #bac6c4);
+}
+.slide-object {
+  position: absolute;
+  min-inline-size: 0;
+  min-block-size: 0;
+}
+.slide-select-object {
+  border: none;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: grab;
+  outline-offset: 2px;
+  touch-action: none;
+}
+.slide-select-object,
+.slide-text,
+.slide-shape,
+.slide-object img {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+.slide-object img {
+  object-fit: contain;
+  pointer-events: none;
+}
+.slide-text {
+  line-height: 1.14;
+  white-space: pre-wrap;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.slide-object[data-selected='true'] {
+  outline: 1px solid #126cce;
+}
+.slide-resize {
+  position: absolute;
+  z-index: 1;
+  inset-inline-end: 0;
+  inset-block-end: 0;
+  inline-size: 24px;
+  block-size: 24px;
+  border: 0;
+  background: transparent;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.slide-resize::after {
+  position: absolute;
+  content: '';
+  inset-inline-end: 0;
+  inset-block-end: 0;
+  inline-size: 9px;
+  block-size: 9px;
+  background: #fff;
+  border: 2px solid #126cce;
+}
+.slide-guide {
+  position: absolute;
+  pointer-events: none;
+  z-index: 2;
+  border-color: #126cce;
+  border-style: dashed;
+  border-width: 0;
+}
+.slide-guide.vertical {
+  inset-block: 0;
+  border-inline-start-width: 1px;
+}
+.slide-guide.horizontal {
+  inset-inline: 0;
+  border-block-start-width: 1px;
+}
+.presentation-preview > select {
+  justify-self: start;
+  max-inline-size: 100%;
+}
+@media (max-width: 900px) {
+  .slide-workspace {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .slide-page-strip {
+    display: flex;
+    overflow-x: auto;
+  }
+  .slide-page-strip button {
+    flex: 0 0 auto;
+    max-inline-size: 12rem;
+  }
+  .slide-layers {
+    margin-inline-start: 0;
+  }
+}

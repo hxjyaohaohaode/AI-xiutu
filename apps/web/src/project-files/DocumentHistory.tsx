@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ClockCounterClockwise } from '@phosphor-icons/react';
-import { defaultLayout } from '@ai-xiutu/contracts';
+import { defaultLayout, readPresentation } from '@ai-xiutu/contracts';
 import { Busy, InlineError, Modal } from '../components/Ui';
 import { projectDocumentsFromResponse } from '../account/document-drafts';
 import { t } from '../i18n';
@@ -8,7 +8,7 @@ import { api, errorMessage, formatDate } from '../lib/api';
 import type { ProjectDocument } from '../lib/types';
 import { DocumentPreview } from './DocumentComposer';
 import { ExportContent } from './ExportContent';
-import { readProjectSheet } from './project-sheet';
+import { PresentationPreview } from './PresentationEditor';
 
 type VersionSummary = {
   version: number;
@@ -66,7 +66,7 @@ function DocumentHistoryDialog({
   const [reading, setReading] = useState(false);
   const previewRequest = useRef<AbortController | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const sheet = selected && readProjectSheet(selected.body);
+  const deck = selected && readPresentation(selected.body);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,11 +151,13 @@ function DocumentHistoryDialog({
           {selected && (
             <>
               <h3>{selected.title}</h3>
-              <DocumentPreview text={selected.body.slice(sheet ? sheet.source.length : 0)}
+              {deck ? <PresentationPreview key={selected.version} document={deck} /> :
+              <DocumentPreview text={selected.body}
                 title={selected.title} layout={selected.formatting?.layout ?? defaultLayout}
-                formatting={selected.formatting} charts={false} />
+                formatting={selected.formatting} charts={false} />}
               <div className="document-history-actions">
-                <ExportContent title={selected.title} body={selected.body} formatting={selected.formatting} />
+                <ExportContent title={selected.title} body={selected.body} formatting={selected.formatting}
+                  formats={deck ? ['pptx'] : undefined} />
                 {canRestore && selected.version < document.version && (
                   <button type="button" className="button button-primary" onClick={() => {
                     if (onDraft(selected)) onClose();

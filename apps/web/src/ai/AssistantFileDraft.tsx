@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { FileText } from '@phosphor-icons/react';
 import type { AssistantProjectFile } from '@ai-xiutu/contracts';
 import { documentDrafts } from '../account/document-drafts';
 import { MotionDetails } from '../motion/Presence';
 import { ExportContent } from '../project-files/ExportContent';
-import { readProjectSheet } from '../project-files/project-sheet';
+import { chartDataUrl, isolatedOfficeChart, readProjectSheet, snapshotSvg } from '@ai-xiutu/contracts/office-data';
 import { t } from '../i18n';
 import type { Project } from '../lib/types';
 import type { CaptureProjectCover } from '../project-files/cover';
@@ -26,6 +26,12 @@ export function AssistantFileDraft({
   const [message, setMessage] = useState('');
   const canEdit = actorId && project && ['owner', 'admin', 'editor'].includes(project.role);
   const sheet = file.format === 'xlsx' ? readProjectSheet(file.body)?.table : null;
+  const chart = useMemo(() => {
+    try {
+      const snapshot = isolatedOfficeChart(file.body);
+      return snapshot && { title: snapshot.title, url: chartDataUrl(snapshotSvg(snapshot)) };
+    } catch { return null; }
+  }, [file.body]);
 
   function stage() {
     if (!actorId || !project || !canEdit) return;
@@ -48,7 +54,7 @@ export function AssistantFileDraft({
   return (
     <MotionDetails className="assistant-file-draft">
       <summary><FileText size={17} aria-hidden /> <span>{file.title}</span> <span>{file.format.toUpperCase()}</span></summary>
-      {sheet ? (
+      {chart ? <img className="office-chart-preview" src={chart.url} alt={chart.title} /> : sheet ? (
         <div className="office-table-scroll">
           <table aria-label={file.title}>
             <thead><tr>{sheet.headers.map((cell, index) => <th key={index} scope="col">{cell}</th>)}</tr></thead>
@@ -60,7 +66,7 @@ export function AssistantFileDraft({
       ) : <AssistantText text={file.body} />}
       <div className="assistant-message-actions">
         <ExportContent title={file.title} body={file.body} captureCover={captureCover}
-          formats={file.format === 'xlsx' ? ['xlsx', 'svg'] : [file.format]} />
+          formats={chart ? [file.format, 'svg', 'png'] : file.format === 'xlsx' ? ['xlsx', 'svg'] : [file.format]} />
         {canEdit && (
           <button type="button" className="text-button" onClick={stage}>{t('载入项目草稿')}</button>
         )}

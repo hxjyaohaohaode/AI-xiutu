@@ -1,6 +1,7 @@
 import test from 'node:test';
 import { textOnly, textTokens } from '../src/context-budget.js';
 import assert from 'node:assert/strict';
+import { isolatedOfficeChart } from '@ai-xiutu/contracts/office-data';
 import {
   createRecipeV3,
   createRecipeV4,
@@ -941,6 +942,34 @@ test('an office teammate receives only the selected source and returns an editab
   assert.deepEqual(result.files, [{
     title: 'Report', format: 'xlsx', body: '```sheet-tsv\n"Code"\t"Count"\n"001"\t14\n```',
   }]);
+  assert.deepEqual(result.candidates, []);
+});
+test('a chart tool freezes the selected table, recalculates formulas, and retains the source in the editable deck', async () => {
+  const source = {
+    id: 'c4c59322-9ce1-4e78-9899-1cd45a3d78a2', version: 8, title: '数据源', sourceSha256: 'a'.repeat(64),
+    body: '> Formulas v1 {"C2":"=B2*2","C3":"=SUM(B2:B3)","C4":"=SUM(B3:B4)"}\n\n' +
+      '```sheet-tsv\n"日期"\t"计数"\t"结果"\n"春"\t12\t\n"夏"\t15\t\n"秋"\t9\t\n\t\t\n```',
+  };
+  const args = { title: '季度趋势', kind: 'stream', format: 'pptx' };
+  let requests = 0;
+  const result = await runEditorAgent('fixture', 'fixture', settings,
+    context({ projectDocument: source, prompt: 'Use my linked worksheet to make a stream chart.' }),
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      assert.ok(body.tools.some((item: { name: string }) => item.name === 'draft_data_chart'));
+      if (++requests === 1) return response([
+        tool('draft_data_chart', { ...args, data: [[999]] }, 'foreign-values'),
+        tool('draft_data_chart', args, 'chart'),
+      ]);
+      assert.match(JSON.stringify(body.input), /TOOL_INPUT_OR_ACCESS_REJECTED/);
+      assert.match(JSON.stringify(body.input), /ready_for_review/);
+      return response([text('季度趋势已生成草稿。')]);
+    });
+  assert.equal(requests, 2);
+  assert.equal(result.files?.length, 1);
+  const chart = isolatedOfficeChart(result.files![0]!.body);
+  assert.deepEqual(chart?.source, { documentId: source.id, version: source.version });
+  assert.deepEqual(chart?.rows, [['春', '12', '24'], ['夏', '15', '27'], ['秋', '9', '24']]);
   assert.deepEqual(result.candidates, []);
 });
 test('output moderation covers all text, not just first chunk; revocation stops subsequent dispatch', async () => {

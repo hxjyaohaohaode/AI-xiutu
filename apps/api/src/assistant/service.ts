@@ -302,8 +302,9 @@ export function createAssistantService(
       ? await selectedReferenceImages(db, storage, row.actor_id, scope, imageModerator)
       : [];
     const voice = 'backend_model_id' in row;
+    const memorySelection = { personal: scope.usePersonalMemory, project: scope.useProjectMemory ?? scope.usePersonalMemory };
     const readMemory = async (tx: Queryable, lock = false) =>
-      scope.usePersonalMemory
+      memorySelection.personal || memorySelection.project
         ? selectAssistantMemories(
             await assistantMemories(
               tx,
@@ -312,6 +313,7 @@ export function createAssistantService(
               context?.artworkId,
               undefined,
               lock,
+              memorySelection,
             ),
             prompt,
           )
@@ -333,20 +335,23 @@ export function createAssistantService(
       if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, lock);
       await checkSettings(tx);
       if (context) await validateContext(tx, row.actor_id, row.project_id, context, lock);
-      if (projectDocument)
-        await selectedAssistantDocument(tx, row.project_id, {
+      if (projectDocument) {
+        const currentDocument = await selectedAssistantDocument(tx, row.project_id, {
           documentId: projectDocument.id, expectedVersion: projectDocument.version,
         }, lock);
-      if (!scope.usePersonalMemory) return;
+        if (currentDocument.sourceSha256 !== projectDocument.sourceSha256)
+          throw new HttpError(409, 'ASSISTANT_DOCUMENT_CHANGED', '项目文档内容已变化，请重新选择版本');
+      }
+      if (!memorySelection.personal && !memorySelection.project) return;
       const currentMemories = await readMemory(tx, lock);
-      const currentNotes = await rememberedResources(
+      const currentNotes = memorySelection.personal ? await rememberedResources(
         tx,
         row.actor_id,
         scope.spaceIds,
         prompt,
         resourceIds,
         lock,
-      );
+      ) : [];
       if (
         signature(currentMemories) !== signature(confirmedMemories) ||
         signature(currentNotes) !== signature(resourceNotes)
@@ -1388,7 +1393,7 @@ export function createAssistantService(
       if ((native || body.translation) && teamArtworkId)
         throw new HttpError(400, 'VOICE_TEAM_MODEL_UNSUPPORTED', '此模式使用个人麦克风入口');
       if ((native || body.translation) &&
-        (body.context || body.scope.referenceAssetIds.length || body.scope.usePersonalMemory ||
+        (body.context || body.scope.referenceAssetIds.length || body.scope.usePersonalMemory || body.scope.useProjectMemory ||
           body.scope.executionGrantId || body.scope.creativeBrief || body.scope.publicSearch))
         throw new HttpError(400, 'VOICE_NATIVE_SCOPE_UNSUPPORTED', '此模式仅处理本轮输入，不能附带作品、记忆或自动执行授权');
       if (body.translation && (body.scope.allowWebSearch || body.scope.spaceIds.length))

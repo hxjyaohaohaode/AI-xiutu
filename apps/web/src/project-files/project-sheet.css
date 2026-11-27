@@ -37,7 +37,7 @@
   background: transparent;
   padding: 0.55rem;
   box-sizing: border-box;
-  resize: vertical;
+  resize: none;
   color: inherit;
   font: inherit;
 }
@@ -52,3 +52,29 @@
   height: auto;
   margin: 1rem auto;
 }
+.project-sheet-formula {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .55rem;
+  padding: .4rem .6rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin-block: .5rem;
+}
+.project-sheet-formula label,
+.project-sheet-formula output { font-variant-numeric: tabular-nums; }
+.project-sheet-formula input, .project-sheet-bar select {
+  min-inline-size: 0;
+  min-block-size: 2.25rem;
+  padding: .32rem .55rem;
+  border-radius: 7px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+}
+.project-sheet-formula input { inline-size: 100%; box-sizing: border-box; }
+.project-sheet-formula output { max-inline-size: 8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-sheet textarea[data-selected='true'] { box-shadow: inset 0 0 0 1px #287978; }
+.project-sheet textarea[aria-invalid='true'] { color: var(--danger, #a52e28); }

@@ -14,8 +14,11 @@ const strategies: Record<SceneBalanceStrategy, string> = {
   'open-shadows': '展开暗部',
   'retain-highlights': '保护亮部',
   'preserve-night': '保留夜景',
+  'neutral-color': '校正色偏',
 };
-const controlLabel = { exposure: '曝光', shadows: '阴影', highlights: '高光' } as const;
+const controlLabel: Partial<Record<keyof Adjustments, string>> = {
+  exposure: '曝光', shadows: '阴影', highlights: '高光', temperature: '色温', tint: '色调',
+};
 const globalScope = { kind: 'global' } as const;
 
 export function LightSuggestion({
@@ -30,6 +33,7 @@ export function LightSuggestion({
     recipe: EditorRecipe;
     adjustments: Adjustments;
     source: number;
+    neutralSupport: boolean;
     changes: ReturnType<typeof sceneBalanceChanges>;
   } | null>(null);
   const ready = editor.rendered && !editor.rendering && !editor.isLoading() &&
@@ -45,7 +49,8 @@ export function LightSuggestion({
     const adjustments = base.schemaVersion === 3 || base.schemaVersion === 4
       ? scopeColor(base, globalScope).adjustments : base.adjustments;
     const changes = sceneBalanceChanges(adjustments, tone, strategy, 0.75);
-    setPlan({ recipe: base, adjustments, source: editor.getSourceIdentity(), changes });
+    setPlan({ recipe: base, adjustments, source: editor.getSourceIdentity(), changes,
+      neutralSupport: tone.neutral.samples >= 24 && tone.neutral.fraction >= .12 && tone.neutral.spread <= .28 });
   }
 
   function commit() {
@@ -85,13 +90,14 @@ export function LightSuggestion({
           <ul aria-label={t('建议参数')}>
             {currentPlan.changes.map(({ id, value }) => (
               <li key={id}>
-                {t(controlLabel[id])} <strong>{currentPlan.adjustments[id]} → {value}{id === 'exposure' ? ' EV' : ''}</strong>
+                {t(controlLabel[id] ?? id)} <strong>{currentPlan.adjustments[id]} → {value}{id === 'exposure' ? ' EV' : ''}</strong>
               </li>
             ))}
           </ul>
           <button type="button" className="button button-primary" onClick={commit}>{t('应用光线建议')}</button>
         </div>
-      ) : <p role="status">{t('当前画面无需这项调整。')}</p>)}
+      ) : <p role="status">{t(strategy === 'neutral-color' && !currentPlan.neutralSupport
+        ? '画面缺少足够一致的中性色参考。' : '当前画面无需这项调整。')}</p>)}
     </MotionDetails>
   );
 }

@@ -3,6 +3,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { documentFormatSchema, formatMatchesBody, rebaseDocumentFormat } from '@ai-xiutu/contracts';
 import { transaction, emit, type Database, type Queryable } from '@ai-xiutu/db';
+import { documentDto, validateDocumentContent } from './document-content.js';
+import { registerLiveDocuments } from './live-documents.js';
+import { registerOfficeAudio } from './office-audio.js';
 import {
   HttpError,
   hash,
@@ -41,17 +44,6 @@ const taskDto = (t: Record<string, any>) => ({
   createdAt: t.created_at,
   updatedAt: t.updated_at,
 });
-const documentDto = (d: Record<string, any>) => ({
-  id: d.id,
-  projectId: d.project_id,
-  title: d.title,
-  body: d.body,
-  ...(d.formatting ? { formatting: d.formatting } : {}),
-  version: d.version,
-  authorId: d.author_id,
-  createdAt: d.created_at,
-  updatedAt: d.updated_at,
-});
 async function checkAssignee(
   tx: Queryable,
   spaceId: string,
@@ -69,6 +61,8 @@ async function checkAssignee(
     throw new HttpError(400, 'ASSIGNEE_NOT_MEMBER', '任务负责人必须是当前空间成员');
 }
 export function registerCollaboration(app: FastifyInstance, db: Database): void {
+  registerLiveDocuments(app, db);
+  registerOfficeAudio(app, db);
   app.get('/v1/projects/:id/comments', async (req) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
@@ -331,6 +325,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       const project = await lockProjectMutation(tx, p.id, user.id, hash(req.cookies.xiutu_session ?? ''));
       if (body.formatting && !formatMatchesBody(body.body, body.formatting))
         throw new HttpError(400, 'DOCUMENT_FORMAT_MISMATCH', '文字排版与正文不匹配');
+      await validateDocumentContent(tx, p.id, body.body);
       const row = (
         await tx.query(
           'INSERT INTO documents(project_id,title,body,author_id,formatting) VALUES($1,$2,$3,$4,$5) RETURNING *',
@@ -373,6 +368,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       const formatting = body.formatting === undefined ? rebaseDocumentFormat(old.body, text, old.formatting) : body.formatting;
       if (formatting && !formatMatchesBody(text, formatting))
         throw new HttpError(400, 'DOCUMENT_FORMAT_MISMATCH', '文字排版与正文不匹配');
+      if (text !== old.body) await validateDocumentContent(tx, old.project_id, text);
       const row = (
         await tx.query(
           'UPDATE documents SET title=$2,body=$3,formatting=$4,version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *',

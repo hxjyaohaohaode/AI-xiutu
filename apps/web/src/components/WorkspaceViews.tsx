@@ -1,7 +1,12 @@
 import { DocumentComposer } from '../project-files/DocumentComposer';
 import { DocumentHistory } from '../project-files/DocumentHistory';
-import { defaultLayout, withDocumentLayout, sameDocumentFormat, type DocumentFormat } from '@ai-xiutu/contracts';
-import { readProjectSheet } from '../project-files/project-sheet';
+import { defaultLayout, withDocumentLayout, sameDocumentFormat, readPresentation, rebaseDocumentFormat, writePresentation,
+  writeOfficeBlock, type OfficeBlock, type DocumentFormat } from '@ai-xiutu/contracts';
+import { emptyProjectSheet, readProjectSheet } from '@ai-xiutu/contracts/office-data';
+import { blankPresentation } from '../project-files/presentation-model';
+import { PresentationEditor } from '../project-files/PresentationEditor';
+import { OfficeInsert } from '../project-files/OfficeInsert';
+import { OfficeReferenceDialog } from '../project-files/OfficeReferenceDialog';
 import { ProjectSheetEditor } from '../project-files/ProjectSheetEditor';
 import { SpreadsheetImport } from '../project-files/SpreadsheetImport';
 import type { CaptureProjectCover } from '../project-files/cover';
@@ -77,6 +82,8 @@ import '../ai/decisions.css';
 
 const RichDocumentEditor = lazy(() => import('../project-files/RichDocumentEditor')
   .then(module => ({ default: module.RichDocumentEditor })));
+const LiveDocumentEditor = lazy(() => import('../project-files/LiveDocumentEditor')
+  .then(module => ({ default: module.LiveDocumentEditor })));
 type DocumentContent = { title: string; body: string; formatting?: DocumentFormat | null };
 
 // These gates reflect the API's current project role. The API remains authoritative.
@@ -1133,6 +1140,11 @@ export function DocumentsView({
   const uncertainCreation = !retainedDraft?.base && retainedDraft?.saveState === 'unknown';
   const [docs, setDocs] = useState<ProjectDocument[]>([]);
   const [selected, setSelected] = useState<ProjectDocument | null>(null);
+  const [liveId, setLiveId] = useState<string | null>(null);
+  const [livePending, setLivePending] = useState(false);
+  const [autoSave, setAutoSave] = useState(false);
+  const [reference, setReference] = useState<{ id: string; version: number } | null>(null);
+  const live = !!selected && selected.id === liveId;
   const [creating, setCreating] = useState(false);
   const [mobileList, setMobileList] = useState(true);
   const [documentsExpanded, setDocumentsExpanded] = useState(true);
@@ -1144,6 +1156,7 @@ export function DocumentsView({
   const [editorSession, setEditorSession] = useState(0);
   const [sheetSource, setSheetSource] = useState(false);
   const projectSheet = useMemo(() => formatting?.paragraphs.length ? null : readProjectSheet(body), [body, formatting]);
+  const presentation = useMemo(() => readPresentation(body), [body]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<'save' | 'read' | null>(null);
   const busy = pending !== null;
@@ -1176,9 +1189,9 @@ export function DocumentsView({
     return result === 'confirmed';
   }
   useEffect(() => {
-    onDirtyChange(dirty);
+    onDirtyChange(dirty || livePending);
     return () => onDirtyChange(false);
-  }, [dirty, onDirtyChange]);
+  }, [dirty, livePending, onDirtyChange]);
   useEffect(() => {
     const controller = new AbortController();
     const generation = ++requestGeneration.current;
@@ -1215,6 +1228,10 @@ export function DocumentsView({
     setDraftInEditor(false);
     editingLineage.current = null;
     setSelected(null);
+    setLiveId(null);
+    setLivePending(false);
+    setAutoSave(false);
+    setReference(null);
     setCreating(false);
     setMobileList(true);
     setDocs([]);
@@ -1386,6 +1403,10 @@ export function DocumentsView({
 
   async function choose(doc: ProjectDocument | null, imported?: { title: string; body: string }) {
     if (saveLock.current || pendingSave || (!doc && !canEdit)) return false;
+    if (livePending) {
+      setError('共编的本机修改还在同步。请先退出共编并保留草稿，再切换文档。');
+      return false;
+    }
     if (recoveryDraft) {
       setError('请先恢复或丢弃本页保留的草稿，再切换文档；可以先导出一份。');
       return false;
@@ -1414,6 +1435,7 @@ export function DocumentsView({
       editingLineage.current = captured.draft.lineage;
     }
     setSelected(doc);
+    setLiveId(null);
     setCreating(!doc);
     setMobileList(false);
     setTitle(next.title);
@@ -1558,6 +1580,35 @@ export function DocumentsView({
   );
   const newerVersion =
     selected && docs.some((doc) => doc.id === selected.id && doc.version > selected.version);
+  const flushOfficeDraft = useRef(persistCurrentDraft);
+  flushOfficeDraft.current = persistCurrentDraft;
+  useEffect(() => {
+    if (!autoSave || !canEdit || !selected || !dirty || busy || live ||
+        conflict || newerVersion || pendingSave || retainedDraft?.saveState !== 'idle' || error || !title.trim()) return;
+    const timer = setTimeout(() => { void flushOfficeDraft.current(); }, 1650);
+    return () => clearTimeout(timer);
+  }, [autoSave, canEdit, selected, dirty, busy, live, conflict, newerVersion, pendingSave,
+      retainedDraft?.saveState, error, title, body, formatting]);
+  function updateLiveDocument(document: ProjectDocument) {
+    if (activeOwner.current !== ownerKey || liveId !== document.id || documentScope.current.selectedId !== document.id) return;
+    setSelected(document);
+    setDocs(items => items.some(item => item.id === document.id && item.version > document.version)
+      ? items : [document, ...items.filter(item => item.id !== document.id)]);
+    setTitle(document.title);
+    setBody(document.body);
+    setFormatting(document.formatting ?? null);
+    currentDraft.current = document;
+  }
+  function openReference(id: string, version: number) {
+    setReference({ id, version });
+  }
+  function insertOfficeBlock(block: OfficeBlock) {
+    const current = currentDraft.current;
+    const body = current.body + (current.body ? '\n\n' : '') + writeOfficeBlock(block) + '\n';
+    if (!updateDraft({ ...current, body, formatting: rebaseDocumentFormat(current.body, body, current.formatting) })) return false;
+    setShowFormatting(true);
+    return true;
+  }
   if (!actorId || renderedOwner !== ownerKey)
     return (
       <div className="content-view studio-view documents-view">
@@ -1567,6 +1618,7 @@ export function DocumentsView({
   return (
     <div className="content-view studio-view documents-view">
       {confirmation.dialog}
+      {reference && <OfficeReferenceDialog key={reference.id + ':' + reference.version} {...reference} onClose={() => setReference(null)} />}
       <div className="view-heading" data-motion="view-header">
         <div>
           <h1 className="sr-only">{project.title}</h1>
@@ -1690,6 +1742,20 @@ export function DocumentsView({
               {t('新建文档')}
             </button>
           )}
+          {canEdit && (
+            <div className="office-new-files">
+              <button type="button" className="text-button" disabled={busy || pendingSave || !!recoveryDraft}
+                onClick={() => void choose(null, { title: t('未命名演示'), body: writePresentation(blankPresentation(t('幻灯片') + ' 1'))! })
+                  .then(opened => { if (opened) setAutoSave(true); })}>
+                {t('新建演示')}
+              </button>
+              <button type="button" className="text-button" disabled={busy || pendingSave || !!recoveryDraft}
+                onClick={() => void choose(null, { title: t('未命名工作表'), body: emptyProjectSheet([t('名称'), t('数值'), t('结果')]) })
+                  .then(opened => { if (opened) setAutoSave(true); })}>
+                {t('新建工作表')}
+              </button>
+            </div>
+          )}
           {canEdit && <SpreadsheetImport key={ownerKey} disabled={busy || !!pendingSave || !!recoveryDraft}
             onImport={(draft) => choose(null, draft)} />}
           {docs.length > 0 && (
@@ -1766,7 +1832,7 @@ export function DocumentsView({
               </button>
               <FileText size={16} />
               <span>{selected ? t('版本 {v0}', { v0: selected.version }) : t('新建文档')}</span>
-              {selected && canEdit && (
+              {selected && canEdit && !live && (
                 <DocumentHistory
                   key={ownerKey + selected.id}
                   document={selected}
@@ -1785,6 +1851,14 @@ export function DocumentsView({
                   }}
                 />
               )}
+              {selected && canEdit && !presentation && !projectSheet && !live && (
+                <button type="button" className="text-button" disabled={dirty || busy || pendingSave || !!recoveryDraft || !!newerVersion}
+                  onClick={() => setLiveId(selected.id)}>{t('实时共编')}</button>
+              )}
+              {selected && canEdit && !live && <label className="office-autosave">
+                <input type="checkbox" checked={autoSave} onChange={e => setAutoSave(e.target.checked)} />
+                {t('自动保存')}
+              </label>}
               <span
                 className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}
                 aria-live="polite"
@@ -1813,14 +1887,30 @@ export function DocumentsView({
               aria-label={t('文档标题')}
               placeholder={t('文档标题')}
               value={title}
-              readOnly={!canEdit || pending === 'read'}
+              readOnly={!canEdit || pending === 'read' || live}
               onChange={(event) => {
                 updateDraft({ ...currentDraft.current, title: event.target.value });
               }}
               maxLength={120}
               required
             />
-            {projectSheet && !sheetSource ? <ProjectSheetEditor key={editorSession} sheet={projectSheet} title={title}
+            {live && selected ? <Suspense fallback={<Busy label={t('正在连接共编')} />}>
+              <LiveDocumentEditor key={ownerKey + selected.id} document={selected} actorId={actorId} projectId={project.id}
+                sources={docs} onReference={openReference}
+                readOnly={!canEdit} onCloud={updateLiveDocument} onPending={setLivePending}
+                onClose={recovery => {
+                  if (recovery && !updateDraft({ ...recovery, title: currentDraft.current.title })) return false;
+                  setLiveId(null);
+                  setLivePending(false);
+                  setShowFormatting(true);
+                  setEditorSession(value => value + 1);
+                  setError(null);
+                  return true;
+                }} />
+            </Suspense>
+            : presentation ? <PresentationEditor key={editorSession} document={presentation} projectId={project.id} sources={docs}
+              readOnly={!canEdit || pending === 'read'} onChange={value => updateDraft({ title: currentDraft.current.title, body: value, formatting: null })} />
+            : projectSheet && !sheetSource ? <ProjectSheetEditor key={editorSession} sheet={projectSheet} title={title}
               chart={formatting?.layout?.chart ?? 'bar'} onChart={chart => updateDraft({...currentDraft.current,
                 formatting: withDocumentLayout(formatting, {...(formatting?.layout ?? defaultLayout), chart})})}
               onSource={()=>setSheetSource(true)} readOnly={!canEdit || pending === 'read'}
@@ -1828,17 +1918,20 @@ export function DocumentsView({
             : <>
               {projectSheet && <button type="button" className="text-button document-format-toggle"
                 onClick={() => setSheetSource(false)}>{t('工作表')}</button>}
+              {!projectSheet && canEdit && <OfficeInsert key={editorSession} projectId={project.id}
+                documents={docs.filter(doc => doc.id !== selected?.id)} onInsert={insertOfficeBlock} />}
               <DocumentComposer key={editorSession} body={body} title={title} formatting={formatting}
+                onReference={openReference}
                 readOnly={!canEdit || pending === 'read'}
                 onChange={(value, nextFormat) => updateDraft({ title: currentDraft.current.title, body:value, formatting:nextFormat })}
                 onRich={!showFormatting && !formatting?.paragraphs.length && !projectSheet ? () => setShowFormatting(true) : undefined}
                 richEditor={(showFormatting || !!formatting?.paragraphs.length) && <Suspense fallback={<Busy label={t('读取中')} />}>
-                  <RichDocumentEditor body={body} formatting={formatting} readOnly={!canEdit || pending === 'read'}
+                  <RichDocumentEditor body={body} formatting={formatting} readOnly={!canEdit || pending === 'read'} onReference={openReference}
                     onChange={next => updateDraft({...next, title:currentDraft.current.title})}/>
                 </Suspense> || undefined}
               />
             </>}
-            {(newerVersion || conflict) && (
+            {!live && (newerVersion || conflict) && (
               <div className="document-conflict">
                 <span>{t('云端已有更新。当前文字已保留，读取前可先复制需要的内容。')}</span>
                 <button
@@ -1853,16 +1946,18 @@ export function DocumentsView({
               </div>
             )}
             <InlineError message={error} />
-            <footer>
-              <span className="document-word-count">
+            {!live && <footer>
+              {!presentation && !projectSheet && <span className="document-word-count">
                 {body.length.toLocaleString(getLocale())} {t('字')}
-              </span>
+              </span>}
               <div className="document-draft-editor-actions">
                 {onUseDocument && selected && canEdit && !dirty && (
                   <button type="button" className="text-button" disabled={busy || pendingSave}
                     onClick={() => onUseDocument(selected)}>{t('用此文档与 AI 创作')}</button>
                 )}
-                <ExportContent key={selected?.id ?? ownerKey} title={title} body={body} formatting={formatting} captureCover={captureCover} />
+                <ExportContent key={selected?.id ?? ownerKey} title={title} body={body} formatting={formatting}
+                  formats={presentation ? ['pptx'] : projectSheet ? ['docx', 'pptx', 'xlsx', 'svg', 'png'] : undefined}
+                  captureCover={presentation ? undefined : captureCover} />
                 {dirty && retainedDraft && (
                   <button type="button" className="button button-secondary" onClick={exportDraft}>
                     <DownloadSimple size={16} aria-hidden />
@@ -1892,7 +1987,7 @@ export function DocumentsView({
                   </button>
                 )}
               </div>
-            </footer>
+            </footer>}
           </form>
         ) : (
           <div className="surface document-placeholder">
