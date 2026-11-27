@@ -11,7 +11,7 @@ test('authorized document history is paged and a restored version uses the norma
   const f = await collaborationFixture(databaseUrl!);
   t.after(() => f.close());
   const base = { title: 'Plan', body: 'First draft', formatting: {
-    version: 1, paragraphs: [{ line: 0, align: 'center' }],
+    version: 1, paragraphs: [{ line: 0, align: 'center', runs: [] }],
   } };
   const created = await f.call('POST', '/v1/projects/' + f.projectId + '/documents', base);
   assert.equal(created.statusCode, 201, created.body);

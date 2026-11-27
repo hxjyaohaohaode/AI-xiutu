@@ -171,8 +171,14 @@ try {
           reference.width,
           reference.height,
         );
+        const exportDialog = page.locator('dialog.export-dialog:visible');
+        if (await exportDialog.isVisible()) {
+          await page.keyboard.press('Escape');
+          await exportDialog.waitFor({ state: 'hidden' });
+        }
       }
-      await page.locator('[data-dock-tool="light"]').click();
+      const lightTool = page.locator('[data-dock-tool="light"]');
+      if (await lightTool.getAttribute('aria-pressed') !== 'true') await lightTool.click();
       const balance = page.locator('.editor-light-suggestion:visible');
       await balance.locator('summary').click();
       await balance.getByLabel('光线方向').selectOption('open-shadows');

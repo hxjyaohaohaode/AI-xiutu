@@ -1168,7 +1168,6 @@ export function DocumentsView({
         retainedRevision: documentDrafts.get(actorId, project.id)?.revision,
         ...documentScope.current,
         ...currentDraft.current,
-        generation: requestGeneration.current,
         saving: saveLock.current,
       }),
       () => confirmation.confirm({ description }),
@@ -1523,13 +1522,15 @@ export function DocumentsView({
       );
       if (
         activeOwner.current !== ownerKey ||
-        generation !== requestGeneration.current ||
-        activeOperation.current !== operation
+        activeOperation.current !== operation ||
+        documentScope.current.selectedId !== selected.id ||
+        documentScope.current.version !== selected.version ||
+        documentDrafts.get(actorId, project.id)?.revision !== replacedDraft?.revision
       )
         return;
       const latest = list.find((doc) => doc.id === selected.id);
       if (!latest) throw new Error('这份文档已不可访问，请重新选择文档。');
-      setDocs(list);
+      if (generation === requestGeneration.current) setDocs(list);
       setSelected(latest);
       setTitle(latest.title);
       setBody(latest.body);

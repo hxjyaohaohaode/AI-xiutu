@@ -80,6 +80,12 @@ test(
           const mismatchedType = await f.call('GET', '/v1/resources?groupBy=type&mime=image%2Fjpeg');
           assert.equal(mismatchedType.statusCode, 200, mismatchedType.body);
           assert.deepEqual(mismatchedType.json().groups, []);
+          const landscape = await f.call('GET', '/v1/resources?orientation=landscape&groupBy=project', undefined, 'editor');
+          assert.equal(landscape.statusCode, 200, landscape.body);
+          assert.deepEqual(landscape.json().groups, [{ key: f.projectId, count: 1 }]);
+          const portrait = await f.call('GET', `/v1/projects/${f.projectId}/assets?orientation=portrait`);
+          assert.equal(portrait.statusCode, 200, portrait.body);
+          assert.deepEqual(portrait.json().assets, []);
           const first = (await f.call('GET', '/v1/resources?limit=1')).json();
           assert.ok(first.nextCursor);
           const next = (
@@ -96,6 +102,10 @@ test(
           );
           assert.equal(wrong.statusCode, 400);
           assert.equal(wrong.json().error.code, 'CURSOR_SCOPE_MISMATCH');
+          const changedOrientation = await f.call('GET',
+            `/v1/resources?limit=1&orientation=landscape&cursor=${encodeURIComponent(first.nextCursor)}`);
+          assert.equal(changedOrientation.statusCode, 400, changedOrientation.body);
+          assert.equal(changedOrientation.json().error.code, 'CURSOR_SCOPE_MISMATCH');
         },
       );
       await t.test(

@@ -150,15 +150,31 @@ async function checkFormattedDocument(page, fixture) {
   assert.deepEqual(copied.formatting,saved.formatting);
   assert.equal(copied.version,1);
   assert.deepEqual((await fixture.db.query('SELECT formatting FROM document_versions WHERE document_id=$1',[copied.id])).rows[0].formatting,saved.formatting);
+  // A background update while the confirmation is open should not invalidate
+  // the user's local draft identity or prevent reading the latest revision.
+  await editor.getByRole('button',{name:'读取最新版本',exact:true}).click();
+  const confirm = page.getByRole('dialog').getByRole('button', {name:'确认继续',exact:true});
+  await confirm.waitFor();
   const nonRich=await call('PATCH',url,{expectedVersion:2,body:'新行\n'+text});
   assert.equal(nonRich.statusCode,200);
   assert.equal(nonRich.json().document.formatting.paragraphs[0].line,1);
   const history = await fixture.db.query('SELECT version,formatting FROM document_versions WHERE document_id=$1 ORDER BY version',[saved.id]);
   assert.deepEqual(history.rows.map(r=>r.formatting.paragraphs[0].line),[0,0,1]);
-  // Relinquish only this temporary document's unsaved draft, via its normal conflict recovery.
-  await editor.getByRole('button',{name:'读取最新版本',exact:true}).click();
-  await page.getByRole('dialog').getByRole('button',{name:'确认继续',exact:true}).click();
+  await page.locator('.document-row').filter({ hasText:'协作修改' }).getByText(/V3/).waitFor();
+  await confirm.click();
   await page.waitForFunction(()=>document.querySelector('.document-title')?.value==='协作修改');
+  await editor.getByRole('button', { name:'版本历史',exact:true }).click();
+  const versions = page.getByRole('dialog',{name:'版本历史',exact:true});
+  await versions.getByRole('button',{name:/^版本 1 ·/}).click();
+  await versions.getByRole('button',{name:'载入为草稿',exact:true}).click();
+  await page.waitForFunction(value=>document.querySelector('.document-title')?.value===value, docTitle);
+  const [loaded] = (await fixture.db.query('SELECT version,body FROM documents WHERE id=$1', [saved.id])).rows;
+  assert.deepEqual([loaded.version, loaded.body], [3, '新行\n'+text]);
+  const [restored] = await Promise.all([page.waitForResponse(r=>r.request().method()==='PATCH'&&r.url().endsWith(url.slice(3))),
+    editor.getByRole('button',{name:'保存文档',exact:true}).click()]);
+  assert.equal(restored.status(),200);
+  const restoredDoc = (await restored.json()).document;
+  assert.deepEqual([restoredDoc.version, restoredDoc.body, restoredDoc.formatting], [4, text, saved.formatting]);
   report.formatted = { originalBody:text, version:saved.version, formatted:saved.formatting,
     historicalParagraphLines:[0,0,1], staleStatus:stale.status(), unauthorizedStatus:403, nativeFormats:['docx','pptx'] };
 }
