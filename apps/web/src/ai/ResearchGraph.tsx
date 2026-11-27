@@ -41,10 +41,12 @@ export function ResearchGraph({
   turnId,
   live,
   running,
+  historical = false,
 }: {
   turnId?: string;
   live: AssistantBranchEvent[];
   running: boolean;
+  historical?: boolean;
 }) {
   const locale = useLocale();
   const copy =
@@ -77,7 +79,7 @@ export function ResearchGraph({
   const [failedTurn, setFailedTurn] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
   useEffect(() => {
-    if (!turnId) return;
+    if (!turnId || (historical && reload === 0)) return;
     const controller = new AbortController();
     setFailedTurn(null);
     void api<{ turnId: string; branches: Branch[] }>(
@@ -101,14 +103,25 @@ export function ResearchGraph({
         if (!controller.signal.aborted) setFailedTurn(turnId);
       });
     return () => controller.abort();
-  }, [turnId, running, reload]);
+  }, [turnId, running, historical, reload]);
   const stored = data && data.turnId === turnId ? data.branches : [];
   const fresh = !!data && data.turnId === turnId && data.running === running;
   const liveBranches = live.filter(isBranch);
   const branches = mergeResearchBranches(stored, liveBranches, running || !fresh);
   const root = branches.find((branch) => branch.kind === 'root');
   const children = branches.filter((branch) => branch.kind !== 'root' && branch.kind !== 'merge');
-  if (!root || !children.length) return null;
+  if (!root || !children.length) {
+    if (!historical || !turnId) return null;
+    const loading = reload > 0 && failedTurn !== turnId && !fresh;
+    return (
+      <div className="assistant-message-actions">
+        <button type="button" disabled={loading} aria-busy={loading} onClick={() => setReload((n) => n + 1)}>
+          <TreeStructure size={15} aria-hidden="true" />
+          {t(failedTurn === turnId || fresh ? '刷新进度' : '研究分工')}
+        </button>
+      </div>
+    );
+  }
   const merges = branches.filter((branch) => branch.kind === 'merge');
   const isEditing = children.some((branch) =>
     ['candidate', 'pixel-review', 'nomination'].includes(branch.kind),
@@ -131,7 +144,7 @@ export function ResearchGraph({
     <MotionDetails
       key={turnId}
       className="assistant-research-graph research-paths"
-      defaultOpen={running}
+      defaultOpen={running || historical}
     >
       <summary>
         <TreeStructure size={16} aria-hidden="true" />
@@ -184,7 +197,7 @@ export function ResearchGraph({
                     <CaretDown className="research-task-chevron" size={12} aria-hidden />
                   </summary>
                   <div className="research-task-detail">
-                    <p>{branch.execution === 'provider' ? copy.provider : copy.server}</p>
+                    <p>{branch.finding || (branch.execution === 'provider' ? copy.provider : copy.server)}</p>
                     {dependencies.length > 0 && (
                       <p>
                         {t('依据 {v0}', { v0: dependencies.join(locale === 'en' ? ', ' : '、') })}

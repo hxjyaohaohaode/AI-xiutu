@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { NEUTRAL_PRECISION_EDIT, parsePrecisionEdit, type PrecisionEdit } from '@ai-xiutu/editor';
+import { MAX_HEADER_BYTES, MAX_TILED_DIMENSION, readImageHeader, PHOTO_MAX_PIXELS, PHOTO_PROXY_PIXELS, NEUTRAL_PRECISION_EDIT, parsePrecisionEdit, type PrecisionEdit } from '@ai-xiutu/editor';
 import {
   processMedia,
   exportMedia,
@@ -204,12 +204,14 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       attachmentHolders.delete(download.actorId);
     }
   }
-  async function assertAvailable() {
-    if (!enabled || !(await capabilities).available)
+  async function assertAvailable(profile = 'studio') {
+    if ((profile !== 'photo' && !enabled) || !(await capabilities).available)
       throw new HttpError(
         503,
         'MEDIA_NOT_CONFIGURED',
-        '高精度素材处理尚未启用，请联系运营配置 Linux 隔离处理环境。',
+        profile === 'photo'
+          ? '此服务器无法处理大图，请检查 Linux 隔离解码环境。'
+          : '高精度素材处理尚未启用，请联系运营配置 Linux 隔离处理环境。',
       );
   }
   async function jobAccess(tx: Queryable, jobId: string, actor: string, authHash?: string) {
@@ -281,19 +283,36 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     heartbeat.unref();
     try {
       const runtime = await capabilities;
+      let workerName = row.name;
+      if (row.profile === 'photo') {
+        const input = await open(inputPath(row.id), 'r');
+        try {
+          const header = Buffer.alloc(Math.min(MAX_HEADER_BYTES, Number(row.expected_bytes)));
+          const { bytesRead } = await input.read(header, 0, header.length, 0);
+          const photo = readImageHeader(header.subarray(0, bytesRead), {
+            maxPixels: Math.min(config.maxPixels, PHOTO_MAX_PIXELS), maxDimension: MAX_TILED_DIMENSION,
+          });
+          if (photo.animated || !['jpeg', 'png'].includes(photo.format))
+            throw new Error('Standard import accepts only static JPEG and PNG photos.');
+          workerName = 'photo.' + photo.format;
+        } finally { await input.close(); }
+      }
       const descriptor = await processMedia({
         inputPath: inputPath(row.id),
         workDir: workDir(row.id),
-        originalName: row.name,
+        originalName: workerName,
+        originalDisplayName: row.name,
         signal,
         options: {
           pythonExecutable,
           ultraHdrLibrary: runtime.ultraHdrJpeg.available ? ultraHdrLibrary : undefined,
           heicDecoder: runtime.heicPq.available ? heicDecoder : undefined,
-          maxPixels,
+          maxPixels: row.profile === 'photo' ? Math.min(config.maxPixels, PHOTO_MAX_PIXELS) : maxPixels,
           generateTiles: row.generate_tiles,
         },
       });
+      if (row.expected_sha256 && descriptor.sourceSha256 !== row.expected_sha256)
+        throw new Error('Uploaded photo differs from the declared original digest.');
       const retainedBytes = await directoryBytes(workDir(row.id));
       const proxy = await readFile(join(workDir(row.id), descriptor.proxy.relativePath));
       const stored = await storage.storeGenerated(proxy);
@@ -330,10 +349,16 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
               row.actor_id,
               JSON.stringify({
                 kind: 'media-import',
+                declaredSource: row.declared_source ?? 'upload',
                 protocol: 'media-v1',
+                profile: row.profile ?? 'studio',
+                originalFormat: descriptor.original.format,
+                originalBytes: descriptor.original.bytes,
                 sourceSha256: descriptor.sourceSha256,
                 sourceWidth: descriptor.original.width,
                 sourceHeight: descriptor.original.height,
+                uprightWidth: descriptor.master.width,
+                uprightHeight: descriptor.master.height,
                 sourceBitDepth: descriptor.original.bitDepth,
                 sourceColorSpace: descriptor.original.colorSpace,
                 editorProxy: true,
@@ -430,11 +455,11 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     enabled,
     available: enabled && (await capabilities).available,
     maxChunkBytes: CHUNK_BYTES,
+    ordinaryPhotos: { available: (await capabilities).available, maxBytes: config.maxUploadBytes, maxPixels: config.maxPixels },
     retention:
       'original-and-master-retained; logical charges include copies; soft deletion does not reclaim originals',
   }));
   app.post('/v1/projects/:id/media-imports', async (req, reply) => {
-    await assertAvailable();
     const actor = requireUser(req);
     const params = jobParams.parse(req.params);
     const body = z
@@ -443,25 +468,28 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         size: z.number().int().min(1).max(MEDIA_MAX_INPUT_BYTES),
         idempotencyKey: id,
         generateTiles: z.boolean().default(true),
+        profile: z.enum(['photo', 'studio']).default('studio'),
+        sourceSha256: sourceDigest.optional(),
+        declaredSource: z.enum(['upload', 'sketch']).default('upload'),
       })
       .strict()
       .parse(req.body);
+    await assertAvailable(body.profile);
+    if (body.profile === 'photo') {
+      if (body.size > config.maxUploadBytes)
+        throw new HttpError(413, 'PHOTO_SOURCE_LIMIT', '照片超过当前服务器的原件容量限制。');
+      body.generateTiles = false;
+    }
     const requestHash = hash(
       JSON.stringify({
         name: body.name,
         size: body.size,
         generateTiles: body.generateTiles,
         projectId: params.id,
+        ...(body.profile === 'photo' ? { profile: body.profile, declaredSource: body.declaredSource } : {}),
+        ...(body.sourceSha256 ? { sourceSha256: body.sourceSha256 } : {}),
       }),
     );
-    await mkdir(inputs, { recursive: true, mode: 0o700 });
-    const disk = await statfs(inputs);
-    if (Number(disk.bavail) * Number(disk.bsize) < body.size * 2 + 2 * 1024 ** 3)
-      throw new HttpError(
-        503,
-        'MEDIA_DISK_BUDGET',
-        '服务器临时磁盘空间不足，当前不能安全接收高精度素材。',
-      );
     const result = await transaction(db, async (tx) => {
       await tx.query("SELECT pg_advisory_xact_lock(hashtextextended('media-import-admission',0))");
       const project = await lockProjectMutation(
@@ -481,6 +509,19 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
           throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '这个导入标识已用于另一个文件');
         return previous;
       }
+      await mkdir(inputs, { recursive: true, mode: 0o700 });
+      const disk = await statfs(inputs);
+      // Ordinary imports never produce tile pyramids. Match the worker's retained-master
+      // and staging envelope, using the configured maximum before the header is available.
+      const workingBytes = body.profile === 'photo'
+        ? Math.ceil(Math.min(config.maxPixels, PHOTO_MAX_PIXELS) * 8.125) + PHOTO_PROXY_PIXELS * 8 + 8 * 1024 ** 2
+        : 2 * 1024 ** 3;
+      if (Number(disk.bavail) * Number(disk.bsize) < body.size * 2 + workingBytes)
+        throw new HttpError(
+          503,
+          'MEDIA_DISK_BUDGET',
+          '服务器临时磁盘空间不足，当前不能安全接收高精度素材。',
+        );
       if (
         (
           await tx.query(
@@ -519,7 +560,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
         throw new HttpError(409, 'SPACE_STORAGE_LIMIT', '空间容量不足以预留这份原件，请先调整额度');
       return (
         await tx.query(
-          'INSERT INTO media_import_jobs(project_id,actor_id,idempotency_key,request_hash,name,expected_bytes,generate_tiles,reservation_bytes) VALUES($1,$2,$3,$4,$5,$6,$7,$6) RETURNING *',
+          'INSERT INTO media_import_jobs(project_id,actor_id,idempotency_key,request_hash,name,expected_bytes,generate_tiles,reservation_bytes,profile,expected_sha256,declared_source) VALUES($1,$2,$3,$4,$5,$6,$7,$6,$8,$9,$10) RETURNING *',
           [
             params.id,
             actor.id,
@@ -528,6 +569,9 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
             body.name,
             body.size,
             body.generateTiles,
+            body.profile,
+            body.sourceSha256 ?? null,
+            body.declaredSource,
           ],
         )
       ).rows[0]!;
@@ -551,7 +595,6 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       (_request, body, done) => done(null, body),
     );
     chunks.put('/v1/media-imports/:id/chunk', { bodyLimit: CHUNK_BYTES }, async (req) => {
-      await assertAvailable();
       const actor = requireUser(req);
       const { id: jobId } = jobParams.parse(req.params);
       const { offset } = z
@@ -563,6 +606,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       const bytes = req.body;
       return transaction(db, async (tx) => {
         const row = await jobAccess(tx, jobId, actor.id, hash(req.cookies.xiutu_session ?? ''));
+        await assertAvailable(row.profile);
         if (row.state !== 'uploading')
           throw new HttpError(409, 'IMPORT_STATE', '当前任务不再接受上传');
         const uploaded = Number(row.uploaded_bytes);
@@ -619,11 +663,11 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     });
   });
   app.post('/v1/media-imports/:id/complete', async (req, reply) => {
-    await assertAvailable();
     const actor = requireUser(req);
     const { id: jobId } = jobParams.parse(req.params);
     const row = await transaction(db, async (tx) => {
       const current = await jobAccess(tx, jobId, actor.id, hash(req.cookies.xiutu_session ?? ''));
+      await assertAvailable(current.profile);
       if (current.state === 'ready' || current.state === 'processing')
         return { ...current, launchNew: false };
       if (

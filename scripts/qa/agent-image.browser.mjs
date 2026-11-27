@@ -24,7 +24,7 @@ const port = Number(process.env.BROWSER_WEB_PORT || 4193);
 const origin = 'http://127.0.0.1:' + port;
 const imageModel = 'gpt-image-2.5-sunburst';
 const assistantModel = 'image-browser-' + randomUUID();
-const prompt = '生成一张方形的陶瓷花瓶插画。';
+const prompt = '生成一张 864×1536 像素的竖版陶瓷花瓶插画。';
 const report = { assistantRounds: 0, imageCalls: 0, projectJobs: 0, viewports: [], pageErrors: [] };
 const moderator = {
   configured: true,
@@ -58,9 +58,9 @@ function createJobService(db, config) {
     const body = JSON.parse(init.body);
     assert.equal(body.model, imageModel);
     assert.equal(body.prompt, prompt);
-    assert.equal(body.size, '1024x1024');
+    assert.equal(body.size, '864x1536');
     report.imageCalls++;
-    const png = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#768aac' } }).png().toBuffer();
+    const png = await sharp({ create: { width: 864, height: 1536, channels: 3, background: '#768aac' } }).png().toBuffer();
     return Response.json({ data: [{ b64_json: png.toString('base64') }] }, { headers: { 'x-request-id': 'fixture-image' } });
   });
   return createAiService(db, { AI_IMAGE_ENABLED: 'true', AI_MODERATION_PROVIDER: 'openai' }, {
@@ -114,7 +114,7 @@ try {
   await settings.getByRole('button', { name: '返回对话', exact: true }).click();
   await page.getByLabel('向智能体描述修改需求').fill(prompt);
   await page.getByRole('button', { name: '发送协作请求', exact: true }).click();
-  const generate = page.getByRole('button', { name: '生成 · 图像协议验收 · 1024×1024 · 3 点', exact: true });
+  const generate = page.getByRole('button', { name: '生成 · 图像协议验收 · 864×1536 · 3 点', exact: true });
   await generate.waitFor();
   assert.equal(await generate.isEnabled(), true);
   assert.equal(report.imageCalls, 0);
@@ -141,9 +141,28 @@ try {
   const file = await fixture.call('GET', '/v1/assets/' + row.output.images[0].assetId + '/file');
   assert.equal(file.statusCode, 200);
   const meta = await sharp(file.rawPayload).metadata();
-  assert.deepEqual([meta.format, meta.width, meta.height], ['png', 1024, 1024]);
+  assert.deepEqual([meta.format, meta.width, meta.height], ['png', 864, 1536]);
   report.projectJobs = (await fixture.db.query('SELECT COUNT(*)::int AS n FROM ai_jobs WHERE project_id=$1', [fixture.projectId])).rows[0].n;
   assert.deepEqual([report.projectJobs, report.imageCalls, report.assistantRounds], [1, 1, 2]);
+  await page.getByRole('button', { name: '打开并编辑', exact: true }).click();
+  await page.locator('canvas[aria-label="照片编辑预览"]').waitFor();
+  await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
+  await page.getByRole('button', { name: '导出', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: '导出图片', exact: true });
+  await dialog.getByRole('combobox', { name: '输出尺寸', exact: true }).click();
+  await dialog.getByRole('option', { name: '608 × 1080', exact: true }).click();
+  report.downloads = [];
+  for (const format of ['PNG', 'JPEG', 'WebP']) {
+    await dialog.getByRole('button', { name: new RegExp('^' + format) }).click();
+    const [download] = await Promise.all([page.waitForEvent('download'),
+      dialog.getByRole('button', { name: '下载 ' + format.toUpperCase(), exact: true }).click()]);
+    const stream = await download.createReadStream();
+    const parts = [];
+    for await (const chunk of stream) parts.push(chunk);
+    const metadata = await sharp(Buffer.concat(parts)).metadata();
+    assert.deepEqual([metadata.format, metadata.width, metadata.height], [format.toLowerCase(), 608, 1080]);
+    report.downloads.push({ format: metadata.format, width: metadata.width, height: metadata.height });
+  }
   assert.deepEqual(report.pageErrors, []);
   report.result = { dimensions: [meta.width, meta.height], billedUnits: row.units, settlement: row.hold };
   console.log('Passed: one agent candidate produced one settled image job in the editor.');

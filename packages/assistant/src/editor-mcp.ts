@@ -77,7 +77,7 @@ export async function openEditorMcp(context: {
     server.registerTool(
       'read_history',
       {
-        description: 'Read an authorized range of a prior message in this conversation.',
+        description: 'Read an authorized prior message range and the identifiers of saved tool results on this branch.',
         annotations: readOnly,
         inputSchema: mcpHistoryInput,
         outputSchema: output,

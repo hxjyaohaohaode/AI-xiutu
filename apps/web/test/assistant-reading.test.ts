@@ -19,6 +19,7 @@ const stylesheetLoader = registerHooks({
   },
 });
 const { AssistantText } = await import('../src/ai/AssistantText.tsx');
+const { ResearchGraph } = await import('../src/ai/ResearchGraph.tsx');
 stylesheetLoader.deregister();
 
 test('assistant output is readable text and cannot execute HTML, load images or use unsafe URLs', () => {
@@ -107,4 +108,20 @@ test('terminal snapshots supersede earlier streaming states without inventing co
   assert.equal(researchDisplayState(branch('a', 'completed'), false, false), 'completed');
   assert.equal(isResearchBranch({ ...branch('a'), state: 'syncing' }), false);
   assert.equal(isResearchBranch({ ...branch('a'), dependsOn: Array(49).fill('x') }), false);
+});
+
+
+test('an authorized specialist finding is rendered as text under its own branch', () => {
+  const root: ResearchBranch = { id: 'root', kind: 'root', parentId: null, dependsOn: [], state: 'completed', execution: 'provider' };
+  const finding = '<img src=x onerror=alert(1)> preserve the highlight.';
+  const specialist = { ...root, id: 'tone', parentId: 'root', kind: 'tone-review' as const, state: 'completed' as const, finding };
+  assert.ok(isResearchBranch(specialist));
+  assert.equal(isResearchBranch({ ...specialist, finding: 'a'.repeat(1801) }), false);
+  assert.equal(isResearchBranch({ ...specialist, state: 'failed' }), false);
+  const html = renderTestMarkup(createElement(ResearchGraph, {
+    turnId: 'review-test', running: true,
+    live: [{ ...root, state: 'completed' }, specialist],
+  }));
+  assert.match(html, /&lt;img src=x onerror=alert\(1\)&gt; preserve the highlight/);
+  assert.doesNotMatch(html, /<img src=x/i);
 });

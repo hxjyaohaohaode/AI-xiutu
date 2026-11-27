@@ -21,6 +21,8 @@ import type {
 } from '@ai-xiutu/contracts';
 import {
   assistantCloudResourceSchema,
+  assistantRecordTool,
+  type AssistantToolRecord,
   assistantPublicSearchSchema,
   assistantResearchPlan,
   assistantWorkspaceSchema,
@@ -366,7 +368,7 @@ export const ASSISTANT_TOOLS: ReadonlyArray<Record<string, unknown>> = [
     name: 'read_history',
     strict: true,
     description:
-      'Read an authorized original conversation source when compressed prose or prior decisions need clarification.',
+      'Read an original ancestor message and its saved tool record identifiers. Inspect the source when compressed prose or a past decision needs clarification.',
     parameters: jsonObject(
       {
         sourceTurnId: { type: 'string' },
@@ -380,7 +382,7 @@ export const ASSISTANT_TOOLS: ReadonlyArray<Record<string, unknown>> = [
     type: 'function',
     name: 'read_tool_result',
     strict: true,
-    description: 'Read a bounded slice of a previously offloaded tool result from this run.',
+    description: 'Read a bounded slice of a tool result from this run or a saved work record identified by read_history on the current conversation branch. Historical evidence describes the previous source, not the current canvas.',
     parameters: jsonObject(
       {
         artifactId: { type: 'string' },
@@ -584,6 +586,7 @@ export interface AgentResult {
   termination: 'completed' | 'incomplete' | 'refused' | 'round_limit';
   selectedCandidateIndex?: number;
   memorySuggestions: MemorySuggestion[];
+  toolRecords?: AssistantToolRecord[];
   workspace?: AssistantWorkspace;
   text: string;
   reasoningSummary?: string;
@@ -594,7 +597,7 @@ export interface AgentResult {
   requestIds: string[];
 }
 const MAX_MODEL_REQUESTS = 4;
-const POLICY_VERSION = 'editor-agent-v7';
+const POLICY_VERSION = 'editor-agent-v8';
 const proposalTools = new Set([
   'propose_edit',
   'propose_curve',
@@ -743,7 +746,7 @@ Apply the current user's explicit request within the application contract. Earli
 Describe visual details only for the particular supplied image. A reference image is distinct from the current frozen preview. Never infer identity or health. State when the canvas has not been shared or the request requires an unavailable operation.
 The current canvas state gives the authoritative source dimensions and saved base version. An unsaved canvas recipe can differ from that version. If the user requests a different base image, look up authorized resources and show the relevant source card. A person confirms the replacement. Prior image descriptions are only historical after a source switch.
 When asked to analyze, research, or advise, answer with observations and possible next steps. Reserve candidate creation, inspection and selection for explicit editing requests. Use delegate_research for independent private library queries or a check of the explicitly shared current canvas. Treat the merged results as evidence. Public queries are dispatched separately from the user's approved literal inputs. Judge detail from the supplied pixels. Global tone adjustments cannot recover details absent from those pixels.
-For complex critiques, a second opinion, or independent art direction, use consult_specialists as appropriate and synthesize the findings against the user's constraints. Specialists cannot edit or save work. For a presentation use Markdown headings for slide titles and compact paragraphs or bullets. For spreadsheets and charts return a rectangular Markdown table with headers and exact source values. Never invent measurements. The workspace can export the response as a file.
+When asked to revisit previous work, use read_history and read_tool_result to recover cited measurements or each specialist's original findings before commissioning another review. For complex critiques, a second opinion, or independent art direction, use consult_specialists as appropriate and synthesize the findings against the user's constraints. Specialists cannot edit or save work. For a presentation use Markdown headings for slide titles and compact paragraphs or bullets. For spreadsheets and charts return a rectangular Markdown table with headers and exact source values. Never invent measurements. The workspace can export the response as a file.
 When asked to prepare an edit, choose an achievable reversible candidate. For exact numeric requests use the named current controls, absolute values, allowed ranges and explicit target. Keep unrelated parameters unchanged. For exposure and shadow/highlight balance when the current canvas is shared, use propose_scene_balance to ground the edit in measured pixels. Preserve the low-key exposure when requested. Combine dependent steps with propose_sequence from the same base. To change an earlier alternative, propose a complete replacement. Draft generation preserves user model, parameters and price confirmation.
 Inspect only a real candidate returned by a proposal tool. When the current preview is shared, inspect actual candidate pixels in one call and review the returned image in a later round before selecting. Explain any residual artifact or quality uncertainty. Select a single candidate only after the requested checks. A selected candidate is still subject to application permissions. Report actions as proposals until the app reports the saved version. Stop making tools when you can answer or the user needs to decide.
 Use returned source cards to ground search replies. Refer to specific findings and distinguish cloud images, public images and source pages. Search does not authorize importing, sending or republishing a found image. Do not invent sources or say that a URL was fetched by this application.
@@ -977,6 +980,7 @@ ${creativeDirection}${model.responses?.format?.type === 'json_object' ? '\nRetur
             ...node,
             state: usable ? 'completed' : 'failed',
             resultCount: Number(usable),
+            ...(finding ? { finding } : {}),
           });
           return { role, status: usable ? 'reviewed' : 'unavailable', finding };
         } catch (error) {
@@ -1186,6 +1190,7 @@ ${creativeDirection}${model.responses?.format?.type === 'json_object' ? '\nRetur
       const permitted = allowed.has(call.name);
       if (permitted) await context.onTool?.(call.name, 'running');
       let output: unknown;
+      let succeeded = true;
       let consultations: SpecialistRole[] | undefined;
       const stage: { node?: AssistantBranchEvent } = {};
       const beginStage = async (
@@ -1465,6 +1470,7 @@ ${creativeDirection}${model.responses?.format?.type === 'json_object' ? '\nRetur
         }
         if (!consultations) await context.onTool?.(call.name, 'completed');
       } catch {
+        succeeded = false;
         if (stage.node) await context.onBranch?.({ ...stage.node, state: 'failed' });
         if (permitted) await context.onTool?.(call.name, 'failed');
         output = {
@@ -1486,14 +1492,21 @@ ${creativeDirection}${model.responses?.format?.type === 'json_object' ? '\nRetur
       }
       let serialized = JSON.stringify(output);
       if (serialized.length > 250_000) throw new Error('TOOL_OUTPUT_BUDGET');
-      if (textTokens(serialized) > 3000 && context.storeToolResult) {
-        const artifactId = await context.storeToolResult(call.call_id, serialized);
-        serialized = JSON.stringify({
-          artifactId,
-          totalCharacters: serialized.length,
-          preview: serialized.slice(0, 2000),
-          readWith: 'read_tool_result',
-        });
+      if (context.storeToolResult) {
+        const paged = call.name === 'read_history' || call.name === 'read_tool_result';
+        const offload = !paged && textTokens(serialized) > 3000;
+        const record = assistantRecordTool.safeParse(call.name);
+        if (offload || (succeeded && record.success)) {
+          const artifactId = await context.storeToolResult(call.call_id, serialized);
+          if (succeeded && record.success)
+            (result.toolRecords ??= []).push({ artifactId, tool: record.data, characters: serialized.length });
+          if (offload) {
+            serialized = JSON.stringify({
+              artifactId, totalCharacters: serialized.length, preview: serialized.slice(0, 2000),
+              readWith: 'read_tool_result',
+            });
+          }
+        }
       }
       toolCache.set(call.call_id, { signature, output: serialized });
       input.push({ type: 'function_call_output', call_id: call.call_id, output: serialized });

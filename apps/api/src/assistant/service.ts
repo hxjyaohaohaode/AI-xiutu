@@ -18,6 +18,8 @@ import {
 } from '@ai-xiutu/db';
 import {
   assistantSearchEvidenceSchema,
+  assistantToolRecords,
+  type AssistantToolRecord,
   assistantTurnSchema,
   publicPricingSnapshot,
   voiceSessionSchema,
@@ -774,7 +776,9 @@ export function createAssistantService(
           ).rowCount
         )
           throw new HttpError(429, 'ASSISTANT_BUSY', '请等待上一轮协作完成');
-        let history: NonNullable<AgentContext['history']> = [];
+        const history: NonNullable<AgentContext['history']> = [];
+        const ancestorRecords = new Map<string, AssistantToolRecord[]>();
+        const recordOwners = new Map<string, string>();
         const priorCards = new Map<
           string,
           { assetId: string; name: string; sourceTurnId: string }
@@ -829,6 +833,11 @@ export function createAssistantService(
             byTurn.set(turn_id, list);
           }
           for (const parent of ancestors) {
+            const records = assistantToolRecords.safeParse(parent.output?.toolRecords);
+            if (records.success && records.data.length) {
+              ancestorRecords.set(parent.id, records.data);
+              for (const record of records.data) recordOwners.set(record.artifactId, parent.id);
+            }
             const userText = String(parent.prompt);
             const references = byTurn.get(parent.id) ?? [];
             for (const raw of Array.isArray(parent.output?.search) ? parent.output.search : []) {
@@ -850,6 +859,9 @@ export function createAssistantService(
                 content: String(parent.output?.text ?? ''),
                 sourceTurnId: parent.id,
                 ...(references.length ? { candidateTrace: JSON.stringify(references) } : {}),
+                ...(records.success && records.data.length
+                  ? { recordTools: [...new Set(records.data.map((record) => record.tool))] }
+                  : {}),
               },
             );
           }
@@ -960,6 +972,8 @@ export function createAssistantService(
           turnSettings,
           historyScope,
           priorResourceCards,
+          ancestorRecords,
+          recordOwners,
         };
       });
       if (admission.replay) return this.getTurn(actorId, admission.row.id);
@@ -1108,6 +1122,7 @@ export function createAssistantService(
             });
             return {
               sourceTurnId: sourceId,
+              toolRecords: admission.ancestorRecords.get(sourceId) ?? [],
               offset,
               total: content.length,
               content: content.slice(offset, offset + limit),
@@ -1121,15 +1136,24 @@ export function createAssistantService(
             return result.rows[0]!.id;
           };
           agentContext.readToolResult = async (artifactId, offset, limit) => {
-            const artifact = (
-              await db.query(
-                'SELECT content,content_hash FROM assistant_tool_artifacts WHERE id=$1 AND turn_id=$2',
-                [artifactId, row.id],
-              )
-            ).rows[0];
-            if (!artifact) throw new HttpError(404, 'TOOL_ARTIFACT_NOT_FOUND', '工具结果不可用');
+            const sourceTurnId = admission.recordOwners.get(artifactId) ?? row.id;
+            // Only a successful direct ancestor's published work records cross a turn.
+            // The current turn may also read its transient oversized tool results.
+            const artifact = await transaction(db, async (tx) => {
+              await lockedAssistantAccess(tx, actorId, projectId, admission.historyScope, sessionHash);
+              return (await tx.query(
+                `SELECT a.content,a.content_hash FROM assistant_tool_artifacts a
+                 JOIN assistant_turns t ON t.id=a.turn_id
+                 WHERE a.id=$1 AND a.turn_id=$2 AND t.actor_id=$3 AND t.project_id=$4
+                   AND (t.id=$5 OR t.state='completed')`,
+                [artifactId, sourceTurnId, actorId, projectId, row.id],
+              )).rows[0];
+            });
+            if (!artifact || hash(artifact.content) !== artifact.content_hash)
+              throw new HttpError(404, 'TOOL_ARTIFACT_NOT_FOUND', '工具结果不可用');
             return {
               artifactId,
+              sourceTurnId,
               hash: artifact.content_hash,
               offset,
               total: artifact.content.length,
@@ -1196,6 +1220,7 @@ export function createAssistantService(
                   candidates,
                   workspace: result.workspace,
                   memorySuggestions: result.memorySuggestions,
+                  ...(result.toolRecords?.length ? { toolRecords: result.toolRecords } : {}),
                   ...(result.selectedCandidateIndex !== undefined
                     ? { selectedCandidateId: candidates[result.selectedCandidateIndex]?.id }
                     : {}),

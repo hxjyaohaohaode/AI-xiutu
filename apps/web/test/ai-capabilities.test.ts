@@ -1,4 +1,4 @@
-import { quickImageOffer } from '../src/components/generationDraft.ts';
+import { generationFrame, quickImageOffer } from '../src/components/generationDraft.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
@@ -236,4 +236,40 @@ test('single-click image offer respects runtime, reference count, size, selected
   assert.equal(quickImageOffer([{ ...retiring, runtimeAvailable: false }], 0), undefined);
   assert.equal(quickImageOffer(catalog, 4), undefined);
   assert.equal(quickImageOffer([{ ...preferred, maxPixels: 10 }], 0), undefined);
+});
+
+test('generation uses quoted draft pixels or the reference aspect at a model-supported size', () => {
+  const m = model();
+  m.runtimeOperations = ['generate-image'];
+  m.runtimeAvailable = true;
+  const source = { width: 3024, height: 4032 };
+  const offer = (text: string) => quickImageOffer([m], 1, m.id, generationFrame(text, source))!;
+  const portrait = offer('保留参考图构图');
+  assert.equal(portrait.width / portrait.height, 3 / 4);
+  assert.ok(portrait.width * portrait.height < 2 * 1024 ** 2);
+  assert.equal(offer('创作 16:9 封面').width / offer('创作 16:9 封面').height, 16 / 9);
+  assert.deepEqual([offer('864×1536 像素').width, offer('864×1536 像素').height], [864, 1536]);
+  assert.equal(offer('一张方形海报').width, offer('一张方形海报').height);
+  m.parameterCapabilities!.size.allowedSizes = ['1024x1024', '1024x1536', '1536x1024'];
+  const fixed = offer('按 9：16 制作');
+  assert.deepEqual([fixed.width, fixed.height, fixed.units], [1024, 1536, 40]);
+});
+
+test('automatic model routing favors a supported requested frame before price and honors an explicit model', () => {
+  const flexible = model();
+  flexible.runtimeOperations = ['generate-image'];
+  flexible.runtimeAvailable = true;
+  const square = { ...flexible, id: 'square-budget', pricing: { ...flexible.pricing!, defaultPerImage: 1 },
+    parameterCapabilities: { ...flexible.parameterCapabilities!, size: { ...flexible.parameterCapabilities!.size, allowedSizes: ['1024x1024'] } } };
+  const frame = generationFrame('发布 864×1536 的海报');
+  assert.equal(quickImageOffer([square, flexible], 0, undefined, frame)?.model.id, flexible.id);
+  assert.equal(quickImageOffer([square, flexible], 0, square.id, frame)?.model.id, square.id);
+  assert.equal(quickImageOffer([square, flexible], 0)?.model.id, square.id);
+});
+
+test('times in a scene description do not override the reference composition', () => {
+  const reference = { width: 1600, height: 900 };
+  assert.deepEqual(generationFrame('画一张中午12:30上课的照片', reference), reference);
+  assert.deepEqual(generationFrame('下午16:10开始的比赛，构图为 3:4', reference), { width: 3, height: 4 });
+  assert.deepEqual(generationFrame('画幅比例 5:7', reference), { width: 5, height: 7 });
 });

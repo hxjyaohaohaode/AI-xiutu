@@ -54,6 +54,7 @@ import {
   buildOpenAIImageRequest,
   normalizePartialImage,
   createMaskedOutput,
+  boundedPhotoReference,
   renderSvgForReview,
   reviewableGifFrames,
   reviewableImageTiles,
@@ -171,6 +172,7 @@ interface FrozenReference {
   bytes: number;
   width?: number;
   height?: number;
+  providerProxy?: 'bounded-png-v1';
 }
 interface Frozen {
   operation: Input['operation'];
@@ -179,7 +181,7 @@ interface Frozen {
   audioBase64?: string;
   manifest: Record<string, unknown>;
   prepared?: PreparedPlan;
-  reference?: { id: string; key: string; hash: string; mime: string; bytes: number };
+  reference?: FrozenReference;
   references?: FrozenReference[];
   mask?: FrozenReference;
   markup?: FrozenReference;
@@ -313,6 +315,14 @@ export function createMultimodalService(
   const journal =
     dependencies.journal ?? new DispatchJournal(env.AI_JOURNAL_DIR ?? '.data/ai-dispatch-journal');
   const storage = dependencies.storage ?? createPrivateStorage(env);
+  async function readReference(meta: FrozenReference): Promise<ImageReference> {
+    const limit = meta.providerProxy === 'bounded-png-v1' ? 50 * 1024 * 1024 : 7_000_000;
+    const bytes = await storage.readBytes(meta.key, limit);
+    if (bytes.length !== meta.bytes || createHash('sha256').update(bytes).digest('hex') !== meta.hash || meta.mime !== 'image/png')
+      throw new AiError('INPUT_INTEGRITY_FAILED', '参考文件与存储元数据不符');
+    return { bytes: meta.providerProxy ? await boundedPhotoReference(bytes) : bytes, mime: 'image/png' };
+  }
+
   let qwenEndpoint = '';
   try {
     qwenEndpoint = validateQwenEndpoint(
@@ -877,8 +887,13 @@ export function createMultimodalService(
                 [id, args.projectId],
               )
             ).rows[0];
-            if (!asset || Number(asset.bytes) > 7_000_000)
-              throw new AiError('REFERENCE_NOT_USABLE', '参考图不属于当前项目或超过 7MB');
+            const aligned = !!(input.maskAssetId || input.markupAssetId);
+            if (!asset || Number(asset.bytes) > (aligned ? 7_000_000 : 50 * 1024 * 1024) ||
+                asset.width * asset.height > 64_000_000)
+              throw new AiError('REFERENCE_NOT_USABLE', aligned
+                ? '蒙版与标注需要同尺寸图像，每张不超过 7 MB。'
+                : '参考图不可用或超过单张 50 MiB / 6400 万像素上限。');
+            const shrink = !aligned && (Number(asset.bytes) > 4_000_000 || asset.width * asset.height > 4_194_304);
             return {
               id: asset.id,
               key: asset.storage_key,
@@ -887,6 +902,7 @@ export function createMultimodalService(
               bytes: Number(asset.bytes),
               width: asset.width,
               height: asset.height,
+              ...(shrink ? { providerProxy: 'bounded-png-v1' as const } : {}),
             };
           };
           if (!isV2 && input.referenceAssetId) {
@@ -898,10 +914,12 @@ export function createMultimodalService(
               hash: reference.hash,
               mime: reference.mime,
               bytes: reference.bytes,
+              ...(reference.providerProxy ? { providerProxy: reference.providerProxy } : {}),
             };
             Object.assign(manifest, {
               referenceAssetId: reference.id,
               referenceHash: reference.hash,
+              ...(reference.providerProxy ? { referenceProxy: reference.providerProxy } : {}),
             });
           }
           if (isV2) {
@@ -916,9 +934,9 @@ export function createMultimodalService(
               ...(frozen.markup ? [frozen.markup] : []),
             ];
             if (
-              allInputs.reduce((sum, value) => sum + value.bytes, 0) > 28_000_000 ||
+              allInputs.reduce((sum, value) => sum + value.bytes, 0) > (allInputs.some((r) => r.providerProxy) ? 64 * 1024 * 1024 : 28_000_000) ||
               allInputs.reduce((sum, value) => sum + (value.width ?? 0) * (value.height ?? 0), 0) >
-                33_554_432
+                (allInputs.some((r) => r.providerProxy) ? 64_000_000 : 33_554_432)
             )
               throw new AiError('REFERENCE_TOTAL_LIMIT', '本批参考图及引导图的字节或像素总量超限');
             Object.assign(manifest, {
@@ -938,16 +956,6 @@ export function createMultimodalService(
                   ? { billableOutputs } : {}) },
             });
             if (config.provider === 'openai') {
-              const readReference = async (meta: FrozenReference): Promise<ImageReference> => {
-                const bytes = await storage.readBytes(meta.key, 7_000_000);
-                const hash = (await import('node:crypto'))
-                  .createHash('sha256')
-                  .update(bytes)
-                  .digest('hex');
-                if (hash !== meta.hash || meta.mime !== 'image/png')
-                  throw new AiError('INPUT_INTEGRITY_FAILED', '参考文件与存储元数据不符');
-                return { bytes, mime: 'image/png' };
-              };
               const references: ImageReference[] = [];
               for (const meta of frozen.references) references.push(await readReference(meta));
               const request: ImageGenerationInput = {
@@ -1315,19 +1323,9 @@ export function createMultimodalService(
             ...(job.input.mask ? [job.input.mask] : []),
             ...(job.input.markup ? [job.input.markup] : []),
           ];
-          if (allMetas.reduce((sum, value) => sum + value.bytes, 0) > 28_000_000)
+          if (allMetas.reduce((sum, value) => sum + value.bytes, 0) > (allMetas.some((r) => r.providerProxy) ? 64 * 1024 * 1024 : 28_000_000))
             throw new AiError('REFERENCE_TOTAL_LIMIT', '参考图字节预算超限');
           await assertReferenceBindings(db, job, false);
-          const readReference = async (meta: FrozenReference): Promise<ImageReference> => {
-            const bytes = await storage.readBytes(meta.key, 7_000_000);
-            if (
-              (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex') !==
-                meta.hash ||
-              meta.mime !== 'image/png'
-            )
-              throw new AiError('INPUT_INTEGRITY_FAILED', '参考图字节或格式摘要不符');
-            return { bytes, mime: 'image/png' };
-          };
           const references: ImageReference[] = [];
           for (const meta of metas) references.push(await readReference(meta));
           const mask = job.input.mask ? await readReference(job.input.mask) : undefined;
@@ -1490,7 +1488,7 @@ export function createMultimodalService(
             const meta = job.input.reference;
             if (
               meta.id !== job.input.manifest.referenceAssetId ||
-              meta.hash !== job.input.manifest.referenceHash
+              meta.hash !== job.input.manifest.referenceHash || meta.providerProxy !== job.input.manifest.referenceProxy
             )
               throw new AiError('INPUT_INTEGRITY_FAILED', '参考图清单不匹配');
             const live = (
@@ -1501,14 +1499,9 @@ export function createMultimodalService(
             ).rows[0];
             if (!live || live.content_hash !== meta.hash)
               throw new AiError('REFERENCE_REVOKED', '参考素材已失效');
-            const bytes = await storage.readBytes(meta.key, 7_000_000);
-            if (
-              (await import('node:crypto')).createHash('sha256').update(bytes).digest('hex') !==
-              meta.hash
-            )
-              throw new AiError('INPUT_INTEGRITY_FAILED', '参考图摘要不匹配');
-            await assertImage(bytes, meta.mime, job.id);
-            reference = { bytes, mime: 'image/png' };
+            const sample = await readReference(meta);
+            await assertImage(sample.bytes, sample.mime, job.id);
+            reference = { bytes: sample.bytes, mime: 'image/png' };
           }
           const latest = await fenceDispatch(job);
           if (

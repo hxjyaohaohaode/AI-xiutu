@@ -1363,3 +1363,11 @@
 .share-dialog .share-options[open] .field-grid {
   margin-block: .5rem;
 }
+
+.document-sheet-preview { max-width: 100%; overflow: auto; margin-block: .75rem; }
+.document-sheet-preview table { border-collapse: collapse; text-align: start; font-size: .85rem; }
+.document-sheet-preview :is(th, td) { max-width: 16em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: .35rem .7rem; }
+.spreadsheet-import .document-sheet-preview { margin-block: 0; }
+.spreadsheet-import .document-sheet-preview table { width: 100%; font-variant-numeric: tabular-nums; }
+.spreadsheet-import .document-sheet-preview th { text-align: start; color: var(--muted); }
+.spreadsheet-import p { margin: 0; color: var(--muted); font-size: .85rem; }

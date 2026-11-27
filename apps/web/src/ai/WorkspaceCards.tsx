@@ -61,7 +61,7 @@ export function WorkspaceCards({
   onConfirmPreview?: () => void;
   onCancelPreview?: () => void;
   onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected', direct?: boolean) => void;
-  generationOfferLabel?: (references: number) => string | undefined;
+  generationOfferLabel?: (references: string[], prompt: string) => string | undefined;
   onPrompt: (text: string) => void;
 }) {
   const locale = useLocale();

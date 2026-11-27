@@ -1,7 +1,11 @@
+import { getOriginalPhoto } from '../editor/original-photo-source';
+import { originalPhotoExportAvailable, originalPhotoExportSupported, exportOriginalPhoto } from '../editor/original-photo-export';
+import { getOutputDimensions, getEditorOutputDimensions } from '@ai-xiutu/editor';
+import { fitExportDimensions } from '../editor/export-size';
 import { SquishSwitch } from './control-motion';
 import { t } from '../i18n';
 import { secureUuid } from '../lib/uuid';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Copy,
   DownloadSimple,
@@ -157,6 +161,35 @@ export function ExportDialog({
 }) {
   const [format, setFormat] = useState<'png' | 'jpeg' | 'webp'>('png');
   const [quality, setQuality] = useState(0.94);
+  const [size, setSize] = useState('best');
+  const activeExport = useRef<AbortController | null>(null);
+  const [originalProgress, setOriginalProgress] = useState<number | null>(null);
+  const outputSize = useMemo(() => {
+    if (!editor.dimensions || !editor.recipe) return null;
+    try { return getEditorOutputDimensions(editor.dimensions, editor.recipe); }
+    catch { return null; } // The worker returns the actionable geometry error on export.
+  }, [editor.dimensions, editor.recipe]);
+  const originalSize = useMemo(() => {
+    if (format !== 'png' || !editor.originalPhotoExportable || !originalPhotoExportAvailable() || !editor.usingSourceProxy ||
+        !editor.originalDimensions || !originalPhotoExportSupported(editor.recipe)) return null;
+    try { return getOutputDimensions(editor.originalDimensions, editor.recipe.geometry); }
+    catch { return null; }
+  }, [format, editor.originalPhotoExportable, editor.usingSourceProxy, editor.originalDimensions, editor.recipe]);
+  const longEdge = outputSize ? Math.max(outputSize.width, outputSize.height) : 0;
+  const sizeChoices = [undefined, ...[3840, 2048, 1080].filter((edge) => edge < longEdge)]
+    .map((edge) => {
+      const value = edge === undefined ? 'full' : String(edge);
+      const pixels = outputSize ? fitExportDimensions(outputSize, edge) : null;
+      const resolution = pixels ? pixels.width + ' × ' + pixels.height : '';
+      const label = edge === undefined ? t(editor.usingSourceProxy ? '编辑副本 · {size}' : '完整画面 · {size}', { size: resolution }) : resolution;
+      return { value, label };
+    });
+  if (originalSize) sizeChoices.unshift({ value: 'original', label: t('原片编辑成品 · {size}', {
+    size: originalSize.width + ' × ' + originalSize.height,
+  }) });
+  const selectedSize = sizeChoices.some((choice) => choice.value === size) ? size : sizeChoices[0]!.value;
+  const renderOriginal = selectedSize === 'original';
+  const maxLongEdge = selectedSize === 'full' || renderOriginal ? undefined : Number(selectedSize);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<PreparedImageExport | null>(null);
@@ -166,8 +199,8 @@ export function ExportDialog({
   const live = useRef(true);
   const generation = useRef(0);
   const locked = useRef(false);
-  const current = useRef({ editor, sourcePending, format, quality });
-  current.current = { editor, sourcePending, format, quality };
+  const current = useRef({ editor, sourcePending, format, quality, maxLongEdge, renderOriginal });
+  current.current = { editor, sourcePending, format, quality, maxLongEdge, renderOriginal };
   const exportName = `${filenameBase(editor.file?.name ?? '作品')}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
   function releasePrepared() {
     const previous = preparedRef.current;
@@ -181,13 +214,15 @@ export function ExportDialog({
     return () => {
       live.current = false;
       generation.current += 1;
+      activeExport.current?.abort();
       releasePrepared();
     };
   }, []);
   useEffect(() => {
     releasePrepared();
     setPrepared(null);
-  }, [format, quality, editor.file, editor.recipe]);
+    return () => activeExport.current?.abort();
+  }, [format, quality, maxLongEdge, renderOriginal, editor.file, editor.recipe, sourcePending]);
   const offersFileShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function' &&
     navigator.canShare?.({ files: [new File([], exportName, { type: 'image/' + format })] });
   async function sharePrepared(result: PreparedImageExport) {
@@ -228,13 +263,26 @@ export function ExportDialog({
     setPrepared(null);
     setBusy(true);
     setError(null);
+    const controller = renderOriginal ? new AbortController() : null;
+    activeExport.current = controller;
+    setOriginalProgress(controller ? 0 : null);
     try {
       const result = await prepareBoundImageExport(
         read,
-        () => editor.exportImage(format, quality),
+        async () => {
+          if (!controller || !editor.originalDimensions)
+            return editor.exportImage(format, quality, false, undefined, maxLongEdge);
+          const file = await getOriginalPhoto(editor.localOriginalFile, editor.originalAssetId,
+            editor.file?.name ?? 'photo', controller.signal, editor.originalPhotoSha256);
+          controller.signal.throwIfAborted();
+          return exportOriginalPhoto(file, editor.recipe, editor.originalDimensions, controller.signal, (fraction) => {
+            if (live.current && activeExport.current === controller && !controller.signal.aborted)
+              setOriginalProgress(Math.round(fraction * 100));
+          });
+        },
         exportName,
       );
-      if (!live.current || request !== generation.current) {
+      if (!live.current || request !== generation.current || controller?.signal.aborted) {
         if (result) URL.revokeObjectURL(result.url);
         return;
       }
@@ -248,7 +296,8 @@ export function ExportDialog({
         isCurrent: () =>
           guard.isCurrent() &&
           current.current.format === format &&
-          current.current.quality === quality,
+          current.current.quality === quality && current.current.maxLongEdge === maxLongEdge &&
+          current.current.renderOriginal === renderOriginal,
       };
       setPrepared(result);
       if (intent === 'share') {
@@ -265,8 +314,9 @@ export function ExportDialog({
       link.click();
       onSuccess(t('下载已发起，可在浏览器下载记录中查看。'));
     } catch (e) {
-      if (live.current && request === generation.current) setError(errorMessage(e));
+      if (live.current && request === generation.current && !controller?.signal.aborted) setError(errorMessage(e));
     } finally {
+      if (activeExport.current === controller) activeExport.current = null;
       if (request === generation.current) {
         locked.current = false;
         if (live.current) setBusy(false);
@@ -322,6 +372,18 @@ export function ExportDialog({
           {format === 'webp' && <Check size={19} />}
         </button>
       </div>
+      {editor.usingSourceProxy && !renderOriginal && editor.originalDimensions && (
+        <div className="export-summary">
+          <span>{t('原件 {width} × {height} · 当前导出使用编辑副本', editor.originalDimensions)}</span>
+        </div>
+      )}
+      {outputSize && (sizeChoices.length > 1 ? (
+        <ChoiceSelect size="compact" label={t('输出尺寸')} value={selectedSize}
+          options={sizeChoices} disabled={busy} onValueChange={setSize} />
+      ) : (
+        <div className="export-summary"><span>{t('输出尺寸')}</span>
+          <strong>{outputSize.width} × {outputSize.height}</strong></div>
+      ))}
       {format !== 'png' && (
         <label className="quality-control">
           {t('图片质量')}
@@ -384,7 +446,8 @@ export function ExportDialog({
         onClick={() => void save('download')}
       >
         {busy ? (
-          <Busy label={t('正在计算与导出')} />
+          <Busy label={originalProgress === null ? t('正在计算与导出')
+            : t('正在导出原片 · {value}%', { value: originalProgress })} />
         ) : (
           <>
             <DownloadSimple size={18} />
@@ -392,7 +455,18 @@ export function ExportDialog({
           </>
         )}
       </button>
+      {busy && activeExport.current && <button type="button" className="text-button"
+        onClick={() => activeExport.current?.abort()}>{t('取消导出')}</button>}
       <div className="export-recipe-actions">
+        {editor.localOriginalFile && editor.usingSourceProxy ? (
+          <button type="button" className="text-button" disabled={actionsDisabled} onClick={() => {
+            if (editor.localOriginalFile) downloadBlob(editor.localOriginalFile, editor.localOriginalFile.name);
+          }}><DownloadSimple size={16} />{t('下载原件')}</button>
+        ) : editor.originalAssetId && !actionsDisabled ? (
+          <a className="text-button" download href={'/v1/assets/' + encodeURIComponent(editor.originalAssetId) + '/media/original'}>
+            <DownloadSimple size={16} />{t('下载原件')}
+          </a>
+        ) : null}
         {offersFileShare && <button type="button" className="text-button" disabled={actionsDisabled}
           onClick={() => void save('share')}>
           <ShareNetwork size={16} />{t('分享图片')}

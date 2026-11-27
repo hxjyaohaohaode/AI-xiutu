@@ -18,11 +18,11 @@ export function CandidateActions({
   previewing?: boolean;
   confirmed?: boolean;
   onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected', direct?: boolean) => void;
-  generationOfferLabel?: (references: number) => string | undefined;
+  generationOfferLabel?: (references: string[], prompt: string) => string | undefined;
   onConfirm?: () => void;
   onCancel?: () => void;
 }) {
-  const offerLabel = candidate.kind === 'generation' && generationOfferLabel?.(candidate.referenceAssetIds?.length ?? 0);
+  const offerLabel = candidate.kind === 'generation' && generationOfferLabel?.(candidate.referenceAssetIds ?? [], candidate.prompt ?? '');
   const finished = candidate.appliedRevisionId
     ? t('已保存新版本')
     : candidate.decision === 'rejected'

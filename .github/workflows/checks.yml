@@ -69,6 +69,14 @@ jobs:
       - name: Generate and settle an assistant image from its editor candidate
         if: matrix.round == 1
         run: node --import tsx scripts/qa/agent-image.browser.mjs
+      - name: Import 20–30 MiB photos, verify private originals and bounded AI references
+        if: matrix.round == 1
+        run: |
+          photos="$RUNNER_TEMP/xiutu-large-photos"
+          node scripts/qa/large-photo-fixtures.mjs "$photos"
+          node --import tsx scripts/qa/large-photo.mjs "$photos/camera.jpg" "$photos/drawing.png"
+          node --import tsx scripts/qa/large-photo.browser.mjs "$photos/camera.jpg" "$photos/drawing.png"
+          node scripts/qa/original-photo-export.browser.mjs "$photos/camera.jpg"
       - name: Download editable project files and verify their source data
         if: matrix.round == 1
         run: node --import tsx scripts/qa/project-files.browser.mjs

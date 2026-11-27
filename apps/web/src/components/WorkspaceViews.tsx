@@ -1,3 +1,4 @@
+import { SpreadsheetImport } from '../project-files/SpreadsheetImport';
 import type { CaptureProjectCover } from '../project-files/cover';
 import { ExportContent } from '../project-files/ExportContent';
 import { getLocale, t } from '../i18n';
@@ -1358,11 +1359,11 @@ export function DocumentsView({
     setError(null);
   }
 
-  async function choose(doc: ProjectDocument | null) {
-    if (saveLock.current || pendingSave || (!doc && !canEdit)) return;
+  async function choose(doc: ProjectDocument | null, imported?: { title: string; body: string }) {
+    if (saveLock.current || pendingSave || (!doc && !canEdit)) return false;
     if (recoveryDraft) {
       setError('请先恢复或丢弃本页保留的草稿，再切换文档；可以先导出一份。');
-      return;
+      return false;
     }
     if (
       dirty &&
@@ -1372,21 +1373,33 @@ export function DocumentsView({
           : '这份文档还有未保存的修改。放弃修改并切换吗？',
       ))
     )
-      return;
-    if (activeOwner.current !== ownerKey) return;
+      return false;
+    if (activeOwner.current !== ownerKey) return false;
     const previous = documentDrafts.get(actorId, project.id);
     if (previous && actorId) documentDrafts.remove(actorId, project.id, previous.revision);
+    let next = { title: doc?.title ?? '', body: doc?.body ?? '' };
     editingLineage.current = null;
+    if (imported && actorId) {
+      const captured = documentDrafts.put({ ...imported, actorId, projectId: project.id, projectTitle: project.title, base: null });
+      if (!captured.ok) {
+        setError('文字超过草稿保留范围，本次输入未应用。');
+        return false;
+      }
+      next = imported;
+      editingLineage.current = captured.draft.lineage;
+    }
     setSelected(doc);
     setCreating(!doc);
     setMobileList(false);
-    setTitle(doc?.title ?? '');
-    setBody(doc?.body ?? '');
-    currentDraft.current = { title: doc?.title ?? '', body: doc?.body ?? '' };
+    setTitle(next.title);
+    setBody(next.body);
+    currentDraft.current = next;
     setDraftInEditor(true);
-    setDirty(false);
+    setDirty(!!imported);
     setError(null);
     setConflict(false);
+    if (imported) await persistCurrentDraft();
+    return true;
   }
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -1400,6 +1413,10 @@ export function DocumentsView({
       (!dirty && selected)
     )
       return;
+    await persistCurrentDraft();
+  }
+  async function persistCurrentDraft() {
+    if (saveLock.current || activeOwner.current !== ownerKey || !canEdit) return;
     const operation = ++activeOperation.current;
     const capturedDraft = documentDrafts.get(actorId, project.id);
     if (!capturedDraft || !documentDrafts.beginSave(capturedDraft)) {
@@ -1635,6 +1652,8 @@ export function DocumentsView({
               {t('新建文档')}
             </button>
           )}
+          {canEdit && <SpreadsheetImport key={ownerKey} disabled={busy || !!pendingSave || !!recoveryDraft}
+            onImport={(draft) => choose(null, draft)} />}
           {docs.length > 0 && (
             <label className="document-search">
               <MagnifyingGlass size={16} />

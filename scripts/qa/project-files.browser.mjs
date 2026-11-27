@@ -20,8 +20,11 @@ if (process.env.CI !== 'true' || process.env.NODE_ENV === 'production' ||
 const port = Number(process.env.BROWSER_WEB_PORT || 4196);
 const origin = 'http://127.0.0.1:' + port;
 const artifacts = resolve(process.env.BROWSER_ARTIFACT_DIR || 'artifacts/browser-project-files');
-const title = '武汉项目进展';
-const body = '## 净变化\n| 城市 | 数量 | 完成率 |\n|---|---|---|\n| 武汉 | 12 | 50% |\n| 恩施 | -3 | 37.625% |';
+const title = '武汉项目进展 · 源数据';
+const inputWorkbook = await readFile(resolve('scripts/qa/fixtures/project-data.xlsx'));
+const sourceHash = createHash('sha256').update(inputWorkbook).digest('hex');
+const body = ['> "武汉项目进展.xlsx" · "源数据"!A1:C3', '> SHA-256 ' + sourceHash, '', '```sheet-tsv',
+  '"城市"\t"数量"\t"完成率"', '"武汉"\t12\t50%', '"恩施"\t-3\t37.625%', '```'].join('\n');
 const prompt = '把源数据整理为可编辑图表';
 const modelId = 'qwen-office-' + randomUUID();
 const modelLabel = '数据文案验收 ' + modelId.slice(-8);
@@ -66,9 +69,6 @@ async function downloadFrom(menu, label, name, artifactName = name) {
 try {
   await mkdir(artifacts, { recursive: true });
   fixture = await collaborationFixture(databaseUrl, { origin, createJobService });
-  const created = await fixture.call('POST', '/v1/projects/' + fixture.projectId + '/documents', { title, body });
-  assert.equal(created.statusCode, 201);
-  const source = created.json().document;
   await fixture.db.query('INSERT INTO model_configs(id,config) VALUES($1,$2)', [modelId, JSON.stringify({
     enabled: true, label: modelLabel, provider: 'qwen', operations: ['generate-text'], unitCost: 2,
     minWidth: 64, maxWidth: 4096, minHeight: 64, maxHeight: 4096,
@@ -100,7 +100,26 @@ try {
   const compact = page.getByRole('button', { name: '切换工作视图', exact: true });
   await (await compact.isVisible() ? compact : page.getByRole('button', { name: '项目与用量', exact: true })).click();
   await page.getByRole('navigation', { name: '切换工作视图', exact: true }).locator('[data-view="docs"]').click();
-  await page.locator('.document-row').filter({ hasText: title }).click();
+  const [fileChooser] = await Promise.all([page.waitForEvent('filechooser'),
+    page.getByRole('button', { name: '导入表格', exact: true }).click()]);
+  await fileChooser.setFiles({ name: '武汉项目进展.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    buffer: inputWorkbook });
+  const importer = page.getByRole('dialog', { name: '导入表格' });
+  const sheetChoice = importer.getByRole('combobox');
+  await sheetChoice.selectOption({ label: '源数据' });
+  assert.equal(await sheetChoice.getByRole('option', { name: '隐藏工作表' }).count(), 0);
+  await importer.getByLabel('数据区域').fill('A1:C3');
+  await importer.getByRole('table', { name: '表格预览' }).getByText('37.625%', { exact: true }).waitFor();
+  const [saved] = await Promise.all([page.waitForResponse((resp) =>
+    resp.request().method() === 'POST' && resp.url().endsWith('/documents')),
+    importer.getByRole('button', { name: '导入为项目文档', exact: true }).click()]);
+  await importer.waitFor({ state: 'hidden' });
+  assert.equal(await page.getByRole('textbox', { name: '文档内容', exact: true }).inputValue(), body);
+  assert.equal(saved.status(), 201);
+  const source = (await saved.json()).document;
+  assert.deepEqual([source.title, source.body, source.version], [title, body, 1]);
+  report.imported = { file: 'project-data.xlsx', sheet: '源数据', range: 'A1:C3', sha256: sourceHash, inputFormat: 'xlsx' };
   const docsMenu = page.locator('.document-editor').getByRole('combobox', { name: '下载文件', exact: true });
   for (const [width, height, format] of [[1400,900,'docx'],[820,1100,'pptx'],[390,844,'xlsx'],[844,390,'svg']]) {
     await page.setViewportSize({ width, height });

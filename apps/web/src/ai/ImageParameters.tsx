@@ -42,6 +42,7 @@ export function ImageParameters({
   height,
   options,
   hasReference = false,
+  referenceSize,
   disabled,
   onSize,
   onOptions,
@@ -51,6 +52,7 @@ export function ImageParameters({
   height: number;
   options: ImageOptions;
   hasReference?: boolean;
+  referenceSize?: { width: number; height: number };
   disabled: boolean;
   onSize: (width: number, height: number) => void;
   onOptions: (options: ImageOptions) => void;
@@ -175,7 +177,14 @@ export function ImageParameters({
           </small>
         </span>
       </div>
-      <div className="parameter-label">{t('画幅与尺寸')}</div>
+      <div className="parameter-label">{t('画幅与尺寸')}
+        {referenceSize && (options.size === 'auto' || referenceSize.width !== width || referenceSize.height !== height) && (
+          <button type="button" className="text-button" disabled={disabled}
+            onClick={() => onSize(referenceSize.width, referenceSize.height)}>
+            {t('匹配参考图 · {width}×{height}', referenceSize)}
+          </button>
+        )}
+      </div>
       <OptionChips
         label={t('常用生成尺寸')}
         value={options.size ?? width + 'x' + height}

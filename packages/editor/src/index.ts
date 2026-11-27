@@ -204,3 +204,6 @@ export {
   type PrecisionEdit,
   type PrecisionCurveChannel,
 } from './linear-edit.js';
+export { PHOTO_MAX_BYTES, PHOTO_MAX_PIXELS, PHOTO_PROXY_PIXELS, PHOTO_RETAIN_BYTES,
+  isRetainedPhoto, photoProxySize, photoOrientation } from './photo-source.js';
+export { originalPhotoExportSupported, renderOriginalPhotoPng } from './original-photo-export.js';

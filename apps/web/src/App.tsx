@@ -1,3 +1,4 @@
+import { uploadProjectPhoto, retainedPhotoDimensions } from './media/upload-photo';
 import { projectCover } from './project-files/cover';
 import { ThemeSwitch } from './components/ThemeSwitch';
 import { hexRgba, NUMERIC_CONTROLS } from './editor/advanced-model';
@@ -1745,7 +1746,9 @@ export function App({
       if (!current()) return;
       const layerFiles = await resolveLayerReferences(recipe, current, new Map(draft.layerFiles));
       if (!current()) return;
-      if (!(await editor.loadFile(file, recipe, current, layerFiles)) || !current()) return;
+      if (!(await editor.loadFile(file, recipe, current, layerFiles,
+        sourceAsset ? retainedPhotoDimensions(sourceAsset) ?? null : undefined,
+        sourceAsset?.provenance?.editorProxy ? sourceAsset.id : undefined)) || !current()) return;
       if (sourceAsset) cloudBaseSources.current.set(editor.getSourceIdentity(), sourceAsset);
       if (projectData) {
         const target = projectData.project;
@@ -1819,6 +1822,8 @@ export function App({
         data.revision.recipe,
         load.isCurrent,
         layerReferences,
+        retainedPhotoDimensions(data.asset) ?? null,
+        data.asset.provenance?.editorProxy ? data.asset.id : undefined,
       );
       if (!loaded) return load.abandoned();
       if (load.request !== projectRequest.current) return false;
@@ -1885,6 +1890,9 @@ export function App({
         new File([blob], next.name, { type: blob.type || next.mime }),
         undefined,
         load.isCurrent,
+        undefined,
+        retainedPhotoDimensions(next) ?? null,
+        next.provenance?.editorProxy ? next.id : undefined,
       );
       if (!loaded) return load.abandoned();
       if (load.request !== projectRequest.current) return false;
@@ -2097,15 +2105,9 @@ export function App({
           )
             layerFile = await normalizeImageSourceFile(layerFile);
           assertCurrent();
-          if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+          if (layerFile.size > (config?.limits.maxUploadBytes ?? 50 * 1024 * 1024))
             throw new Error(t('合成素材超出服务器上传预算。'));
-          const form = new FormData();
-          form.append('file', layerFile);
-          const uploaded = await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
-            method: 'POST',
-            body: form,
-          });
-          uploadedAsset = uploaded.asset;
+          uploadedAsset = await uploadProjectPhoto(layerFile, target.id, session.user!.id, assertCurrent);
         }
         if (
           savedSource !== rawEditor.getSourceIdentity() ||
@@ -2177,7 +2179,7 @@ export function App({
           if (
             editor.dimensions &&
             editor.dimensions.width * editor.dimensions.height >
-              (config?.limits.maxPixels ?? 40_000_000)
+              (config?.limits.maxPixels ?? 64_000_000)
           )
             throw new Error(
               t(
@@ -2188,20 +2190,15 @@ export function App({
             !!config?.media && !config.media.serverImport.includes(editor.sourceFormat),
           );
           if (!stillCurrent()) return;
-          if (uploadFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+          if (uploadFile.size > (config?.limits.maxUploadBytes ?? 50 * 1024 * 1024))
             throw new Error(
               t('上传文件超过当前云端 {v0} MiB 上限，本地作品仍然保留。', {
-                v0: Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024),
+                v0: Math.floor((config?.limits.maxUploadBytes ?? 50 * 1024 * 1024) / 1024 / 1024),
               }),
             );
-          const form = new FormData();
-          form.append('file', uploadFile);
-          currentAsset = (
-            await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
-              method: 'POST',
-              body: form,
-            })
-          ).asset;
+          currentAsset = await uploadProjectPhoto(uploadFile, target.id, session.user!.id, () => {
+            if (!stillCurrent()) throw new Error(t('图片或账号范围已变化，未继续上传图层。'));
+          });
         }
         if (!stillCurrent())
           throw new Error(t('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。'));
@@ -2260,6 +2257,12 @@ export function App({
     if (!pendingImport || !project) throw new Error(t('请先选择文件和保存项目。'));
     const incoming = pendingImport;
     const destination = project;
+    const owner = sessionFence.snapshot();
+    const assertOwner = () => {
+      if (!owner.actor || !sessionFence.isCurrent(owner))
+        throw new Error(t('账号已切换，原照片导入已停止。'));
+    };
+    assertOwner();
     const guard = createSourceLoadGuard(() => ({
       context: projectRequest.current,
       source: editor.getSourceIdentity(),
@@ -2269,12 +2272,11 @@ export function App({
       throw new Error(
         t('这份文件超过当前服务端上传上限。没有上传，请使用较小副本或调整服务配置。'),
       );
-    const form = new FormData();
-    form.append('file', incoming);
-    const uploaded = await api<{ asset: Asset }>(`/projects/${destination.id}/assets`, {
-      method: 'POST',
-      body: form,
-    });
+    const uploaded = { asset: await uploadProjectPhoto(incoming, destination.id, owner.actor!, () => {
+      assertOwner();
+      if (!guard.isCurrent()) throw new Error(t('图片或账号范围已变化，未继续上传图层。'));
+    }) };
+    assertOwner();
     const result = await api<{ artwork: Artwork; revision: Revision }>(
       `/projects/${destination.id}/artworks`,
       jsonRequest('POST', {
@@ -2283,6 +2285,7 @@ export function App({
         recipe: createRecipeV4(),
       }),
     );
+    if (!sessionFence.isCurrent(owner)) return;
     setRefreshToken((value) => value + 1);
     if (guard.status() === 'superseded') {
       notify(
@@ -2538,6 +2541,8 @@ export function App({
         data.revision.recipe,
         load.isCurrent,
         references,
+        retainedPhotoDimensions(data.asset) ?? null,
+        data.asset.provenance?.editorProxy ? data.asset.id : undefined,
       );
       if (!loaded) {
         load.abandoned();

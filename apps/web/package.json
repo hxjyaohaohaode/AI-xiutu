@@ -27,7 +27,8 @@
     "pptxgenjs": "4.0.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
-    "three": "0.180.0"
+    "three": "0.180.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@ai-xiutu/assistant": "0.1.0",

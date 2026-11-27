@@ -13,6 +13,7 @@ import {
   parseEditorRecipe,
   readImageHeader,
   MAX_HEADER_BYTES,
+  PHOTO_MAX_BYTES, PHOTO_MAX_PIXELS, PHOTO_PROXY_PIXELS, isRetainedPhoto, photoProxySize, photoOrientation,
   MAX_TILED_DIMENSION,
   MAX_TILED_PIXELS,
   MAX_V4_PIXELS,
@@ -217,6 +218,11 @@ export function useEditor() {
   const [cropGuide, setCropGuide] = useState<CropGuide>('thirds');
   const [cropRatio, setCropRatio] = useState<number | null>(null);
   const [renderedGeometryKey, setRenderedGeometryKey] = useState<string | null>(null);
+  const [originalPhotoSha256, setOriginalPhotoSha256] = useState<string | null>(null);
+  const [originalPhotoExportable, setOriginalPhotoExportable] = useState(false);
+  const [originalAssetId, setOriginalAssetId] = useState<string | null>(null);
+  const [localOriginalFile, setLocalOriginalFile] = useState<File | null>(null);
+  const [originalDimensions, setOriginalDimensions] = useState<{ width: number; height: number } | null>(null);
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   useEffect(() => {
     setCropRatio((ratio) => cropRatioForGeometry(ratio, dimensions, recipe.geometry));
@@ -581,6 +587,11 @@ export function useEditor() {
     setFile(null);
     setSourceFormat('');
     setDimensions(null);
+    setOriginalDimensions(null);
+    setOriginalPhotoExportable(false);
+    setOriginalPhotoSha256(null);
+    setLocalOriginalFile(null);
+    setOriginalAssetId(null);
     setOriginalPreview(null);
     setAnalysisPreview(null);
     setRendered(null);
@@ -603,6 +614,8 @@ export function useEditor() {
       existingRecipe?: EditorRecipe,
       isCurrent: () => boolean = () => true,
       references: ReadonlyMap<string, File> = new Map(),
+      retainedOriginal?: { width: number; height: number; sha256?: string | null; photoExportable?: boolean } | null,
+      retainedAssetId?: string,
     ) => {
       if (!mounted.current) throw new Error('编辑器已关闭');
       if (incoming.size > MAX_LOCAL_FILE_BYTES)
@@ -640,11 +653,21 @@ export function useEditor() {
           existingRecipe?.schemaVersion ?? 4,
           pixelBudget,
         );
-        if (
+        const standardPhoto = header.format === 'jpeg' || header.format === 'png';
+        const orientation = standardPhoto ? photoOrientation(bytes, header.format as 'jpeg' | 'png') : 1;
+        const upright = orientation >= 5
+          ? { width: header.height, height: header.width } : { width: header.width, height: header.height };
+        const useProxy = standardPhoto && header.width * header.height <= PHOTO_MAX_PIXELS &&
+          isRetainedPhoto(header.format, incoming.size, header.width * header.height) &&
+          (header.width * header.height > Math.min(PHOTO_PROXY_PIXELS, maxPixels) ||
+            header.width > maxDimension || header.height > maxDimension);
+        const proxy = useProxy ? photoProxySize(upright.width, upright.height,
+          Math.min(PHOTO_PROXY_PIXELS, maxPixels), maxDimension) : null;
+        if (!proxy && (
           header.width * header.height > maxPixels ||
           header.width > maxDimension ||
           header.height > maxDimension
-        )
+        ))
           throw new LocalImportError(
             'LOCAL_SIZE_LIMIT',
             t(
@@ -670,7 +693,9 @@ export function useEditor() {
           lastModified: incoming.lastModified,
         });
         try {
-          bitmap = await createImageBitmap(typedSource, { imageOrientation: 'from-image' });
+          bitmap = await createImageBitmap(typedSource, { imageOrientation: 'from-image',
+            ...(proxy ? { resizeWidth: proxy.width, resizeHeight: proxy.height, resizeQuality: 'high' } : {}),
+          });
         } catch {
           throw new LocalImportError(
             'LOCAL_FORMAT_UNSUPPORTED',
@@ -682,7 +707,7 @@ export function useEditor() {
         const sameDimensions = bitmap.width === header.width && bitmap.height === header.height;
         const rotatedDimensions = bitmap.width === header.height && bitmap.height === header.width;
         if (
-          (!sameDimensions && !rotatedDimensions) ||
+          (proxy ? bitmap.width !== proxy.width || bitmap.height !== proxy.height : !sameDimensions && !rotatedDimensions) ||
           bitmap.width * bitmap.height > maxPixels ||
           bitmap.width > maxDimension ||
           bitmap.height > maxDimension
@@ -804,8 +829,15 @@ export function useEditor() {
         prewarmedWarp.current = null;
         previewVersion.current += 1;
         setFile(typedSource);
+        setLocalOriginalFile(retainedOriginal === undefined ? typedSource : null);
+        setOriginalAssetId(retainedAssetId ?? null);
+        setOriginalPhotoSha256(retainedOriginal?.sha256 ?? null);
+        setOriginalPhotoExportable(retainedOriginal === undefined
+          ? standardPhoto && incoming.size <= PHOTO_MAX_BYTES && upright.width * upright.height <= PHOTO_MAX_PIXELS
+          : !!retainedAssetId && retainedOriginal?.photoExportable === true);
         setSourceFormat(header.format);
         setDimensions({ width: full.width, height: full.height });
+        setOriginalDimensions(retainedOriginal ?? (proxy ? upright : { width: full.width, height: full.height }));
         setOriginalPreview(displaySource);
         setAnalysisPreview(preview);
         setRendered(displaySource);
@@ -1062,6 +1094,7 @@ export function useEditor() {
       quality = 0.94,
       originalOnly = false,
       cutout?: CutoutSettings,
+      maxLongEdge?: number,
     ) => {
       if (loadBusy.current) throw new Error('照片正在导入，请等待完成后再导出。');
       const target = worker.current;
@@ -1079,6 +1112,7 @@ export function useEditor() {
             quality,
             originalOnly,
             cutout,
+            maxLongEdge,
           });
         } catch {
           failWorker();
@@ -1203,6 +1237,13 @@ export function useEditor() {
     hasUncommittedPreview,
     file,
     dimensions,
+    originalDimensions,
+    localOriginalFile,
+    originalAssetId,
+    originalPhotoExportable,
+    originalPhotoSha256,
+    usingSourceProxy: !!(originalDimensions && dimensions &&
+      (originalDimensions.width !== dimensions.width || originalDimensions.height !== dimensions.height)),
     sourceHash,
     portrait,
     activeMaskPath,

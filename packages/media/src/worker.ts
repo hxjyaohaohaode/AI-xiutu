@@ -63,6 +63,7 @@ interface Job {
   inputPath?: string;
   workDir: string;
   originalName?: string;
+  originalDisplayName?: string;
   options: NormalizedMediaOptions;
   resultPath: string;
   outputPath?: string;
@@ -578,7 +579,7 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     protocol: 'media-v1',
     id: randomUUID(),
     sourceSha256,
-    originalName: basename(job.originalName ?? 'image').slice(0, 255),
+    originalName: basename(job.originalDisplayName ?? job.originalName ?? 'image').slice(0, 255),
     original,
     master,
     proxy,

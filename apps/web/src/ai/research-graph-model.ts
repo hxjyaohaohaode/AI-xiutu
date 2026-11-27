@@ -38,6 +38,11 @@ export function isResearchBranch(value: unknown): value is ResearchBranch {
     Object.hasOwn(branchNames, branch.kind) &&
     ['running', 'completed', 'failed', 'interrupted'].includes(branch.state) &&
     ['provider', 'server'].includes(branch.execution) &&
+    (branch.finding === undefined || (
+      typeof branch.finding === 'string' && branch.finding.length <= 1800 &&
+      branch.state === 'completed' && branch.execution === 'provider' &&
+      ['tone-review', 'composition-review', 'delivery-review'].includes(branch.kind)
+    )) &&
     (branch.resultCount === undefined ||
       (Number.isInteger(branch.resultCount) && branch.resultCount >= 0))
   );

@@ -3,7 +3,7 @@ export type MessageBlock =
   | { kind: 'paragraph' | 'heading' | 'quote'; text: string; line: number }
   | { kind: 'code'; text: string; language: string; line: number }
   | { kind: 'list'; ordered: boolean; items: { text: string; number?: number }[]; line: number }
-  | { kind: 'table'; headers: string[]; rows: string[][]; line: number };
+  | { kind: 'table'; headers: string[]; rows: string[][]; line: number; textCells?: Set<number> };
 
 const listItem = (line: string) => /^(?: {0,3})(?:(\d{1,5})[.)]|[-+*])\s+(.+)$/.exec(line);
 const fence = (line: string) => /^ {0,3}(`{3,}|~{3,})([\w+-]*)\s*$/.exec(line);

@@ -80,7 +80,7 @@ export function workbook(tables: DataTable[]) {
             .map((text, c) => {
               if (text.length > 32767) throw new Error('单元格超过 Excel 的 32767 字符限制。');
               const location = columnName(c) + (r + 1);
-              const value = r > 0 ? numericCell(text) : null;
+              const value = r > 0 && !table.textCells?.has(r * cells.length + c) ? numericCell(text) : null;
               widths[c] = Math.min(
                 54,
                 Math.max(

@@ -1,5 +1,6 @@
 /** App-owned AI, generation and voice interface copy; never applied to user messages or prompts. */
 export const aiEnglish: Record<string, string> = {
+  '大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。': 'Large originals stay in the project. Oversized references are resized to a maximum edge of 1024 pixels. Masks and annotations keep their coordinates.',
   朗读: 'Read aloud',
   暂停朗读: 'Pause reading',
   继续朗读: 'Resume reading',
@@ -1307,6 +1308,7 @@ export const openAIEnglish = {
 };
 
 export const openAITraditional = {
+  '大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。': '大圖保留專案原件。一般參考圖依模型預算縮至最長 1024 像素。遮罩和標註保留原座標。',
   '正在核对上次通话': '正在核對上次通話',
   '」的通话记录。结清后即可再次通话。': '」的通話記錄。結清後即可再次通話。',
   '系统会自动核对原通话回执。费用待核验时可在「用量」查看。': '系統會自動核對原通話回執。費用待核驗時可在「用量」查看。',

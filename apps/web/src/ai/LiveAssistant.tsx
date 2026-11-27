@@ -36,6 +36,7 @@ import {
 } from '@phosphor-icons/react';
 import type {
   AssistantCandidate,
+  AssistantToolRecord,
   AssistantContext,
   VoiceContext,
   AssistantCitation,
@@ -173,6 +174,7 @@ interface Turn {
     candidates: AssistantCandidate[];
     workspace?: AssistantWorkspace;
     memorySuggestions?: MemorySuggestion[];
+    toolRecords?: AssistantToolRecord[];
     execution?: {
       state: 'applied' | 'blocked' | 'review_required';
       code?: string;
@@ -212,6 +214,7 @@ interface Message {
   appStatus?: StatusMessage;
   citations?: AssistantCitation[];
   search?: AssistantSearchEvidence[];
+  hasSpecialistReview?: boolean;
   attachmentKind?: AssistantVisualAttachment['kind'];
   voiceSession?: number;
   candidateIds?: string[];
@@ -251,7 +254,7 @@ export interface LiveAssistantProps {
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
   onApplied: (artworkId: string) => void | Promise<void>;
-  generationOfferLabel?: (references: number) => string | undefined;
+  generationOfferLabel?: (references: string[], prompt: string) => string | undefined;
   onPrepareGenerationDraft: (draft: {
     executionGrantId?: string;
     candidateId: string;
@@ -1007,6 +1010,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               appStatus: turn.state === 'completed' ? undefined : turnStatus(turn),
               citations: turn.output?.citations,
               search: turn.output?.search,
+              hasSpecialistReview: turn.output?.toolRecords?.some((record) => record.tool === 'consult_specialists'),
             });
           }
           for (const message of old) if (!merged.has(message.id)) merged.set(message.id, message);
@@ -1971,6 +1975,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             reasoningSummary: result.output!.reasoningSummary,
             citations: result.output!.citations,
             search: result.output!.search,
+            hasSpecialistReview: result.output!.toolRecords?.some((record) => record.tool === 'consult_specialists'),
           },
         ].slice(-40),
       );
@@ -2660,6 +2665,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 sourceProjectId={artwork?.projectId}
                 currentAssetId={artwork?.assetId}
               />
+            )}
+            {message.hasSpecialistReview && message.id !== researchTurnId && (
+              <ResearchGraph turnId={message.id} live={[]} running={false} historical />
             )}
             {!message.search?.some((item) => item.kind === 'web') &&
               !!message.citations?.length && (

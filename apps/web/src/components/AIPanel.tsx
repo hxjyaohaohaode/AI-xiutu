@@ -1,3 +1,4 @@
+import { uploadProjectPhoto } from '../media/upload-photo';
 import type { CaptureProjectCover } from '../project-files/cover';
 import { captureSketchVisual } from '../editor/capture';
 import {
@@ -66,7 +67,7 @@ import { ModelChoice } from '../ai/ModelChoice';
 import { VoiceCapture } from './VoiceCapture';
 import { MotionDetails } from '../motion/Presence';
 import {
-  prepareGenerationDraft, quickImageOffer,
+  prepareGenerationDraft, quickImageOffer, generationFrame, chooseGenerationSize,
   type GenerationDraftInput,
   type ReferenceCopyJournal,
 } from './generationDraft';
@@ -881,10 +882,12 @@ export function AIPanel({
     setParentJobId(null);
     changed();
   }
-  function candidateOffer(referenceCount: number) {
+  function candidateOffer(referenceIds: string[], draftPrompt: string) {
     if (!modelResponse || !(modelResponse.operationStatus?.['generate-image']?.available ??
         modelResponse.availableOperations?.includes('generate-image')) || !recovery.ready || pending.current) return undefined;
-    return quickImageOffer(modelResponse.models, referenceCount, modelId);
+    const firstReference = referenceIds.map((id) => availableAssets.find((asset) => asset.id === id &&
+      asset.projectId === project?.id) ?? (currentAsset?.id === id ? currentAsset : undefined)).find(Boolean);
+    return quickImageOffer(modelResponse.models, referenceIds.length, modelId, generationFrame(draftPrompt, firstReference));
   }
   async function prepareAssistantGenerationDraft(input: GenerationDraftInput, direct = false) {
     if (!project || !isLoggedIn || !userId) throw new Error('请先登录并选择草案要保存的项目。');
@@ -893,7 +896,7 @@ export function AIPanel({
     const expectedEpoch = ++generationDraftEpoch.current;
     const expectedContext = consentContext.current;
     const expectedInput = JSON.stringify(input);
-    const offer = direct ? candidateOffer(input.referenceAssetIds.length) : undefined;
+    const offer = direct ? candidateOffer(input.referenceAssetIds, input.prompt) : undefined;
     if (direct && !offer) throw new Error(t('当前没有可提交的生图报价，请重新选择模型。'));
     let copiedAny = false;
     const assertCurrent = () => {
@@ -1008,14 +1011,11 @@ export function AIPanel({
     if (!file || !onReferenceFile) return;
     const expected = consentContext.current;
     try {
-      const limit = Math.min(
-        config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
-        caps?.references.maxBytes ?? 20 * 1024 * 1024,
-      );
+      const limit = config?.limits.maxUploadBytes ?? 50 * 1024 * 1024;
       if (file.size > limit) throw new Error('参考图超过当前上传或模型字节限制。');
       const header = readImageHeader(
         new Uint8Array(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer()),
-        { maxPixels: config?.media?.maxPixels ?? 40_000_000, maxDimension: 16384 },
+        { maxPixels: config?.media?.maxPixels ?? 64_000_000, maxDimension: 16384 },
       );
       if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
         throw new Error('AI参考请选择已确认的静态 PNG、JPEG 或 WebP。');
@@ -1089,20 +1089,12 @@ export function AIPanel({
         if (options) body.imageOptions = options;
         const ids = [...referenceIds];
         if (selectedReferenceFile) {
-          if (selectedReferenceFile.size > Math.min(
-            config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
-            caps?.references.maxBytes ?? 20 * 1024 * 1024,
-          )) throw new Error('参考图超过当前云端上传限制。');
+          if (selectedReferenceFile.size > (config?.limits.maxUploadBytes ?? 50 * 1024 * 1024)) throw new Error('参考图超过当前云端上传限制。');
           let asset = uploadedReference?.file === selectedReferenceFile ? uploadedReference.asset : null;
           if (!asset) {
-            const form = new FormData();
-            form.append('file', selectedReferenceFile);
-            asset = (
-              await api<{ asset: Asset }>(
-                '/projects/' + project.id + '/assets?source=' + selectedReferenceSource,
-                { method: 'POST', body: form },
-              )
-            ).asset;
+            asset = await uploadProjectPhoto(selectedReferenceFile, project.id, userId!, () => {
+              if (expectedGeneration !== generation.current) throw new Error('当前项目、来源或草稿已变化，请回到原草案后再继续。');
+            }, '?source=' + selectedReferenceSource);
             if (expectedGeneration !== generation.current) return;
             setUploadedReference({ file: selectedReferenceFile, asset });
           }
@@ -1371,6 +1363,10 @@ export function AIPanel({
       };
     }),
   ];
+  const referenceFrame = availableAssets.find((asset) => asset.id === referenceIds[0]) ??
+    (uploadedReference?.file === selectedReferenceFile ? uploadedReference?.asset : undefined);
+  const referenceSize = selected && referenceFrame && imageOptions.outputFormat !== 'gif'
+    ? chooseGenerationSize(selected, { ...imageOptions, size: undefined }, referenceFrame) : undefined;
   const imageParameters = operation === 'generate-image' && (
     <ImageParameters
       model={selected}
@@ -1378,6 +1374,7 @@ export function AIPanel({
       height={height}
       options={imageOptions}
       hasReference={referencedCount > 0}
+      referenceSize={referenceSize}
       disabled={inputLocked}
       onSize={(w, h) => {
         setImageOptions((current) => {
@@ -1480,8 +1477,8 @@ export function AIPanel({
               else onClearVisualAttachment?.(attachment);
             }}
             onUseCanvasSource={onUseCanvasSource}
-            generationOfferLabel={(count) => {
-              const offer = candidateOffer(count);
+            generationOfferLabel={(refs, draftPrompt) => {
+              const offer = candidateOffer(refs, draftPrompt);
               return offer && t('生成 · {model} · {width}×{height} · {units} 点', {
                 model: offer.model.label, width: offer.width, height: offer.height, units: offer.units,
               });
@@ -2087,6 +2084,7 @@ export function AIPanel({
                 </button>
               ))}
             </div>
+            {referencedCount > 0 && <p className="control-note">{t('大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。')}</p>}
             {!referenceLimit && (
               <p className="control-note">{t('当前模型不支持参考图')}</p>
             )}

@@ -76,7 +76,22 @@ export interface AssistantBranchEvent {
   state: 'running' | 'completed' | 'failed';
   execution: 'provider' | 'server';
   resultCount?: number;
+  finding?: string;
 }
+
+/** Only these server tools produce reusable work records. Other offloaded tool
+ * output remains private to its original turn. */
+export const assistantRecordTool = z.enum([
+  'consult_specialists', 'inspect_candidate', 'propose_scene_balance',
+]);
+export const assistantToolRecord = z.object({
+  artifactId: z.uuid(),
+  tool: assistantRecordTool,
+  characters: z.number().int().min(1).max(250_000),
+}).strict();
+export type AssistantToolRecord = z.infer<typeof assistantToolRecord>;
+export const assistantToolRecords = z.array(assistantToolRecord).max(32);
+
 export const assistantScopeSchema = z
   .object({
     spaceIds: z.array(z.uuid()).max(12).default([]),

@@ -671,6 +671,137 @@ test(
 );
 
 test(
+  'saved specialist work can be reopened on its private ancestor branch without redispatching specialists',
+  { skip: !databaseUrl },
+  async () => {
+    const findings = { tone: 'TONE-A71: preserve the highlight transition.', composition: 'CROP-C29: retain the left margin.' };
+    let phase: 'anchor' | 'review' | 'recall' | 'unrelated' = 'anchor';
+    let original = '', artifactId = '', artifactText = '';
+    let dispatches: unknown[] = [];
+    const call = (name: string, args: object) => ({
+      type: 'function_call', call_id: name, name, arguments: JSON.stringify(args),
+    });
+    const f = await fixture({
+      fetcher: async (_url, options) => {
+        const body = JSON.parse(String(options?.body));
+        dispatches.push(body);
+        if (phase === 'anchor') return response([outputText('项目要求已记录。')]);
+        const outputs = body.input.filter((item: any) => item.type === 'function_call_output');
+        if (phase === 'review') {
+          if (!body.tools)
+            return response([outputText(body.instructions.includes('framing') ? findings.composition : findings.tone)]);
+          return response(outputs.length
+            ? [outputText('已完成复核。')]
+            : [call('consult_specialists', { roles: ['tone-review', 'composition-review'] })]);
+        }
+        if (phase === 'unrelated') {
+          if (!outputs.length) return response([call('read_tool_result', { artifactId, offset: 0, limit: 300 })]);
+          assert.match(outputs[0].output, /TOOL_INPUT_OR_ACCESS_REJECTED/);
+          assert.doesNotMatch(outputs[0].output, /TONE-A71|CROP-C29/);
+          return response([outputText('没有可用记录。')]);
+        }
+        if (!outputs.length) {
+          const projected = JSON.stringify(body.input);
+          assert.ok(projected.includes('read_history sourceTurnId=' + original));
+          assert.doesNotMatch(projected, /TONE-A71|CROP-C29/);
+          return response([call('read_history', { sourceTurnId: original, offset: 0, limit: 260 })]);
+        }
+        if (outputs.length === 1) {
+          const source = JSON.parse(outputs[0].output);
+          assert.equal(source.sourceTurnId, original);
+          assert.deepEqual(source.toolRecords, [{ artifactId, tool: 'consult_specialists', characters: artifactText.length }]);
+          return response([call('read_tool_result', { artifactId: source.toolRecords[0].artifactId, offset: 5, limit: 19 })]);
+        }
+        if (outputs.length === 2) {
+          const slice = JSON.parse(outputs[1].output);
+          assert.equal(slice.hash, sha(artifactText));
+          assert.equal(slice.sourceTurnId, original);
+          assert.equal(slice.offset, 5);
+          assert.equal(slice.total, artifactText.length);
+          assert.equal(slice.content, artifactText.slice(5, 24));
+          const next = call('read_tool_result', { artifactId, offset: 0, limit: 6000 });
+          next.call_id = 'full-source';
+          return response([next]);
+        }
+        const full = JSON.parse(outputs[2].output);
+        assert.equal(full.content, artifactText);
+        assert.ok(full.content.includes(findings.tone) && full.content.includes(findings.composition));
+        return response([outputText('已按原始分工结论继续。')]);
+      },
+    });
+    try {
+      const path = '/v1/projects/' + f.projectId + '/assistant-turns';
+      const submit = async (prompt: string, parentTurnId?: string, actor: 'owner' | 'editor' = 'owner') => {
+        const base = f.turn(prompt);
+        const request = {
+          ...base, parentTurnId,
+          ...(phase === 'review' ? { scope: { ...base.scope, referenceAssetIds: [f.assetId] } } : {}),
+        };
+        const start = await f.call('POST', path, request, actor);
+        assert.equal(start.statusCode, 202, start.body);
+        return until(
+          async () => (await f.call('GET', '/v1/assistant-turns/' + start.json().id, undefined, actor)).json(),
+          (r) => r.state !== 'running',
+        );
+      };
+      const anchor = await submit('保持项目尺寸。');
+      phase = 'review';
+      dispatches = [];
+      const reviewed = await submit('请独立复核亮部与构图。', anchor.id);
+      assert.equal(reviewed.state, 'completed', JSON.stringify(reviewed));
+      assert.equal(dispatches.length, 4);
+      original = reviewed.id;
+      assert.equal(reviewed.output.toolRecords.length, 1);
+      artifactId = reviewed.output.toolRecords[0].artifactId;
+      const artifact = (await f.db.query(
+        'SELECT content,content_hash FROM assistant_tool_artifacts WHERE turn_id=$1 AND id=$2',
+        [original, artifactId],
+      )).rows[0]!;
+      artifactText = artifact.content;
+      assert.equal(artifact.content_hash, sha(artifactText));
+      const branchesPath = '/v1/assistant-turns/' + original + '/branches';
+      const branches = await f.call('GET', branchesPath);
+      assert.equal(branches.headers['cache-control'], 'private, no-store');
+      const notes = Object.fromEntries(branches.json().branches.filter((b: any) => b.finding).map((b: any) => [b.kind, b.finding]));
+      assert.deepEqual(notes, { 'tone-review': findings.tone, 'composition-review': findings.composition });
+      assert.equal((await f.call('GET', branchesPath, undefined, 'editor')).statusCode, 404);
+      phase = 'recall';
+      dispatches = [];
+      const followUp = await submit('取回上轮两位专家的原话。', original);
+      assert.equal(followUp.output?.text, '已按原始分工结论继续。', JSON.stringify(followUp));
+      assert.equal(dispatches.length, 4);
+      const purposes = (await f.db.query('SELECT DISTINCT purpose FROM assistant_dispatches WHERE turn_id=$1', [followUp.id])).rows;
+      assert.deepEqual(purposes, [{ purpose: 'conversation' }]);
+      phase = 'unrelated';
+      for (const [parent, actor] of [[anchor.id, 'owner'], [undefined, 'editor']] as const) {
+        const denied = await submit('试图读取另一分支的记录。', parent, actor);
+        assert.equal(denied.output?.text, '没有可用记录。', JSON.stringify(denied));
+      }
+      const savedId = artifactId;
+      const privateOffload = await f.db.query(
+        'INSERT INTO assistant_tool_artifacts(turn_id,call_id,content,content_hash) VALUES($1,$2,$3,$4) RETURNING id',
+        [original, 'legacy-offload', 'private-other-tool', sha('private-other-tool')],
+      );
+      artifactId = privateOffload.rows[0]!.id;
+      const unlisted = await submit('读取未发布的旧工具结果。', original);
+      assert.equal(unlisted.output?.text, '没有可用记录。');
+      artifactId = savedId;
+      await f.db.query("UPDATE assistant_tool_artifacts SET content_hash=repeat('0',64) WHERE id=$1", [artifactId]);
+      const corrupted = await submit('读取已损坏的归档。', original);
+      assert.equal(corrupted.output?.text, '没有可用记录。');
+      const count = dispatches.length;
+      await f.db.query('UPDATE assets SET deleted_at=now() WHERE id=$1', [f.assetId]);
+      const revoked = await f.call('POST', path, { ...f.turn('继续读取'), context: undefined, parentTurnId: original });
+      assert.equal(revoked.json().error.code, 'CONTEXT_SCOPE_REVOKED', revoked.body);
+      assert.equal((await f.call('GET', branchesPath)).statusCode, 403);
+      assert.equal(dispatches.length, count);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
   'an explicit visual attachment is moderated, frozen and delivered without storing its pixels',
   {
     skip: !databaseUrl,

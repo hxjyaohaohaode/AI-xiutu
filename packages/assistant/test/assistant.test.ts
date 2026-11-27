@@ -429,6 +429,29 @@ test('a growing tool transcript repacks historical prose and preserves verbatim 
   assert.deepEqual(manifests, [[], ['prior']]);
 });
 
+test('a large requested tool-record page reaches the next model turn without recursive offloading', async () => {
+  const source = '修复'.repeat(2600);
+  const id = '10f5baf8-141c-41fd-b7e7-6d6730abb786';
+  let sends = 0;
+  assert.ok(textTokens(source) > 3000);
+  const result = await runEditorAgent('fixture', 'fixture', settings, context({
+    readToolResult: async (requestedId, offset, limit) => {
+      assert.equal(requestedId, id);
+      assert.equal(offset, 0);
+      assert.equal(limit, 6000);
+      return { artifactId: id, total: source.length, content: source };
+    },
+    storeToolResult: async () => { throw new Error('a bounded page must not create another archive'); },
+  }), async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    if (++sends === 1) return response([tool('read_tool_result', { artifactId: id, offset: 0, limit: 6000 })]);
+    assert.equal(JSON.parse(body.input.at(-1).output).content, source);
+    return response([text('完整分页已收到。')]);
+  });
+  assert.equal(result.termination, 'completed');
+  assert.equal(sends, 2);
+});
+
 test('synthesis reserves its dispatch and rejects repeat or late specialist requests', async () => {
   const bodies: any[] = [];
   const result = await runEditorAgent(
