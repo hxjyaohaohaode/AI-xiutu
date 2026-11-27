@@ -64,6 +64,9 @@ jobs:
         env:
           BROWSER_ARTIFACT_DIR: artifacts/browser-v4/round-${{ matrix.round }}
         run: node --import tsx scripts/qa/workspace-v4.browser.mjs
+      - name: Edit, collaboratively save and export studio files
+        if: matrix.round == 1
+        run: node --import tsx scripts/qa/office-studio.browser.mjs
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
         if: matrix.round == 1
         env:
@@ -166,6 +169,7 @@ jobs:
           path: |
             artifacts/browser-agent-image
             artifacts/browser-project-files
+            artifacts/browser-office-studio
           retention-days: 14
   baseline:
     runs-on: ubuntu-latest

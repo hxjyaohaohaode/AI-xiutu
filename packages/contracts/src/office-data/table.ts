@@ -1,9 +1,18 @@
-import { messageBlocks, type MessageBlock } from '../ai/message-format';
-
-export type DataTable = Extract<MessageBlock, { kind: 'table' }>;
+export type DataTable = {
+  kind: 'table';
+  line: number;
+  headers: string[];
+  rows: string[][];
+  textCells?: Set<number>;
+  formulas?: Readonly<Record<string, string>>;
+};
 
 // Accept rectangular CSV/TSV with a header, including quoted delimiters and newlines.
-export function delimited(text: string, delimiter: string, textCells?: Set<number>): string[][] | null {
+export function delimited(
+  text: string,
+  delimiter: string,
+  textCells?: Set<number>,
+): string[][] | null {
   const rows: string[][] = [];
   let ordinal = 0;
   let row: string[] = [],
@@ -41,53 +50,15 @@ export function delimited(text: string, delimiter: string, textCells?: Set<numbe
     else if (char === '"') return null;
     else field += char;
   }
-  const width = rows[0]?.length ?? 0;
+  const headers = rows[0];
+  const width = headers?.length ?? 0;
   return rows.length >= 2 &&
     width >= 2 &&
     width <= 256 &&
-    rows[0].every((header) => header.trim()) &&
+    headers?.every((header) => header.trim()) &&
     rows.every((values) => values.length === width)
     ? rows
     : null;
-}
-
-function dataBlock(text: string, line: number, separator?: string, typed = false): DataTable | null {
-  const source = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
-  const delimiters = separator ? [separator] : ['\t', ','];
-  for (const delimiter of delimiters) {
-    if (!separator && !source.split('\n', 1)[0].includes(delimiter)) continue;
-    const textCells = typed ? new Set<number>() : undefined;
-    const values = delimited(source, delimiter, textCells);
-    if (values) return { kind: 'table', line, headers: values[0], rows: values.slice(1), ...(textCells ? { textCells } : {}) };
-  }
-  return null;
-}
-
-export function contentBlocks(body: string, strictTables = false): MessageBlock[] {
-  const plainTable = dataBlock(body, 0);
-  if (plainTable) return [plainTable];
-  const lines = body.replace(/\r\n?/g, '\n').split('\n');
-  return messageBlocks(body, 256).map((block) => {
-    if (block.kind === 'heading')
-      return { ...block, level: lines[block.line]!.trimStart().match(/^#+/)![0].length };
-    if (
-      strictTables &&
-      block.kind === 'table' &&
-      lines[block.line + block.rows.length + 2]?.includes('|')
-    )
-      throw new Error('数据表存在列数不一致的行，请检查后再导出。');
-    if (block.kind === 'code' && /^(?:csv|tsv|sheet-tsv)$/i.test(block.language)) {
-      const table = dataBlock(
-        block.text,
-        block.line,
-        block.language.toLowerCase() === 'csv' ? ',' : '\t',
-        block.language.toLowerCase() === 'sheet-tsv',
-      );
-      if (strictTables && !table) throw new Error('数据表存在列数不一致的行，请检查后再导出。');
-      return table ?? block;
-    }
-    return block;
-  });
 }
 
 export function numericCell(source: string): { value: number; percent: boolean } | null {
@@ -101,13 +72,28 @@ export function numericCell(source: string): { value: number; percent: boolean }
   return Number.isFinite(value) && (value !== 0 || !digits) ? { value, percent } : null;
 }
 
+export function usedChartTable(table: DataTable): DataTable {
+  let count = table.rows.length;
+  while (count > 0 && table.rows[count - 1]!.every((value) => !value.trim())) count--;
+  if (count === table.rows.length) return table;
+  const end = (count + 1) * table.headers.length;
+  return {
+    ...table,
+    rows: table.rows.slice(0, count),
+    textCells: table.textCells && new Set([...table.textCells].filter((index) => index < end)),
+  };
+}
+
 export function chartSeries(table: DataTable) {
   // Each value series gets its own axis so counts and percentages are never mixed.
   if (!table.rows.length) return [];
   return table.headers.slice(1).flatMap((name, index) => {
     const column = index + 1;
-    const numbers = table.rows.map((row, r) => table.textCells?.has((r + 1) * table.headers.length + column)
-      ? null : numericCell(row[column]));
+    const numbers = table.rows.map((row, r) =>
+      table.textCells?.has((r + 1) * table.headers.length + column)
+        ? null
+        : numericCell(row[column] ?? ''),
+    );
     const percent = numbers.find((item) => item !== null)?.percent;
     if (percent === undefined || numbers.some((item) => !item || item.percent !== percent))
       return [];

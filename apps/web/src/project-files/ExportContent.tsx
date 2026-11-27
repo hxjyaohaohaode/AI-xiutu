@@ -84,6 +84,7 @@ export function ExportContent({
             : []),
           { value: 'xlsx', label: 'Excel (.xlsx)' },
           { value: 'svg', label: t('矢量图表 (.svg)') },
+          ...(formats?.includes('png') ? [{ value: 'png' as const, label: t('高清图表 (.png)') }] : []),
         ].filter(option => !formats || formats.some(format => format === option.value) ||
           (option.value === 'pptx-cover' && formats.includes('pptx'))) as { value: ExportOption; label: string }[]}
       />

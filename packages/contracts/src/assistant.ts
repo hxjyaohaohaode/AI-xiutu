@@ -83,7 +83,7 @@ export interface AssistantBranchEvent {
 /** Only these server tools produce reusable work records. Other offloaded tool
  * output remains private to its original turn. */
 export const assistantRecordTool = z.enum([
-  'consult_specialists', 'delegate_studio_task', 'inspect_candidate', 'propose_scene_balance', 'draft_project_file',
+  'consult_specialists', 'delegate_studio_task', 'inspect_candidate', 'propose_scene_balance', 'draft_project_file', 'draft_data_chart',
 ]);
 export const assistantToolRecord = z.object({
   artifactId: z.uuid(),
@@ -100,6 +100,7 @@ export const assistantScopeSchema = z
     allowWebSearch: z.boolean().default(false),
     publicSearch: assistantPublicSearchSchema.optional(),
     usePersonalMemory: z.boolean().default(false),
+    useProjectMemory: z.boolean().optional(),
     executionGrantId: z.uuid().optional(),
     creativeBrief: creativeBriefSchema.optional(),
   })
@@ -178,7 +179,7 @@ export const assistantDocumentSelection = z.object({
 }).strict();
 export type AssistantDocumentSelection = z.infer<typeof assistantDocumentSelection>;
 export type AssistantDocumentSource = {
-  id: string; version: number; title: string; body: string;
+  id: string; version: number; title: string; body: string; sourceSha256?: string;
 };
 export const assistantTurnSchema = z
   .object({

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { unzipSync, strFromU8 } from 'fflate';
 import { exportContent } from '../src/project-files/export';
-import { contentBlocks, numericCell } from '../src/project-files/content';
+import { contentBlocks, numericCell } from '@ai-xiutu/contracts/office-data';
 import { projectCover } from '../src/project-files/cover';
 
 const source = [
@@ -201,7 +201,7 @@ test('versioned layout preserves legacy text and selection styles across documen
 
 test('formatted paragraphs survive rich editing, JSONB property order, unknown writers and Office exports', async () => {
   const { documentFormatSchema, sameDocumentFormat, rebaseDocumentFormat, formatMatchesBody } = await import('@ai-xiutu/contracts');
-  const { readRichDocument, writeRichDocument } = await import('../src/project-files/rich-document');
+  const { readRichDocument, writeRichDocument } = await import('@ai-xiutu/contracts/rich-document');
   const text = '  A😀 B  \n\n项目目标\n目标数据\n\n| 地方 | 数量 |\n|---|---|\n| 武汉 | 12 |';
   const formatting = documentFormatSchema.parse({version:1, paragraphs:[
     {line:0, align:'right', after:12, runs:[{from:2,to:5,bold:true,italic:true,underline:true,font:'Georgia',size:24}]},

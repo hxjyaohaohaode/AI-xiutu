@@ -1,6 +1,7 @@
 import { type DocumentLayout } from '@ai-xiutu/contracts';
 import { strToU8, zipSync } from 'fflate';
-import { chartSeries, numericCell, xml, type DataTable } from './content';
+import { chartSeries, numericCell, usedChartTable, xml, type DataTable } from '@ai-xiutu/contracts/office-data';
+import { calculatedTable, calculateSheet, columnName } from '@ai-xiutu/contracts/office-data';
 
 const office = 'http://schemas.openxmlformats.org/officeDocument/2006';
 const drawing = 'http://schemas.openxmlformats.org/drawingml/2006';
@@ -14,13 +15,6 @@ const relationships = (targets: [string, string][]) =>
         `<Relationship Id="rId${i + 1}" Type="${office}/relationships/${type}" Target="${target}"/>`,
     )
     .join('')}</Relationships>`;
-
-function columnName(index: number) {
-  let name = '';
-  for (let n = index + 1; n > 0; n = Math.floor((n - 1) / 26))
-    name = String.fromCharCode(65 + ((n - 1) % 26)) + name;
-  return name;
-}
 
 function chartXml(table: DataTable, series: ReturnType<typeof chartSeries>[number], sheet: string, chart: DocumentLayout['chart']) {
   const col = columnName(series.column);
@@ -52,8 +46,10 @@ export function workbook(tables: DataTable[], chart: DocumentLayout['chart'] = '
     throw new Error('Excel 文件最多支持 64 张工作表和 40000 个单元格，请拆分数据后导出。');
   // Each native chart embeds its own label cache alongside the editable source range.
   let charts = 0, points = 0, cachedLabelLength = 0;
-  const tableSeries = tables.map((table) => {
-    const series = chartSeries(table);
+  const calculations = tables.map(calculateSheet);
+  const rendered = tables.map((table, i) => usedChartTable(calculatedTable(table, calculations[i])));
+  const tableSeries = rendered.map((table) => {
+    const series = chart === 'line' || chart === 'bar' ? chartSeries(table) : [];
     charts += series.length;
     points += series.length * table.rows.length;
     cachedLabelLength += series.length * table.rows.reduce((sum, row) => sum + row[0].length, 0);
@@ -92,6 +88,18 @@ export function workbook(tables: DataTable[], chart: DocumentLayout['chart'] = '
                   Array.from(text).reduce((w, ch) => w + (ch.charCodeAt(0) > 255 ? 2 : 1), 0) + 3,
                 ),
               );
+              const calculation = calculations[index]!.get(location);
+              if (calculation) {
+                if (!calculation.supported)
+                  throw new Error(location + ' 含未支持的公式或超过计算限额，请先修正再导出。');
+                const result = calculation.value;
+                const type = typeof result === 'boolean' ? 'b' : typeof result === 'string' ? 'str' :
+                  result && typeof result === 'object' ? 'e' : 'n';
+                const cache = typeof result === 'boolean' ? Number(result) : result && typeof result === 'object'
+                  ? (result.error === '#CYCLE!' || result.error === '#LIMIT!' ? '#REF!' : result.error)
+                  : result ?? 0;
+                return `<c r="${location}" t="${type}"><f>${xml(calculation.formula.slice(1))}</f><v>${xml(String(cache))}</v></c>`;
+              }
               if (value)
                 return `<c r="${location}" s="${value.percent ? 2 : 0}"><v>${value.value}</v></c>`;
               return `<c r="${location}" t="inlineStr" s="${r === 0 ? 1 : 0}"><is><t xml:space="preserve">${xml(text)}</t></is></c>`;
@@ -106,7 +114,7 @@ export function workbook(tables: DataTable[], chart: DocumentLayout['chart'] = '
     const refs: [string, string][] = [];
     const anchors = series.map((value, i) => {
       chartId++;
-      add(`xl/charts/chart${chartId}.xml`, chartXml(table, value, name, chart), 'drawingml.chart+xml');
+      add(`xl/charts/chart${chartId}.xml`, chartXml(rendered[index]!, value, name, chart), 'drawingml.chart+xml');
       refs.push(['chart', `../charts/chart${chartId}.xml`]);
       return `<xdr:oneCellAnchor><xdr:from><xdr:col>${table.headers.length + 1}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${i * 18}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="5300000" cy="2950000"/>
       <xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 1}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="${drawing}/chart"><c:chart xmlns:c="${drawing}/chart" r:id="rId${i + 1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:oneCellAnchor>`;
@@ -134,7 +142,7 @@ export function workbook(tables: DataTable[], chart: DocumentLayout['chart'] = '
   bookRels.push(['styles', 'styles.xml']);
   add(
     'xl/workbook.xml',
-    `<workbook xmlns="${spreadsheet}" xmlns:r="${office}/relationships"><sheets>${sheets.join('')}</sheets></workbook>`,
+    `<workbook xmlns="${spreadsheet}" xmlns:r="${office}/relationships"><sheets>${sheets.join('')}</sheets>${calculations.some(c => c.size) ? '<calcPr calcId="191029" calcMode="auto" fullCalcOnLoad="1"/>' : ''}</workbook>`,
     'spreadsheetml.sheet.main+xml',
   );
   add('_rels/.rels', relationships([['officeDocument', 'xl/workbook.xml']]));

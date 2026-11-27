@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
 import type { Database, Queryable } from '@ai-xiutu/db';
 import type { AssistantContext, AssistantDocumentSelection, AssistantDocumentSource, AssistantScope, VoiceContext } from '@ai-xiutu/contracts';
+import { readOfficeBlock, readPresentation, type OfficeChartSnapshot } from '@ai-xiutu/contracts';
 import type { ImageModerator, TextModerator } from '@ai-xiutu/providers';
 import { HttpError, id, lockActiveSession, projectAccess } from '../core.js';
 import type { LocalPrivateStorage } from '../storage.js';
@@ -27,7 +28,7 @@ export async function selectedAssistantDocument(
   lock = false,
 ): Promise<AssistantDocumentSource> {
   const { rows } = await tx.query(
-    `SELECT id,version,title,CASE WHEN char_length(body)<=16000 AND octet_length(body)<=48000 THEN body END AS body
+    `SELECT id,version,title,CASE WHEN char_length(body)<=100000 AND octet_length(body)<=300000 THEN body END AS body
      FROM documents WHERE project_id=$1 AND id=$2${lock ? ' FOR SHARE' : ''}`,
     [projectId, selection.documentId],
   );
@@ -36,9 +37,35 @@ export async function selectedAssistantDocument(
     throw new HttpError(404, 'ASSISTANT_DOCUMENT_NOT_FOUND', '此项目文档不可用');
   if (source.version !== selection.expectedVersion)
     throw new HttpError(409, 'ASSISTANT_DOCUMENT_CHANGED', '项目文档已有更新，请重新选择版本');
-  if (typeof source.body !== 'string')
+  const body = typeof source.body === 'string' ? officeDocumentText(source.body) : null;
+  if (body === null || body.length > 16000 || Buffer.byteLength(body, 'utf8') > 48000)
     throw new HttpError(400, 'ASSISTANT_DOCUMENT_BUDGET', '文档超出本轮上下文范围，请选取需要的段落');
-  return { id: source.id, version: source.version, title: source.title, body: source.body };
+  return { id: source.id, version: source.version, title: source.title, body,
+    sourceSha256: createHash('sha256').update(source.body).digest('hex') };
+}
+
+function officeDocumentText(body: string) {
+  const describeChart = (chart: OfficeChartSnapshot) => JSON.stringify({
+    kind: chart.kind, title: chart.title, headers: chart.headers, rows: chart.rows,
+  });
+  const presentation = readPresentation(body);
+  if (presentation) return presentation.slides.map((slide, index) =>
+    'Slide ' + (index + 1) + ' · ' + slide.name + '\n' + slide.elements.flatMap(element =>
+      element.kind === 'text' ? [element.text] :
+      element.kind === 'image' ? ['Image caption: ' + element.alt] :
+      element.kind === 'chart' ? [describeChart(element.chart)] : [],
+    ).join('\n')
+  ).join('\n\n');
+  if (!body.includes('[[office:')) return body;
+  return body.split(/\r\n?|\n/).map(line => {
+    const block = readOfficeBlock(line);
+    if (!block) return line;
+    if (block.kind === 'note') return 'Note: ' + block.text;
+    if (block.kind === 'chart') return describeChart(block.chart);
+    if (block.kind === 'audio') return 'Audio title (audio not shared): ' + block.title;
+    if (block.kind === 'image') return 'Image caption (image not shared): ' + block.title;
+    return 'Document reference (contents not shared): ' + block.title + ' · v' + block.version;
+  }).join('\n');
 }
 /** Transaction-only authorization fence. Lock order is user → sorted spaces →
  * sorted projects → memberships/assets → paid row → hold. Membership mutations

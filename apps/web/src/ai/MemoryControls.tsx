@@ -144,6 +144,7 @@ export function MemoryControls({
                 category,
                 expectedVersion: editing.version,
                 expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+                ...(suggestionSource?.sourceTurnId ? { sourceTurnId: suggestionSource.sourceTurnId } : {}),
               }
             : {
                 title,
@@ -248,6 +249,21 @@ export function MemoryControls({
         />
         {t('显示已到期的要求')}
       </label>
+      {suggestionSource && items.some(item => item.canEdit && item.scope === scope) && (
+        <label>
+          {t('保存方式')}
+          <select value={editing?.id ?? ''} disabled={busy || disabled} aria-label={t('保存方式')}
+            onChange={event => {
+              const item = items.find(item => item.id === event.target.value && item.canEdit && item.scope === scope);
+              setEditing(item ?? null);
+              if (item) { setCategory('correction'); setExpiresAt(localDate(item.expiresAt)); }
+            }}>
+            <option value="">{t('添加新记忆')}</option>
+            {items.filter(item => item.canEdit && item.scope === scope).map(item =>
+              <option key={item.id} value={item.id}>{t('更新')} {item.title} · v{item.version}</option>)}
+          </select>
+        </label>
+      )}
       <div className="assistant-memory-list">
         {items.map((item) => (
           <article key={item.id}>

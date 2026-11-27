@@ -8,8 +8,11 @@ import {
   TextH,
 } from '@phosphor-icons/react';
 import { t, useLocale } from '../i18n';
-import { contentBlocks } from './content';
-import { chartSvg } from './chart';
+import { contentBlocks } from '@ai-xiutu/contracts/office-data';
+import { chartNames, chartSvg } from '@ai-xiutu/contracts/office-data';
+import { readProjectSheet } from '@ai-xiutu/contracts/office-data';
+import { calculatedTable } from '@ai-xiutu/contracts/office-data';
+import { OfficeBlockView } from './OfficeInsert';
 import { editSelection, headingScales, type FormatCommand } from './formatting';
 import { officeLayout } from './office-layout';
 import {
@@ -20,6 +23,7 @@ import {
   officeCharts,
   defaultLayout,
   withDocumentLayout,
+  readOfficeBlock,
   rebaseDocumentFormat,
   type DocumentFormat,
   type DocumentLayout,
@@ -27,7 +31,6 @@ import {
 import './document-composer.css';
 
 const alignmentNames = { left: '左对齐', center: '居中对齐', right: '右对齐', justify: '两端对齐' };
-const chartNames = { bar: '条形图', line: '折线图' };
 const actions = [
   { command: 'heading', label: '小标题', Icon: TextH },
   { command: 'list', label: '项目符号', Icon: ListBullets },
@@ -39,14 +42,19 @@ export function DocumentPreview({
   title,
   charts,
   formatting,
+  onReference,
 }: {
   text: string;
   layout: DocumentLayout;
   title: string;
   charts: boolean;
   formatting?: DocumentFormat | null;
+  onReference?: (id: string, version: number) => void;
 }) {
-  const blocks = useMemo(() => contentBlocks(text), [text]);
+  const blocks = useMemo(() => {
+    const sheet = readProjectSheet(text);
+    return sheet ? [calculatedTable(sheet.table)] : contentBlocks(text);
+  }, [text]);
   const rich = useMemo(
     () => officeLayout(text, formatting ?? { version: 1, paragraphs: [] }),
     [text, formatting],
@@ -170,11 +178,13 @@ export function DocumentPreview({
           );
         if (block.kind === 'quote')
           return <blockquote key={block.line}>{inline(block.text, block.line)}</blockquote>;
-        return block.text.split('\n').map((line, i) => (
-          <p key={block.line + i} style={paragraphStyle(block.line + i)}>
-            {inline(line, block.line + i)}
-          </p>
-        ));
+        return block.text.split('\n').map((line, i) => {
+          const embed = readOfficeBlock(line);
+          return embed ? <OfficeBlockView key={block.line + i} block={embed} onOpen={onReference} /> :
+            <p key={block.line + i} style={paragraphStyle(block.line + i)}>
+              {inline(line, block.line + i)}
+            </p>;
+        });
       })}
       {(truncated || blocks.length > 200) && (
         <small>{t('预览仅显示部分内容，导出按完整正文处理。')}</small>
@@ -191,6 +201,7 @@ export function DocumentComposer({
   formatting,
   richEditor,
   onRich,
+  onReference,
 }: {
   body: string;
   title: string;
@@ -198,6 +209,7 @@ export function DocumentComposer({
   formatting?: DocumentFormat | null;
   richEditor?: ReactNode;
   onRich?: () => void;
+  onReference?: (id: string, version: number) => void;
   onChange: (body: string, formatting: DocumentFormat | null) => boolean;
 }) {
   useLocale();
@@ -409,6 +421,7 @@ export function DocumentComposer({
           title={title}
           layout={layout}
           charts={mode === 'chart'}
+          onReference={onReference}
         />
       )}
       {notice && <p role="alert">{t(notice)}</p>}

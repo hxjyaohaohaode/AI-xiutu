@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { strFromU8, unzipSync } from 'fflate';
 import { importSpreadsheet, selectSpreadsheetRange } from '../src/project-files/spreadsheet';
 import { exportContent } from '../src/project-files/export';
-import { contentBlocks } from '../src/project-files/content';
+import { contentBlocks } from '@ai-xiutu/contracts/office-data';
 
 const original = readFileSync(new URL('../../../scripts/qa/fixtures/project-data.xlsx', import.meta.url));
 const imported = importSpreadsheet('项目.xlsx', original);
@@ -63,7 +63,7 @@ test('a shared-string Excel workbook preserves rich text, cached results and sou
 });
 
 test('worksheet edits preserve selected workbook provenance, cached text types and literal punctuation', async () => {
-  const {readProjectSheet,editProjectCell,columnName}=await import('../src/project-files/project-sheet');
+  const {readProjectSheet,editProjectCell,columnName}=await import('@ai-xiutu/contracts/office-data');
   const source=selectSpreadsheetRange(imported,file,'A1:C3').body;
   const sheet=readProjectSheet(source)!;
   assert.equal(sheet.range,file.name+'!A1:C3');

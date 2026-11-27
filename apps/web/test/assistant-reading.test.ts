@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { registerHooks } from 'node:module';
 import { createElement } from 'react';
-import { messageBlocks, messageLink } from '../src/ai/message-format.ts';
+import { messageBlocks, messageLink } from '@ai-xiutu/contracts/office-data';
 import {
   isResearchBranch,
   mergeResearchBranches,

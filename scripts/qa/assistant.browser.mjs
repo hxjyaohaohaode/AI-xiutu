@@ -739,7 +739,8 @@ try {
       'memory correction version',
     );
     const share = await details('共享范围');
-    await share.getByLabel('使用已确认的偏好、项目要求与素材标注').check();
+    await share.getByLabel('使用个人记忆与素材标注').check();
+    await share.getByLabel('使用当前项目与团队记忆').check();
     await details('共享范围', false);
     await details('偏好与要求', false);
     await submit('自然一点，保留人物特征。');

@@ -13,7 +13,9 @@ const quote = (line: string) => /^ {0,3}>\s?(.*)$/.exec(line);
 function tableCells(line: string): string[] {
   const source = line.trim().replace(/^\|/, '');
   const cells: string[] = [];
-  let text = '', backslashes = 0, endedAtSeparator = false;
+  let text = '',
+    backslashes = 0,
+    endedAtSeparator = false;
   for (const char of source) {
     if (char === '\\') {
       backslashes++;
@@ -77,7 +79,10 @@ export function messageBlocks(text: string, maxTableColumns = 12): MessageBlock[
     }
     if (current.includes('|') && lines[index + 1] && tableRule(lines[index + 1]!)) {
       const headers = tableCells(current);
-      if (headers.length <= maxTableColumns && tableCells(lines[index + 1]!).length === headers.length) {
+      if (
+        headers.length <= maxTableColumns &&
+        tableCells(lines[index + 1]!).length === headers.length
+      ) {
         const rows: string[][] = [];
         index += 2;
         while (index < lines.length && lines[index]!.includes('|')) {

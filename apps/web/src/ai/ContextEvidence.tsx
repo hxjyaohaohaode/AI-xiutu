@@ -105,6 +105,10 @@ export function ContextEvidence({
           {current.compactedSourceIds?.length ?? 0}{' '}
           {t('段助手说明，仍可查阅原文。实际用量以供应商回执为准。')}
         </p>
+        {Array.isArray(current.compaction) && current.compaction.length > 0 &&
+          <p>{t('其中保留 {v0} 段原文摘录。当前请求、用户历史和已确认的版本依据随本轮保留。', {
+            v0: current.compaction.filter((entry: { tier: string }) => entry.tier === 'excerpt').length,
+          })}</p>}
       </MotionDetails>
       {error && <p role="alert">{error}</p>}
     </MotionDetails>
