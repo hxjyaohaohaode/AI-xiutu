@@ -260,6 +260,13 @@ export function acceptJobSubmission(value: JobSubmission, job: AIJob): JobSubmis
 export const jobSubmissionResolved = (state: string) =>
   ['completed', 'failed', 'cancelled'].includes(state);
 
+export function findJobReceipt(value: JobSubmission, result: { requestKey?: string; jobs: AIJob[] }) {
+  if (value.jobId) return result.jobs.find((job) => job.id === value.jobId);
+  // An older server can ignore an unknown filter and return an unrelated job.
+  if (result.requestKey !== value.idempotencyKey || result.jobs.length !== 1) return undefined;
+  return result.jobs[0];
+}
+
 export function jobSubmissionRequest(value: JobSubmission): { path: string; init: RequestInit } {
   const path = `/projects/${encodeURIComponent(value.projectId)}/ai-jobs`;
   if (value.jobId || value.requestBody === null)

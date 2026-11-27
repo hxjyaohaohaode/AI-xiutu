@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
 import { downloadBlob } from '../lib/api';
+import type { CaptureProjectCover } from './cover';
 import type { FileFormat } from './export';
 
 type ExportOption = FileFormat | 'pptx-cover' | '';
@@ -13,7 +14,7 @@ export function ExportContent({
 }: {
   title: string;
   body: string;
-  captureCover?: () => Promise<string>;
+  captureCover?: CaptureProjectCover;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -51,7 +52,8 @@ export function ExportContent({
           .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
           .slice(0, 72)
           .trim() || t('文档');
-      const file = await exportContent(format, sourceTitle, body, cover);
+      const file = await exportContent(format, sourceTitle, body, cover?.imageDataUrl);
+      cover?.assertCurrent();
       if (ticket.current === id) downloadBlob(file, name + '.' + format);
     } catch (cause) {
       if (ticket.current === id)

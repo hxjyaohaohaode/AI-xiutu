@@ -406,6 +406,7 @@ function createEditPlanService(
         [args.projectId, args.requestKey ?? null, args.actorId],
       );
       return {
+        ...(args.requestKey ? { requestKey: args.requestKey } : {}),
         jobs: rows.rows.map((row) =>
           jobDto(
             row as JobRow,

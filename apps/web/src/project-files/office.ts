@@ -2,6 +2,20 @@ import type { MessageBlock } from '../ai/message-format';
 import { chartSeries } from './content';
 
 export async function wordDocument(title: string, blocks: MessageBlock[]) {
+  let textLines = 0;
+  const count = (text: string) => {
+    textLines += 1 + (text.match(/\n/g)?.length ?? 0);
+    if (textLines > 6000)
+      throw new Error('Word 内容超过 6000 行（含表格单元格），请分段导出。');
+  };
+  for (const block of blocks) {
+    if (block.kind === 'table') {
+      if (block.headers.length > 63) throw new Error('表格列数超过文档格式限制，请使用 Excel。');
+      block.headers.forEach(count);
+      block.rows.forEach((row) => row.forEach(count));
+    } else if (block.kind === 'list') block.items.forEach((item) => count(item.text));
+    else count(block.text);
+  }
   const {
     Document,
     Packer,
@@ -20,7 +34,6 @@ export async function wordDocument(title: string, blocks: MessageBlock[]) {
     text.split('\n').map((line, index) => new TextRun({ text: line, break: index ? 1 : 0 }));
   for (const block of blocks) {
     if (block.kind === 'table') {
-      if (block.headers.length > 63) throw new Error('表格列数超过文档格式限制，请使用 Excel。');
       children.push(
         new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
@@ -77,10 +90,14 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
   const fontFace = 'Aptos';
   let heading = title,
     pageCount = 0,
-    pageLines = 0;
+    pageLines = 0,
+    repeatedHeadingLength = 0;
   let page: ReturnType<typeof deck.addSlide> | undefined;
   function newPage() {
     if (++pageCount > 180) throw new Error('演示文稿超过 180 页，请按章节导出。');
+    repeatedHeadingLength += heading.length;
+    if (repeatedHeadingLength > 1_000_000)
+      throw new Error('演示文稿的重复标题过长，请缩短标题或按章节导出。');
     const slide = deck.addSlide();
     slide.background = { color: 'F9FCFB' };
     slide.addText(heading, {
@@ -187,7 +204,7 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
     } else if (block.kind === 'table') {
       pendingHeading = false;
       if (
-        block.headers.length > 10 ||
+        block.headers.length > 10 || block.headers.some((s) => Array.from(s).length > 100) ||
         block.rows.some((r) => r.some((s) => Array.from(s).length > 100))
       )
         throw new Error('表格过宽或单元格过长，请使用 Excel 或 Word 导出。');

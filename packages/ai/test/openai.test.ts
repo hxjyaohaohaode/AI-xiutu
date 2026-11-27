@@ -434,6 +434,7 @@ test(
             assert.equal(recent.jobs.length, 100);
             assert.ok(!recent.jobs.some((item) => item.id === first.job.id));
             const exact = await f.service.list({ ...args, requestKey: body.idempotencyKey });
+            assert.equal(exact.requestKey, body.idempotencyKey);
             assert.deepEqual(exact.jobs.map((item) => item.id), [first.job.id]);
             assert.deepEqual((await f.service.list({ ...args, requestKey: randomUUID() })).jobs, []);
 

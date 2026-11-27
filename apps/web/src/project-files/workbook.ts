@@ -43,6 +43,20 @@ function chartXml(table: DataTable, series: ReturnType<typeof chartSeries>[numbe
 
 export function workbook(tables: DataTable[]) {
   if (!tables.length) throw new Error('请提供含表头的 Markdown、CSV 或制表符数据。');
+  const cellCount = tables.reduce((total, table) => total + table.headers.length * (table.rows.length + 1), 0);
+  if (tables.length > 64 || cellCount > 40000)
+    throw new Error('Excel 文件最多支持 64 张工作表和 40000 个单元格，请拆分数据后导出。');
+  // Each native chart embeds its own label cache alongside the editable source range.
+  let charts = 0, points = 0, cachedLabelLength = 0;
+  const tableSeries = tables.map((table) => {
+    const series = chartSeries(table);
+    charts += series.length;
+    points += series.length * table.rows.length;
+    cachedLabelLength += series.length * table.rows.reduce((sum, row) => sum + row[0].length, 0);
+    if (charts > 64 || points > 20000 || cachedLabelLength > 1_000_000)
+      throw new Error('Excel 图表数据过大，请减少数值列、行数或分类标签长度后导出。');
+    return series;
+  });
   const files: Record<string, Uint8Array> = {};
   const overrides: string[] = [];
   function add(path: string, content: string, type?: string) {
@@ -84,7 +98,7 @@ export function workbook(tables: DataTable[]) {
     const cols = widths
       .map((w, c) => `<col min="${c + 1}" max="${c + 1}" width="${w}" customWidth="1"/>`)
       .join('');
-    const series = chartSeries(table);
+    const series = tableSeries[index]!;
     const refs: [string, string][] = [];
     const anchors = series.map((value, i) => {
       chartId++;

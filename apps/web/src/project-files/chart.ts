@@ -5,6 +5,11 @@ export function chartSvg(title: string, tables: DataTable[]) {
   if (!plots.length) throw new Error('图表需要首列为类别、其后至少一列为完整数值的数据。');
   const entries = plots.reduce((sum, plot) => sum + plot.table.rows.length, 0);
   if (entries > 200) throw new Error('图表超过 200 个数据点，请选择 Excel 或缩小数据范围。');
+  const labelLength = plots.reduce((total, { table, series }) =>
+    total + series.name.length * (1 + table.rows.length) +
+      table.rows.reduce((sum, row) => sum + row[0].length, 0), 0);
+  if (labelLength > 1_000_000)
+    throw new Error('图表标签过长，请缩短分类或列标题后导出。');
   const compact = (label: string, limit: number) => {
     const points = Array.from(label);
     return points.length > limit ? points.slice(0, limit - 1).join('') + '…' : label;

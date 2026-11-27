@@ -3,6 +3,7 @@ import test from 'node:test';
 import { unzipSync, strFromU8 } from 'fflate';
 import { exportContent } from '../src/project-files/export';
 import { contentBlocks, numericCell } from '../src/project-files/content';
+import { projectCover } from '../src/project-files/cover';
 
 const source = [
   '## 拍摄进展',
@@ -102,4 +103,49 @@ test('export preserves literal pipes and significant whitespace and rejects unre
   assert.match(sheet, /<c r="B3" t="inlineStr"[^>]*><is><t xml:space="preserve"> 007 <\/t>/);
   await assert.rejects(exportContent('xlsx', '项目', 'label,value\nA,12\u000013'), /不支持的字符/);
   await assert.rejects(exportContent('docx', 'A\u0000B', '正文'), /不支持的字符/);
+});
+
+test('a cover requires the current project artwork and base, including after capture and before download', async () => {
+  const initial = {
+    actor: 'user', epoch: 1, navigation: 2, source: 3, recipe: {},
+    project: 'A', artwork: { id: 'art', projectId: 'A', assetId: 'asset', headVersion: 1 },
+    base: { id: 'asset', projectId: 'A' },
+  };
+  let current = initial;
+  const read = () => current;
+  assert.equal(projectCover('B', read, async () => 'jpeg'), undefined);
+  current = { ...initial, base: { ...initial.base, id: 'other' } };
+  assert.equal(projectCover('A', read, async () => 'jpeg'), undefined);
+  current = { ...initial, base: { ...initial.base, projectId: 'B' } };
+  assert.equal(projectCover('A', read, async () => 'jpeg'), undefined);
+  current = initial;
+  const moved = projectCover('A', read, async () => {
+    current = { ...initial, navigation: 3 };
+    return 'jpeg';
+  });
+  await assert.rejects(moved!(), /画面已变化/);
+  current = initial;
+  const result = await projectCover('A', read, async () => 'jpeg')!();
+  assert.equal(result.imageDataUrl, 'jpeg');
+  result.assertCurrent();
+  for (const change of [{ project: 'B' }, { actor: 'another' }, { epoch: 2 }, { source: 4 },
+    { recipe: {} }, { artwork: { ...initial.artwork, headVersion: 2 } }]) {
+    current = { ...initial, ...change };
+    assert.throws(result.assertCurrent, /画面已变化/);
+  }
+});
+
+test('Office and SVG stop oversized table and chart expansions before allocating the file', async () => {
+  const cells = (width: number, rows: number) => [
+    Array.from({ length: width }, (_, i) => 'C' + i).join(','),
+    ...Array.from({ length: rows }, () => 'x' + ','.repeat(width - 1)),
+  ].join('\n');
+  await assert.rejects(exportContent('docx', '数据', cells(40, 150)), /6000/);
+  await assert.rejects(exportContent('xlsx', '数据', cells(80, 500)), /40000/);
+  const width = 50;
+  const longLabels = Array.from({ length: width + 1 }, (_, i) => 'C' + i).join(',') +
+    '\n' + '类'.repeat(20001) + ',1'.repeat(width);
+  await assert.rejects(exportContent('xlsx', '数据', longLabels), /Excel 图表数据过大/);
+  await assert.rejects(exportContent('svg', '数据', longLabels), /图表标签过长/);
+  await assert.rejects(exportContent('pptx', '数据', '分类,' + '列'.repeat(101) + '\n甲,1'), /表格过宽/);
 });

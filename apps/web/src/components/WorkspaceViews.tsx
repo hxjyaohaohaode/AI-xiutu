@@ -1,3 +1,4 @@
+import type { CaptureProjectCover } from '../project-files/cover';
 import { ExportContent } from '../project-files/ExportContent';
 import { getLocale, t } from '../i18n';
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
@@ -1105,7 +1106,7 @@ export function DocumentsView({
   refreshToken: number;
   onDirtyChange: (dirty: boolean) => void;
   onUseDocument?: (doc: ProjectDocument) => void;
-  captureCover?: () => Promise<string>;
+  captureCover?: CaptureProjectCover;
 }) {
   const canEdit = !!actorId && workspacePermissions(project.role).edit;
   const ownerKey = JSON.stringify([actorId, project.id]);

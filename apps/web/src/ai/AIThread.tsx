@@ -1,3 +1,4 @@
+import type { CaptureProjectCover } from '../project-files/cover';
 import { ExportContent } from '../project-files/ExportContent';
 import { t } from '../i18n';
 import { useContext, useEffect, useState } from 'react';
@@ -35,7 +36,7 @@ function TextResult({
   controller: ResultDecisionController;
   documents: { id: string; title: string; version: number }[];
   canEdit: boolean;
-  captureCover?: () => Promise<string>;
+  captureCover?: CaptureProjectCover;
 }) {
   const visible = useContext(AIVisibilityContext);
   const [title, setTitle] = useState(output.title),
@@ -425,7 +426,7 @@ function PendingImagePreview({ job }: { job: AIJob }) {
   );
 }
 type ThreadResultProps = {
-  captureCover?: () => Promise<string>;
+  captureCover?: CaptureProjectCover;
   job: AIJob;
   project: Project;
   artwork: Artwork | null;
@@ -676,7 +677,7 @@ export function AIThread({
   userId?: string | null;
   isDirty?: boolean;
   documents?: { id: string; title: string; version: number }[];
-  captureCover?: () => Promise<string>;
+  captureCover?: CaptureProjectCover;
   onDecisionApplied?: OnResultApplied;
   collageActions?: CollageResultActions;
   onBeforeArtworkWrite?: () => void | Promise<void>;

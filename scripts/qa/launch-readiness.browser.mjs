@@ -52,7 +52,19 @@ async function pageFor(actor, viewport) {
   await page.getByRole('button', { name: '打开空间与项目', exact: true }).waitFor();
   return page;
 }
-async function take(page, filename) { await page.screenshot({ path: resolve(out, filename + '.png') }); }
+async function take(page, filename) {
+  const capture = () => page.screenshot({ path: resolve(out, filename + '.png'), scale: 'css' });
+  try {
+    await capture();
+  } catch (error) {
+    // A busy WebGL compositor can return one transient capture error when the
+    // editor switches tools. Keep the assertions and require a real second frame.
+    if (!String(error).includes('Unable to capture screenshot') || page.isClosed()) throw error;
+    await page.bringToFront();
+    await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+    await capture();
+  }
+}
 async function checkGuestExport(viewport, portrait) {
   const context = await browser.newContext({ viewport, locale: 'zh-CN', reducedMotion: 'reduce',
     hasTouch: viewport.width < 1000 });
@@ -74,8 +86,10 @@ async function checkGuestExport(viewport, portrait) {
     await page.getByLabel('选择照片', { exact: true }).setInputFiles({
       name: 'portrait.png', mimeType: 'image/png', buffer: portrait,
     });
-    await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
+    await page.locator('.canvas-stage.has-image[aria-busy="false"] .image-frame canvas:visible').first().waitFor();
+    await page.locator('.stage-loading').waitFor({ state: 'hidden' });
     const downloadButton = page.locator('[data-action="download-photo"]:visible').first();
+    await downloadButton.click({ trial: true });
     await take(page, 'guest-export-' + viewport.width);
     const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()]);
     const buffer = await readFile(await download.path());
@@ -143,7 +157,11 @@ try {
         unitCost: 5, imageInput: true, reasoningEffort: modelId === id ? 'none' : 'low', responseTierUnits: modelId === id ? { flex: 7 } : undefined })]);
   await fixture.app.listen({ host: '127.0.0.1', port: 0 });
   process.env.PORT = String(fixture.app.server.address().port);
-  server = await preview({ configFile: resolve('apps/web/vite.config.ts'), preview: { host: '127.0.0.1', port, strictPort: true } });
+  server = await preview({
+    configFile: resolve('apps/web/vite.config.ts'),
+    ...(process.env.BROWSER_BUILD_DIR ? { build: { outDir: resolve(process.env.BROWSER_BUILD_DIR) } } : {}),
+    preview: { host: '127.0.0.1', port, strictPort: true },
+  });
   browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
   result.browser = browser.version();
   const guestPortrait = await sharp(sample.buffer).resize(480, 336, { fit: 'cover' }).png().toBuffer();
@@ -270,6 +288,7 @@ try {
   assert.equal(update.status(), 200, await update.text());
   await secondDevice.locator('.ai-execution-summary').filter({ hasText: '只建议' }).waitFor({ timeout: 10000 });
   result.cases.push('account preferences refresh across independent sessions');
+  await secondDevice.context().close();
 
   const phone = await pageFor('owner', { width: 390, height: 844 });
   await phone.locator('input[type=file]').first().setInputFiles(sample);
@@ -414,6 +433,7 @@ try {
   await desktop.getByRole('dialog', { name: '永久删除', exact: true }).getByRole('button', { name: '永久删除', exact: true }).click();
   await trash.getByText('回收站为空', { exact: true }).waitFor();
   result.cases.push('same account across contexts; save, cross-session visibility, active canvas exit, trash thumbnail, restore and purge');
+  await desktop.context().close();
 
   const operator = await pageFor('operator', { width: 820, height: 980 });
   await operator.getByRole('button', { name: '打开空间与项目', exact: true }).click();
@@ -432,12 +452,24 @@ try {
   await phone.goto(origin + '/#/account/support');
   await phone.getByRole('button', { name: /1.99.*51/ }).waitFor();
   await take(phone, 'phone-support');
+  await Promise.all([operator.context().close(), phone.context().close()]);
   const narrow = await pageFor('owner', { width: 320, height: 700 });
   await narrow.locator('input[type=file]').first().setInputFiles(sample);
   await narrow.locator('.canvas-stage.has-image .image-frame canvas').first().waitFor();
   await narrow.locator('[data-dock-tool="light"]:visible').click();
   await narrow.locator('.free-panel[data-fixed-inspector="true"]:visible').waitFor();
   await take(narrow, 'narrow-phone-editor');
+  await showEditorTopbar(narrow);
+  const switchView = narrow.getByRole('button', { name: '切换工作视图', exact: true });
+  const downloadPhoto = narrow.locator('[data-action="download-photo"]:visible');
+  for (const button of [switchView, downloadPhoto]) {
+    await button.click({ trial: true });
+    assert.ok((await button.boundingBox()).width >= 44, 'narrow navigation and download retain full touch targets');
+  }
+  await narrow.getByRole('button', { name: '展开顶部工具', exact: true }).click();
+  await narrow.locator('[data-action="trash-photo"]:visible').click({ trial: true });
+  await switchView.click({ trial: true });
+  await narrow.getByRole('button', { name: '收起顶部工具', exact: true }).click();
   await works(narrow);
   await narrow.getByRole('button', { name: '跨空间查找', exact: true }).click();
   await narrow.locator('[data-library-scope="all"]:visible .library-search').waitFor();
@@ -458,12 +490,14 @@ try {
   assert.ok(await narrow.locator('.collaboration-view:visible .view-heading').first().evaluate((node) =>
     node.getBoundingClientRect().height < 76), 'the narrow collaboration header leaves room for discussions');
   await take(narrow, 'narrow-phone-collaboration');
+  await narrow.context().close();
   const landscape = await pageFor('owner', { width: 844, height: 390 });
   await landscape.locator('input[type=file]').first().setInputFiles(sample);
   await landscape.locator('.canvas-stage.has-image .image-frame canvas').first().waitFor();
   await landscape.locator('[data-dock-tool="light"]:visible').click();
   await landscape.locator('.free-panel[data-fixed-inspector="true"]:visible').waitFor();
   await take(landscape, 'landscape-editor');
+  await landscape.context().close();
   result.cases.push('320 px library and collaboration; landscape editor visible');
   const photoChat = await pageFor('owner', { width: 1440, height: 960 });
   await photoChat.locator('input[type=file]').first().setInputFiles(sample);

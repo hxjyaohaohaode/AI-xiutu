@@ -1,3 +1,4 @@
+import type { CaptureProjectCover } from '../project-files/cover';
 import { ExportContent } from '../project-files/ExportContent';
 import { lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
@@ -258,6 +259,7 @@ export interface LiveAssistantProps {
     referenceAssetIds: string[];
   }, direct?: boolean) => Promise<(() => void | Promise<void>) | null>;
   captureCanvasPreview?: () => Promise<string>;
+  captureProjectCover?: CaptureProjectCover;
   canvasSourceId?: number;
   replyNarration?: ReplyNarration;
   visualAttachment?: AssistantVisualAttachment | null;
@@ -2677,7 +2679,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {message.role === 'assistant' && message.text && !isStreaming && !message.voiceSession && (
               <div className="assistant-message-actions">
                 <CopyMessage text={message.text} />
-                <ExportContent title="" body={message.text} captureCover={props.captureCanvasPreview} />
+                <ExportContent title="" body={message.text} captureCover={props.captureProjectCover} />
                 {props.replyNarration && message.text.trim().length <= 4000 ? (
                   <ReplySpeech text={message.text} narration={props.replyNarration}
                     active={!inCall && !voiceVisible && props.visible !== false} />

@@ -1,3 +1,4 @@
+import { projectCover } from './project-files/cover';
 import { ThemeSwitch } from './components/ThemeSwitch';
 import { hexRgba, NUMERIC_CONTROLS } from './editor/advanced-model';
 import { ParameterGlyph } from './editor/ParameterGlyph';
@@ -748,6 +749,14 @@ export function App({
   const dirty = !!editor.file && JSON.stringify(editor.recipe) !== savedRecipe;
   const artworkRef = useRef(artwork);
   artworkRef.current = artwork;
+  const coverForProject = (id: string | undefined) => editor.file ? projectCover(id, () => {
+    const source = editor.getSourceIdentity();
+    const { actor, epoch } = sessionFence.snapshot();
+    return {
+      project: projectIdRef.current, artwork: artworkRef.current, base: cloudBaseSources.current.get(source),
+      actor, epoch, navigation: projectRequest.current, source, recipe: editor.getRecipe(),
+    };
+  }, async () => (await captureCanvasImage()).imageDataUrl) : undefined;
   const isEditorDirty = () =>
     !!editor.file && JSON.stringify(editor.getRecipe()) !== savedRecipeRef.current;
   const refreshConfig = useCallback(() => {
@@ -2745,6 +2754,7 @@ export function App({
   const floatingVoice = activePanelId === 'ai' && aiActivity.callVisible;
   const mobileAssistantOpen = phoneEditor && activePanelId === 'ai' && !floatingVoice;
   const immersiveEditor = phoneEditor && view === 'editor' && !!editor.file && !mobileAssistantOpen;
+  const photoActionsInHeader = immersiveEditor && (!mobileChromeExpanded || workspaceLayout.view.width <= 439);
   const photoSessionActions = (
     <div className="image-action-strip photo-session-actions">
       <button type="button" data-action="exit-photo" aria-label={t('退出编辑')}
@@ -3299,7 +3309,7 @@ export function App({
                   }
                 />
                 <div className="workspace-top-actions">
-                  {immersiveEditor && !mobileChromeExpanded && photoSessionActions}
+                  {photoActionsInHeader && photoSessionActions}
                   {immersiveEditor &&
                     <IconButton label={t(mobileChromeExpanded ? '收起顶部工具' : '展开顶部工具')}
                       className="mobile-chrome-toggle" aria-expanded={mobileChromeExpanded}
@@ -3445,7 +3455,13 @@ export function App({
                   dismissLabel={interactionText('dismissCloud')}
                   onRetry={retryCloudRead} onDismiss={() => setCloudNoticeDismissed(true)} />}
               </div>
-              <div className="workspace-notice-anchor" ref={setNoticeContainer} />
+              <div
+                className="workspace-notice-anchor"
+                ref={setNoticeContainer}
+                style={view === 'editor' && workspaceLayout.view.toolShelfHeight ? {
+                  bottom: `calc(${workspaceLayout.view.toolShelfHeight + 16}px + env(safe-area-inset-bottom))`,
+                } : undefined}
+              />
               <div className="workspace-body">
                 <MotionSwitch
                   switchKey={view}
@@ -3467,7 +3483,7 @@ export function App({
                         }}
                       >
                         {editor.file && <CanvasTools layout={canvasTools} focused={workspaceLayout.focused}
-                          fixedActions={immersiveEditor && !mobileChromeExpanded ? undefined : photoSessionActions}
+                          fixedActions={photoActionsInHeader ? undefined : photoSessionActions}
                           actions={<div className="image-action-strip" data-motion="canvas-toolbar">
                             <IconButton
                               label={t('打开另一张图片')}
@@ -3574,7 +3590,7 @@ export function App({
                             project={project}
                             refreshToken={refreshToken}
                             onDirtyChange={setDocumentDirty}
-                            captureCover={editor.file && artwork?.projectId === project.id ? async () => (await captureCanvasImage()).imageDataUrl : undefined}
+                            captureCover={coverForProject(project.id)}
                             onUseDocument={async (doc) => {
                               const actor = sessionFence.snapshot();
                               const projectScope = projectRequest.current;
@@ -3866,6 +3882,7 @@ export function App({
                           onConfirmPreview={() => editor.commitCurrent(t('确认 AI 调整'))}
                           onCancelPreview={editor.cancelPreview}
                           captureCanvasPreview={editor.file ? async () => (await captureCanvasImage()).imageDataUrl : undefined}
+                          captureProjectCover={coverForProject(aiProject?.id)}
                           canvasSourceId={sourceIdentity}
                           onUseCanvasSource={
                             project && ['owner', 'admin', 'editor'].includes(project.role)

@@ -5,6 +5,7 @@ import { ApiError } from '../src/lib/api.ts';
 import type { AIJob } from '../src/ai/types.ts';
 import {
   acceptJobSubmission,
+  findJobReceipt,
   clearJobSubmission,
   freezeJobSubmission,
   isJobAdmissionRejected,
@@ -254,4 +255,14 @@ test('a late old receipt cannot clear a newer checkpoint, and corrupted checkpoi
   checkpoint.setItem(slot, '{broken');
   assert.throws(() => readJobSubmission(checkpoint, 'actor-a'), /恢复记录无法读取/);
   assert.throws(() => saveJobSubmission(checkpoint, original), /恢复记录无法读取/);
+});
+
+
+test('missing job IDs accept only an explicitly request-scoped receipt from the API', () => {
+  const saved = freezeJobSubmission({ ...base(), body: body() });
+  const pending = job();
+  assert.equal(findJobReceipt(saved, { jobs: [pending] }), undefined);
+  assert.equal(findJobReceipt(saved, { requestKey: nextKey, jobs: [pending] }), undefined);
+  assert.equal(findJobReceipt(saved, { requestKey: key, jobs: [pending] }), pending);
+  assert.equal(findJobReceipt(acceptJobSubmission(saved, pending), { jobs: [pending] }), pending);
 });

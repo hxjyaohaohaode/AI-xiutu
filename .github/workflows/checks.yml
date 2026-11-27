@@ -69,6 +69,9 @@ jobs:
       - name: Generate and settle an assistant image from its editor candidate
         if: matrix.round == 1
         run: node --import tsx scripts/qa/agent-image.browser.mjs
+      - name: Download editable project files and verify their source data
+        if: matrix.round == 1
+        run: node --import tsx scripts/qa/project-files.browser.mjs
       - name: Verify launch workflows on the built application
         if: matrix.round == 1
         env:
@@ -144,12 +147,14 @@ jobs:
           name: launch-browser-${{ github.sha }}
           path: artifacts/launch-browser
           retention-days: 14
-      - name: Preserve assistant image and settlement evidence
+      - name: Preserve generated image, project file and settlement evidence
         if: always() && matrix.round == 1
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: browser-agent-image-${{ github.sha }}
-          path: artifacts/browser-agent-image
+          name: browser-creation-${{ github.sha }}
+          path: |
+            artifacts/browser-agent-image
+            artifacts/browser-project-files
           retention-days: 14
   baseline:
     runs-on: ubuntu-latest

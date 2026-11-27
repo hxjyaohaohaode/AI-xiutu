@@ -1,3 +1,4 @@
+import type { CaptureProjectCover } from '../project-files/cover';
 import { captureSketchVisual } from '../editor/capture';
 import {
   fileTranscriptionOptionsSchema, supportsFileTranscriptionOptions, type FileTranscriptionOptions,
@@ -81,6 +82,7 @@ import {
   clearJobSubmission,
   freezeJobSubmission,
   isJobAdmissionRejected,
+  findJobReceipt,
   jobSubmissionRequest,
   jobSubmissionResolved,
   readJobSubmission,
@@ -220,6 +222,7 @@ export function AIPanel({
   isLoggedIn,
   onAuth,
   captureCanvasPreview,
+  captureProjectCover,
   canvasSourceId,
   captureReferenceCanvas,
   referenceCanvasLabel = '用当前编辑图',
@@ -269,6 +272,7 @@ export function AIPanel({
   isLoggedIn: boolean;
   onAuth: () => void;
   captureCanvasPreview?: () => Promise<string>;
+  captureProjectCover?: CaptureProjectCover;
   canvasSourceId?: number;
   captureReferenceCanvas?: () => Promise<File>;
   referenceCanvasLabel?: string;
@@ -809,9 +813,9 @@ export function AIPanel({
         if (saved?.projectId === project.id && saved.jobId) {
           let receipt = result.jobs.find((job) => job.id === saved.jobId);
           if (!receipt) {
-            const exact = await api<{ jobs: AIJob[] }>(jobSubmissionRequest(saved).path, { signal: controller.signal });
+            const exact = await api<{ requestKey?: string; jobs: AIJob[] }>(jobSubmissionRequest(saved).path, { signal: controller.signal });
             if (!live || pending.current?.idempotencyKey !== saved.idempotencyKey) return;
-            receipt = exact.jobs.find((job) => job.id === saved.jobId);
+            receipt = findJobReceipt(saved, exact);
             if (receipt) result.jobs.unshift(receipt);
           }
           if (receipt && (receipt.state !== saved.state || jobSubmissionResolved(receipt.state))) {
@@ -1158,8 +1162,8 @@ export function AIPanel({
     try {
       const request = jobSubmissionRequest(saved);
       if (request.init.method === 'GET') {
-        const result = await api<{ jobs: AIJob[] }>(request.path, request.init);
-        const found = result.jobs.length === 1 ? result.jobs[0] : undefined;
+        const result = await api<{ requestKey?: string; jobs: AIJob[] }>(request.path, request.init);
+        const found = findJobReceipt(saved, result);
         if (!found)
           throw new Error(
             '暂未查到本轮任务回执，请稍后再查。',
@@ -1465,6 +1469,7 @@ export function AIPanel({
             onAfterArtworkWrite={onAfterArtworkWrite}
             onApplied={onDecisionApplied ?? onOpenArtwork}
             captureCanvasPreview={captureCanvasPreview}
+            captureProjectCover={captureProjectCover}
             canvasSourceId={canvasSourceId}
             replyNarration={narrationModel && {
               model: narrationModel.label, points: narrationModel.pointsPerPlan, jobs, start: narrateReply,
@@ -1539,7 +1544,7 @@ export function AIPanel({
               {visibleJobs.length && project ? (
                 <AIThread
                   jobs={visibleJobs}
-                  captureCover={captureCanvasPreview}
+                  captureCover={captureProjectCover}
                   project={project}
                   artwork={artwork}
                   userId={userId}
