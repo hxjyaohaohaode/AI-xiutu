@@ -734,6 +734,7 @@ try {
     },
   );
 
+  let revocationActor;
   await check('Published open registration takes effect on a registration page already open', async () => {
     const operator = await main.context.newPage();
     const guest = await newContext({ width: 390, height: 844 });
@@ -777,13 +778,48 @@ try {
       assert.equal(result.status(), 201);
       assert.equal(Object.hasOwn(result.request().postDataJSON(), 'inviteCode'), false);
       await finishWelcome(page, true);
-      assert.equal((await session(guest.context)).user.displayName, '开放注册验收');
+      const {user} = await session(guest.context);
+      assert.equal(user.displayName, '开放注册验收');
       assert.equal(await authControl(page, 'invite-code').count(), 0);
+      // Keep this independently registered account for the two-session revocation test.
+      revocationActor = { ...guest, phone, id: user.id, name: user.displayName };
       return { savedMode: 'open', registerStatus: 201, inviteFieldOmitted: true };
     } finally {
       await db.query('DELETE FROM operator_users WHERE user_id=$1', [primaryUserId]);
       await operator.close();
-      await guest.context.close();
+      if (!revocationActor) await guest.context.close();
+      currentPage = main.page;
+    }
+  });
+
+  await check('Sign out other sessions keeps the active browser signed in', async () => {
+    assert.ok(revocationActor);
+    const { page, context, phone, id, name } = revocationActor;
+    assert.notEqual(id, primaryUserId);
+    try {
+      const secondary = await app.inject({
+        method: 'POST', url: '/v1/auth/login',
+        headers: { origin }, payload: { phone, password },
+      });
+      assert.equal(secondary.statusCode, 200);
+      const token = secondary.cookies.find((cookie) => cookie.name === 'xiutu_session');
+      assert.ok(token);
+      assert.equal((await sessionFromCookie(token)).user.id, id);
+      const account = await openAccount(page, name);
+      await page.getByTestId('account-tab-security').click();
+      await page.getByRole('button', { name: '退出其他会话', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: '退出其他会话', exact: true });
+      const settled = page.waitForResponse((r) => new URL(r.url()).pathname === '/v1/auth/logout-others');
+      await dialog.getByRole('button', { name: '退出其他会话', exact: true }).click();
+      assert.equal((await settled).status(), 200);
+      await page.getByText('仅当前会话有效', { exact: true }).waitFor();
+      assert.equal((await sessionFromCookie(token)).user, null);
+      assert.equal((await session(context)).user.id, id);
+      assert.equal((await session(main.context)).user.id, primaryUserId);
+      await closeDialog(account);
+      return { otherSessionRevoked: true, currentSessionPreserved: true, independentAccount: true };
+    } finally {
+      await context.close();
       currentPage = main.page;
     }
   });
@@ -1216,29 +1252,6 @@ try {
       };
     },
   );
-
-  await check('Sign out other sessions keeps the active browser signed in', async () => {
-    const secondary = await app.inject({
-      method: 'POST', url: '/v1/auth/login',
-      headers: { origin }, payload: { phone: primaryPhone, password: newPassword },
-    });
-    assert.equal(secondary.statusCode, 200);
-    const token = secondary.cookies.find((cookie) => cookie.name === 'xiutu_session');
-    assert.ok(token);
-    const page = main.page;
-    const account = await openAccount(page);
-    await page.getByTestId('account-tab-security').click();
-    await page.getByRole('button', { name: '退出其他会话', exact: true }).click();
-    const dialog = page.getByRole('dialog', { name: '退出其他会话', exact: true });
-    const settled = page.waitForResponse((r) => new URL(r.url()).pathname === '/v1/auth/logout-others');
-    await dialog.getByRole('button', { name: '退出其他会话', exact: true }).click();
-    assert.equal((await settled).status(), 200);
-    await page.getByText('仅当前会话有效', { exact: true }).waitFor();
-    assert.equal((await sessionFromCookie(token)).user, null);
-    assert.equal((await session(main.context)).user.id, primaryUserId);
-    await closeDialog(account);
-    return { otherSessionRevoked: true, currentSessionPreserved: true };
-  });
 
   await check(
     'Registering an existing account preserves identity and the rolled-back SMS challenge',

@@ -56,6 +56,7 @@ try {
   ]) {
     browser = await chromium.launch({
       executablePath: process.env.BROWSER_EXECUTABLE,
+      channel: process.env.BROWSER_EXECUTABLE ? undefined : process.env.BROWSER_CHANNEL,
       args: ['--disable-gpu', '--disable-dev-shm-usage'],
     });
     const context = await browser.newContext({

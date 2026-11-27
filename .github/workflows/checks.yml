@@ -57,6 +57,9 @@ jobs:
         run: |
           npm run build -w @ai-xiutu/web
           node --import tsx scripts/qa/interactive-preview.browser.mjs
+      - name: Compare original gestures and exported full-resolution pixels on four viewports
+        if: matrix.round == 1
+        run: node --import tsx scripts/qa/photo-export-compare.browser.mjs
       - name: Complete workbench regression on this commit
         env:
           BROWSER_ARTIFACT_DIR: artifacts/browser-v4/round-${{ matrix.round }}
