@@ -413,6 +413,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const voiceSubmission = useRef<VoiceSubmission | null>(null);
   actor.current = actorId;
   const textDraft = useRef({ prompt, mode, conversationId });
+  const draftBinding = useRef({ actorId, projectId: project?.id });
   const submittedVisual = useRef<{ key: string; attachment: AssistantVisualAttachment } | null>(
     null,
   );
@@ -882,6 +883,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setParentTurnId(undefined);
     setConversationId(undefined);
     setConversations([]);
+    setSourceDocument(null);
     setGrant(null);
     setContextManifest(null);
     setWorkspace(null);
@@ -912,13 +914,17 @@ export function LiveAssistant(props: LiveAssistantProps) {
     setVoiceCaptionsOverride(null);
   }, [actorId, preferences.captions]);
   useEffect(() => {
+    const before = draftBinding.current;
+    draftBinding.current = { actorId, projectId: project?.id };
     if (!isLoggedIn || !actorId || !project) return;
     const key = `${actorId}:${project.id}`;
     const cached = assistantDrafts.get(key);
     const saved = submission.current;
-    setPrompt(
-      saved?.projectId === project.id ? (saved.turnId ? '' : saved.prompt) : (cached?.prompt ?? ''),
-    );
+    // The implicit personal project can become available after typing starts.
+    // Explicit project and actor changes remount the parent panel.
+    const restorePrompt = saved?.projectId === project.id ? (saved.turnId ? '' : saved.prompt) : (cached?.prompt ?? '');
+    const keepUnboundDraft = before.actorId === actorId && before.projectId === undefined;
+    setPrompt(current => keepUnboundDraft && current.length ? current : restorePrompt);
     if (cached) {
       setMode(props.visualAttachment ? 'text' : cached.mode);
       setConversationId(cached.conversationId);
