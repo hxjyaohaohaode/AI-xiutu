@@ -543,6 +543,10 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
       brand: rect(node.querySelector('.workspace-home-link')),
       controls: [
         '.workspace-identity > .icon-button',
+        '.mobile-chrome-toggle',
+        '.photo-session-actions [data-action="exit-photo"]',
+        '.photo-session-actions [data-action="download-photo"]',
+        '.photo-session-actions [data-action="trash-photo"]',
         '.workspace-settings-trigger',
         '.cloud-status-trigger',
         '.top-save',
@@ -590,8 +594,11 @@ async function cloudRecoveryHeaderEvidence(page, expectedRoute) {
     );
     assert.equal(control.exposed, true, 'header actions must not obscure each other');
   }
-  for (const control of measured.controls)
-    assert.ok(control.height >= 44, `${control.selector} retains its 44px touch height`);
+  for (const control of measured.controls) {
+    assert.ok(control.width >= 44 && control.height >= 44, `${control.selector} retains its touch target`);
+  }
+  for (const selector of ['.mobile-view-trigger', '.workspace-home-link', ...measured.controls.map((c) => c.selector)])
+    await header.locator(selector).click({ trial: true });
   const inside = (inner, outer, label) =>
     assert.ok(
       inner.x >= outer.x - 1 &&
@@ -1189,8 +1196,20 @@ try {
         );
         const headerLayouts = [];
         if (viewport.width < 760) {
-          await page.getByRole('button', { name: '展开顶部工具', exact: true }).click();
+          const topbar = page.locator('.floating-topbar');
+          const toggle = topbar.locator('.mobile-chrome-toggle');
+          const checkCompactHeader = async () => {
+            assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+            assert.ok((await topbar.boundingBox()).height <= 44.5, 'collapsed tools occupy one row');
+            await topbar.locator('.mobile-view-trigger').click({ trial: true });
+            await topbar.locator('[data-action="download-photo"]').click({ trial: true });
+          };
+          await checkCompactHeader();
+          await toggle.click();
           headerLayouts.push(await cloudRecoveryHeaderEvidence(page, '精修'));
+          await toggle.click();
+          await checkCompactHeader();
+          await toggle.click();
           for (const [locale, label] of [
             ['zh-TW', '精修'],
             ['en', 'Edit'],

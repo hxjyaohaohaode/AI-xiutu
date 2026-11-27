@@ -897,9 +897,17 @@
 
 /* The view switch and PNG download both need full touch targets on compact phones.
    The existing tools toggle reveals the less frequent trash and account actions. */
+@media (max-width: 403px) {
+  .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded])
+    .workspace-top-actions:has(.cloud-status-trigger) .photo-session-actions > [data-action='trash-photo'] {
+    display: none;
+  }
+}
 @media (max-width: 374px) {
   .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded])
-    .photo-session-actions > [data-action='trash-photo'] {
+    .photo-session-actions > [data-action='trash-photo'],
+  .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded])
+    .workspace-top-actions:has(.cloud-status-trigger) .photo-session-actions > [data-action='exit-photo'] {
     display: none;
   }
 }
