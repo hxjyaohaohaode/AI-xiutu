@@ -1411,7 +1411,12 @@ export function DocumentsView({
       setError('请先恢复或丢弃本页保留的草稿，再切换文档；可以先导出一份。');
       return false;
     }
-    if (
+    if (dirty && autoSave && selected && !conflict && !newerVersion &&
+        retainedDraft?.saveState === 'idle' && title.trim()) {
+      const saved = await persistCurrentDraft();
+      if (!saved || activeOwner.current !== ownerKey || documentDrafts.get(actorId, project.id)) return false;
+      if (doc?.id === saved.id) doc = saved;
+    } else if (
       dirty &&
       !(await confirmDiscard(
         uncertainCreation
@@ -1482,7 +1487,7 @@ export function DocumentsView({
       ...(capturedDraft.formatting || capturedDraft.base?.formatting
         ? { formatting: capturedDraft.formatting ?? null } : {}),
     };
-    let confirmedReceipt = false;
+    let receipt: ProjectDocument | undefined;
     try {
       const result = await api<{ document?: unknown }>(
         capturedDraft.base
@@ -1495,7 +1500,7 @@ export function DocumentsView({
       );
       if (!isDocumentSaveReceipt(capturedDraft, result?.document))
         throw new Error('保存回执不完整，当前草稿已保留。请核对云端列表，不要重复新建。');
-      confirmedReceipt = true;
+      receipt = result.document;
       // Receipt settlement is lineage-scoped and safe after unmount/expiry;
       // explicit actor cleanup removes that lineage and cannot be resurrected.
       documentDrafts.acknowledgeSave(capturedDraft, result.document);
@@ -1507,14 +1512,14 @@ export function DocumentsView({
       if (activeOwner.current === ownerKey && generation === requestGeneration.current)
         setDocs(list);
     } catch (e) {
-      if (!confirmedReceipt)
+      if (!receipt)
         documentDrafts.finishUnconfirmedSave(
           capturedDraft,
           e instanceof ApiError && e.status >= 400 && e.status < 500,
         );
       if (activeOwner.current === ownerKey && activeOperation.current === operation) {
         setError(
-          confirmedReceipt
+          receipt
             ? t('文档已保存，但列表暂未刷新。{reason}', { reason: t(errorMessage(e)) })
             : errorMessage(e),
         );
@@ -1526,6 +1531,7 @@ export function DocumentsView({
         if (activeOwner.current === ownerKey) setPending(null);
       }
     }
+    return receipt;
   }
   async function readLatest() {
     if (!selected || saveLock.current || pendingSave) return;

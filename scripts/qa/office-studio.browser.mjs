@@ -239,8 +239,9 @@ try {
 
   const sheetTitle = '公式列与河流图';
   await owner.getByRole('button', { name: '新建工作表', exact: true }).click();
-  await owner.getByLabel('文档标题', { exact: true }).fill(sheetTitle);
   const worksheet = owner.getByRole('region', { name: '工作表', exact: true });
+  await worksheet.waitFor();
+  await owner.getByLabel('文档标题', { exact: true }).fill(sheetTitle);
   for (const [cell, value] of [
     ['A2', '春'],
     ['B2', '12'],
@@ -285,9 +286,13 @@ try {
   };
 
   const deckTitle = '自由排版验收';
+  await worksheet.getByRole('textbox', { name: 'C4', exact: true }).fill('=B4+15');
   await owner.getByRole('button', { name: '新建演示', exact: true }).click();
-  await owner.getByLabel('文档标题', { exact: true }).fill(deckTitle);
   const slides = owner.getByRole('region', { name: '演示编辑器', exact: true });
+  await slides.waitFor();
+  assert.match((await getDocument(sheetTitle)).body, /B4\+15/);
+  report.sheet.savedOnSwitch = true;
+  await owner.getByLabel('文档标题', { exact: true }).fill(deckTitle);
   await slides.getByRole('button', { name: '插入文字', exact: true }).click();
   await slides.getByLabel('幻灯片文字', { exact: true }).fill('画布位置保留');
   const element = slides.getByRole('button', { name: '画布位置保留', exact: true });
@@ -399,6 +404,10 @@ try {
   assert.deepEqual(report.pageErrors, []);
   assert.deepEqual(report.externalRequests, []);
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+} catch (error) {
+  if (owner)
+    await owner.screenshot({ path: resolve(artifacts, 'failure.png'), animations: 'disabled' }).catch(() => {});
+  throw error;
 } finally {
   await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));
   await browser?.close();

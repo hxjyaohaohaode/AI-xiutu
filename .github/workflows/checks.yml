@@ -64,6 +64,9 @@ jobs:
         env:
           BROWSER_ARTIFACT_DIR: artifacts/browser-v4/round-${{ matrix.round }}
         run: node --import tsx scripts/qa/workspace-v4.browser.mjs
+      - name: Edit, collaboratively save and export studio files
+        if: matrix.round == 1
+        run: node --import tsx scripts/qa/office-studio.browser.mjs
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
         if: matrix.round == 1
         env:
@@ -83,9 +86,6 @@ jobs:
       - name: Download editable project files and verify their source data
         if: matrix.round == 1
         run: node --import tsx scripts/qa/project-files.browser.mjs
-      - name: Edit, collaboratively save and export studio files
-        if: matrix.round == 1
-        run: node --import tsx scripts/qa/office-studio.browser.mjs
       - name: Verify launch workflows on the built application
         if: matrix.round == 1
         env:
