@@ -1,7 +1,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { Asset } from '../lib/types';
-import { api, errorMessage } from '../lib/api';
-import { dateFolderRange, type FolderCount, type FolderGroup } from './LibraryFolders';
+import { api, ApiError, errorMessage } from '../lib/api';
+import type { FolderCount, FolderGroup } from './LibraryFolders';
+import { parseLibrarySearch, dateFolderRange } from './library-search';
 import { resourceParameters, type ResourceItem, type ResourcePage } from './model';
 
 export type LibraryTab = 'project' | 'all' | 'memory';
@@ -43,27 +44,37 @@ type Snapshot = {
 const EMPTY_ENTRIES: LibraryEntry[] = [];
 const EMPTY_FOLDERS: FolderCount[] = [];
 
-function libraryRequest(tab: LibraryTab, filters: LibraryFilters, spaceId: string | undefined, folders: boolean) {
+export function libraryRequest(tab: LibraryTab, filters: LibraryFilters, spaceId: string | undefined, folders: boolean, now = new Date()) {
+  const search = parseLibrarySearch(filters.query, now);
+  if (search.empty) return null;
   const resources = tab !== 'project';
   const projectId = !folders && filters.folder && filters.groupBy === 'project'
     ? filters.folder : filters.projectId;
   if (!resources && !projectId && !spaceId) return null;
-  const source = filters.source === 'all' ? '' : filters.source;
+  const sources = [search.source, filters.source === 'all' ? undefined : filters.source,
+    !folders && filters.groupBy === 'source' ? filters.folder : undefined].filter(Boolean);
+  if (new Set(sources).size > 1) return null;
+  const source = sources[0] ?? '';
+  const folderMime = !folders && filters.groupBy === 'type' ? filters.folder : '';
+  if (search.mime && folderMime && search.mime !== folderMime) return null;
   const path = resources ? '/resources' : projectId ? '/projects/' + projectId + '/assets' : '/assets';
   const params = resources
-    ? resourceParameters({ ...filters, projectId, source, remembered: tab === 'memory', limit: 50 })
+    ? resourceParameters({ ...filters, query: search.text, projectId, source, remembered: tab === 'memory', limit: 50 })
     : new URLSearchParams({ limit: '50' });
   if (!resources) {
     if (!projectId && spaceId) params.set('spaceId', spaceId);
-    if (filters.query) params.set('query', filters.query);
+    if (search.text) params.set('query', search.text);
     if (source) params.set('source', source);
   }
-  let start: Date | undefined;
+  if (search.mime) params.set('mime', search.mime);
+  let start = search.time?.start;
+  let end = search.time?.end;
   if (filters.period !== 'all') {
-    start = new Date();
-    start.setHours(0, 0, 0, 0);
-    if (filters.period === 'week') start.setDate(start.getDate() - 6);
-    if (filters.period === 'month') start.setDate(start.getDate() - 29);
+    const first = new Date(now);
+    first.setHours(0, 0, 0, 0);
+    if (filters.period === 'week') first.setDate(first.getDate() - 6);
+    if (filters.period === 'month') first.setDate(first.getDate() - 29);
+    if (!start || first > start) start = first;
   }
   if (folders) {
     params.set('groupBy', filters.groupBy);
@@ -75,11 +86,12 @@ function libraryRequest(tab: LibraryTab, filters: LibraryFilters, spaceId: strin
       const range = dateFolderRange(filters.folder);
       if (range) {
         if (!start || range.start > start) start = range.start;
-        if (start >= range.end) return null;
-        params.set('createdTo', range.end.toISOString());
+        if (!end || range.end < end) end = range.end;
       }
     }
   }
+  if (end && start && end <= start) return null;
+  if (end) params.set('createdTo', end.toISOString());
   if (start) params.set('createdFrom', start.toISOString());
   return path + '?' + params;
 }
@@ -119,10 +131,11 @@ export function useLibraryCollection({
     return () => window.clearTimeout(timer);
   }, [filters.query]);
   const requests = useMemo(() => {
+    const now = new Date();
     const values = { ...filters, query: filters.query.trim() ? debouncedQuery : '' };
     return {
-      list: libraryRequest(tab, values, spaceId, false),
-      folders: libraryRequest(tab, values, spaceId, true),
+      list: libraryRequest(tab, values, spaceId, false, now),
+      folders: libraryRequest(tab, values, spaceId, true, now),
     };
   }, [tab, filters, spaceId, debouncedQuery]);
   const endpoint = requests.list;
@@ -139,6 +152,7 @@ export function useLibraryCollection({
   const [refresh, setRefresh] = useState(0);
   const [loadingKey, setLoadingKey] = useState<string | null>(null);
   const [moreKey, setMoreKey] = useState<string | null>(null);
+  const currentRead = useRef<AbortController | null>(null);
   const pageRequest = useRef<AbortController | null>(null);
   const readStamp = useRef<{ key: string; refresh: number; refreshToken: number } | null>(null);
   const exact = cache.owner === owner ? cache.pages.get(key) : undefined;
@@ -155,6 +169,17 @@ export function useLibraryCollection({
       return { owner, pages, last: value.list ? key : old.owner === owner ? old.last : null };
     });
   }
+  function invalidateDeniedAccess(error: unknown) {
+    if (!(error instanceof ApiError) || ![401, 403, 404].includes(error.status)) return false;
+    currentRead.current?.abort();
+    pageRequest.current?.abort();
+    const failure: Snapshot = { settled: true, error: errorMessage(error) };
+    readStamp.current = null;
+    setCache({ owner, pages: new Map([[key, failure]]), last: null });
+    setLoadingKey(null);
+    setMoreKey(null);
+    return true;
+  }
   useLayoutEffect(() => {
     if (cache.owner !== owner) setCache({ owner, pages: new Map(), last: null });
   }, [owner, cache.owner]);
@@ -163,26 +188,38 @@ export function useLibraryCollection({
     const stamp = readStamp.current;
     if (stamp?.key === key && stamp.refresh === refresh && stamp.refreshToken === refreshToken) return;
     const controller = new AbortController();
+    currentRead.current = controller;
     setLoadingKey(key);
     setMoreKey(null);
     update((old) => ({ list: old?.list, folders: old?.folders, settled: false }));
-    void Promise.allSettled([
-      endpoint ? readList(endpoint, resources, controller.signal) : Promise.resolve({ entries: [], cursor: null }),
-      folderEndpoint ? api<FolderData>(folderEndpoint, { signal: controller.signal }) : Promise.resolve({ groups: [] }),
-    ]).then(([next, nextFolders]) => {
+    const listRead = endpoint ? readList(endpoint, resources, controller.signal)
+      : Promise.resolve({ entries: [], cursor: null });
+    const folderRead = folderEndpoint ? api<FolderData>(folderEndpoint, { signal: controller.signal })
+      : Promise.resolve({ groups: [] });
+    const failed = (error: unknown, folders: boolean) => {
       if (controller.signal.aborted) return;
-      if (next.status === 'fulfilled' && nextFolders.status === 'fulfilled')
-        readStamp.current = { key, refresh, refreshToken };
-      update((old) => ({
-        list: next.status === 'fulfilled' ? next.value : old?.list,
-        folders: nextFolders.status === 'fulfilled' ? nextFolders.value : old?.folders,
-        error: next.status === 'rejected' ? errorMessage(next.reason) : undefined,
-        folderError: nextFolders.status === 'rejected' ? errorMessage(nextFolders.reason) : undefined,
-        settled: true,
-      }));
+      if (invalidateDeniedAccess(error)) return;
+      if (folders) update((old) => ({ settled: false, ...old, folderError: errorMessage(error) }));
+      else {
+        update((old) => ({ ...old, settled: true, error: errorMessage(error) }));
+        setLoadingKey(null);
+      }
+    };
+    // A slow grouping query must not delay opening an already authorized photo.
+    void listRead.then((list) => {
+      if (controller.signal.aborted) return;
+      update((old) => ({ ...old, list, settled: true }));
       setLoadingKey(null);
+    }, (error) => failed(error, false));
+    void folderRead.then((folders) => {
+      if (!controller.signal.aborted) update((old) => ({ settled: false, ...old, folders }));
+    }, (error) => failed(error, true));
+    void Promise.allSettled([listRead, folderRead]).then((results) => {
+      if (!controller.signal.aborted && results.every((value) => value.status === 'fulfilled'))
+        readStamp.current = { key, refresh, refreshToken };
     });
     return () => {
+      if (currentRead.current === controller) currentRead.current = null;
       controller.abort();
       pageRequest.current?.abort();
       pageRequest.current = null;
@@ -208,7 +245,8 @@ export function useLibraryCollection({
         };
       });
     } catch (error) {
-      if (!controller.signal.aborted) update((old) => ({ ...old, settled: true, moreError: errorMessage(error) }));
+      if (!controller.signal.aborted && !invalidateDeniedAccess(error))
+        update((old) => ({ ...old, settled: true, moreError: errorMessage(error) }));
     } finally {
       if (pageRequest.current === controller) {
         pageRequest.current = null;
@@ -228,15 +266,16 @@ export function useLibraryCollection({
       return { ...old, pages };
     });
   }
-  const loading = enabled && !!(endpoint || folderEndpoint) && (loadingKey === key || !exact?.settled);
+  const typing = !!filters.query.trim() && filters.query.trim() !== debouncedQuery;
+  const loading = enabled && !!(endpoint || folderEndpoint) && (typing || loadingKey === key || !exact?.settled);
   return {
     entries: enabled && endpoint ? list?.entries ?? EMPTY_ENTRIES : EMPTY_ENTRIES,
-    counts: enabled ? folders?.groups ?? EMPTY_FOLDERS : EMPTY_FOLDERS,
+    counts: enabled && folderEndpoint ? folders?.groups ?? EMPTY_FOLDERS : EMPTY_FOLDERS,
     folderProjects: folders?.projects,
     cursor: exact?.list?.cursor ?? null,
     loading,
     loadingMore: moreKey === key,
-    provisional: !!list && !exact?.list,
+    provisional: typing || (!!list && !exact?.list),
     error: exact?.error,
     folderError: exact?.folderError,
     moreError: exact?.moreError,

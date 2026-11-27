@@ -881,6 +881,26 @@
   font-size: 11px;
   pointer-events: none;
 }
+.compare-label-track {
+  position: absolute;
+  inset-block: 0;
+  z-index: 2;
+  container: compare-side / inline-size;
+  pointer-events: none;
+}
+.compare-label-track > .compare-reveal-label {
+  white-space: nowrap;
+  transition: opacity 100ms ease-out;
+}
+@container compare-side (max-width: 90px) {
+  .compare-label-track > .compare-reveal-label { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .compare-label-track > .compare-reveal-label { transition: none; }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .compare-label-track > .compare-reveal-label { background: #171918; }
+}
 .compare-reveal-before {
   left: 14px;
 }

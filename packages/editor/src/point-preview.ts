@@ -14,6 +14,32 @@ const neutralOptics = createOpticsV3();
 const neutralTransform = createFineTransformV3();
 const identityGeometry = { crop: null, rotation: 0, flipX: false, flipY: false } as const;
 
+/** Stages after v2 which require their own source-space composition or reconstruction. */
+export function requiresSourceComposition(recipe: EditorRecipe): boolean {
+  if (
+    (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
+    ((recipe.warp.enabled && recipe.warp.strokes.some((stroke) => stroke.strength !== 0)) ||
+      recipe.paintLayers.some(
+        (layer) => layer.enabled && layer.opacity > 0 && layer.strokes.length > 0,
+      ) ||
+      recipe.imageLayers.some((layer) => layer.enabled && layer.opacity > 0) ||
+      recipe.regionEdits.some((region) => region.enabled && region.opacity > 0) ||
+      recipe.regionGroups.some((group) => group.enabled && group.opacity > 0) ||
+      !equal(recipe.optics, neutralOptics) ||
+      !equal(recipe.transform, neutralTransform))
+  )
+    return true;
+  if (
+    recipe.schemaVersion === 4 &&
+    (recipe.compositeGrade !== undefined ||
+      recipe.projective.enabled ||
+      recipe.healing.some((operation) => operation.enabled && operation.opacity > 0) ||
+      recipe.retouch.some((operation) => operation.enabled && operation.opacity > 0))
+  )
+    return true;
+  return false;
+}
+
 /** Whether the result for an RGB triplet is independent of position and nearby pixels. */
 export function pointPreviewMode(recipe: EditorRecipe): 'simple' | 'coupled' | 'extended' | null {
   const a = recipe.adjustments;
@@ -38,26 +64,7 @@ export function pointPreviewMode(recipe: EditorRecipe): 'simple' | 'coupled' | '
     recipe.effects.grain.amount !== 0
   )
     return null;
-  if (
-    (recipe.schemaVersion === 3 || recipe.schemaVersion === 4) &&
-    ((recipe.warp.enabled && recipe.warp.strokes.some((stroke) => stroke.strength !== 0)) ||
-      recipe.paintLayers.some(
-        (layer) => layer.enabled && layer.opacity > 0 && layer.strokes.length > 0,
-      ) ||
-      recipe.imageLayers.some((layer) => layer.enabled && layer.opacity > 0) ||
-      recipe.regionEdits.some((region) => region.enabled && region.opacity > 0) ||
-      recipe.regionGroups.some((group) => group.enabled && group.opacity > 0) ||
-      !equal(recipe.optics, neutralOptics) ||
-      !equal(recipe.transform, neutralTransform))
-  )
-    return null;
-  if (
-    recipe.schemaVersion === 4 &&
-    (recipe.compositeGrade !== undefined || recipe.projective.enabled ||
-      recipe.healing.some((operation) => operation.enabled && operation.opacity > 0) ||
-      recipe.retouch.some((operation) => operation.enabled && operation.opacity > 0))
-  )
-    return null;
+  if (requiresSourceComposition(recipe)) return null;
   return !equal(recipe.levels, DEFAULT_RECIPE_V2.levels) ||
     !equal(recipe.hsl, DEFAULT_RECIPE_V2.hsl) ||
     !equal(recipe.grading, DEFAULT_RECIPE_V2.grading) ||

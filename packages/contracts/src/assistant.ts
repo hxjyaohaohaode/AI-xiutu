@@ -72,7 +72,7 @@ export interface AssistantBranchEvent {
   parentId: string | null;
   dependsOn: string[];
   kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination'
-    | 'tone-review' | 'composition-review' | 'delivery-review';
+    | 'tone-review' | 'composition-review' | 'delivery-review' | 'retoucher' | 'image-designer' | 'editing-lead' | 'colorist';
   state: 'running' | 'completed' | 'failed';
   execution: 'provider' | 'server';
   resultCount?: number;
@@ -82,7 +82,7 @@ export interface AssistantBranchEvent {
 /** Only these server tools produce reusable work records. Other offloaded tool
  * output remains private to its original turn. */
 export const assistantRecordTool = z.enum([
-  'consult_specialists', 'inspect_candidate', 'propose_scene_balance',
+  'consult_specialists', 'delegate_studio_task', 'inspect_candidate', 'propose_scene_balance',
 ]);
 export const assistantToolRecord = z.object({
   artifactId: z.uuid(),

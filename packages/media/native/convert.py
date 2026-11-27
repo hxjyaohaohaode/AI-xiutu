@@ -53,9 +53,11 @@ def normalize_raw_tiles(pixels):
     return linear
 
 
-def admit_native(width, height, maximum, directory):
+def admit_native(width, height, maximum, directory, resident_pixels):
     if min(width, height) < 1 or max(width, height) > 65_535 or width * height > maximum:
         raise ValueError("Native source exceeds the dimension budget")
+    if width * height > resident_pixels:
+        raise ValueError("Native development exceeds currently available resident memory")
     # Native development can publish both an EXR and a TIFF before the worker
     # builds the proxy or tiles. Reserve headroom for those intermediates first.
     if shutil.disk_usage(directory).free < width * height * 26 + 8 * 1024**2:
@@ -66,6 +68,7 @@ def main():
     request = json.loads(Path(sys.argv[1]).read_text())
     source, destination = request["inputPath"], Path(request["outputPath"])
     max_pixels = int(request["maxPixels"])
+    resident_pixels = request.get("maxResidentPixels", max_pixels)
     native = {"openimageio": oiio.VERSION_STRING}
     if request["kind"] == "raw":
         import rawpy
@@ -73,7 +76,7 @@ def main():
         native["libraw"] = ".".join(map(str, rawpy.libraw_version))
         with rawpy.imread(source) as raw:
             width, height = raw.sizes.raw_width, raw.sizes.raw_height
-            admit_native(width, height, max_pixels, destination.parent)
+            admit_native(width, height, max_pixels, destination.parent, resident_pixels)
             pixels = raw.postprocess(output_bps=16, output_color=rawpy.ColorSpace.sRGB,
                                      use_camera_wb=True, no_auto_bright=True, gamma=(1, 1))
             source_info = {"width": width, "height": height, "bitDepth": math.ceil(math.log2(int(raw.white_level) + 1)),
@@ -95,7 +98,7 @@ def main():
 
         pixels, gamut, gain_size = decode_gain_map(
             source, request["ultraHdrLibrary"],
-            lambda width, height: admit_native(width, height, max_pixels, destination.parent),
+            lambda width, height: admit_native(width, height, max_pixels, destination.parent, resident_pixels),
         )
         pixels = orient(pixels, request["orientation"])
         height, width, _ = pixels.shape
@@ -118,7 +121,7 @@ def main():
         try:
             pixels, linearize, source_info, native["libheif"] = decode_heic_hdr(
                 source, raw, request["heicDecoder"],
-                lambda width, height: admit_native(width, height, max_pixels, destination.parent),
+                lambda width, height: admit_native(width, height, max_pixels, destination.parent, resident_pixels),
             )
             write_image(
                 destination.with_name("linear-master.exr"), pixels, oiio.FLOAT, "Linear",
@@ -149,7 +152,7 @@ def main():
             width, height, channels = spec.width, spec.height, spec.nchannels
             if channels not in (1, 3, 4) or spec.deep or spec.depth != 1:
                 raise ValueError("HDR exceeds the flat 1/3/4-channel 50MP budget")
-            admit_native(width, height, max_pixels, destination.parent)
+            admit_native(width, height, max_pixels, destination.parent, resident_pixels)
             if image.seek_subimage(1, 0):
                 raise ValueError("Multipart or multi-image HDR is not supported")
             image.seek_subimage(0, 0)

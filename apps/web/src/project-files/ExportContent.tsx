@@ -1,3 +1,4 @@
+import type { DocumentFormat } from '@ai-xiutu/contracts';
 import { useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { ChoiceSelect } from '../components/ChoiceSelect';
@@ -10,10 +11,12 @@ type ExportOption = FileFormat | 'pptx-cover' | '';
 export function ExportContent({
   title,
   body,
+  formatting,
   captureCover,
 }: {
   title: string;
   body: string;
+  formatting?: DocumentFormat | null;
   captureCover?: CaptureProjectCover;
 }) {
   const [busy, setBusy] = useState(false);
@@ -25,7 +28,7 @@ export function ExportContent({
     return () => {
       ticket.current++;
     };
-  }, [body, title]);
+  }, [body, title, formatting]);
 
   async function run(option: ExportOption) {
     if (!option || busy) return;
@@ -52,7 +55,7 @@ export function ExportContent({
           .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
           .slice(0, 72)
           .trim() || t('文档');
-      const file = await exportContent(format, sourceTitle, body, cover?.imageDataUrl);
+      const file = await exportContent(format, sourceTitle, body, cover?.imageDataUrl, formatting);
       cover?.assertCurrent();
       if (ticket.current === id) downloadBlob(file, name + '.' + format);
     } catch (cause) {

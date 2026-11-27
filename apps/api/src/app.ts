@@ -1,6 +1,7 @@
 import { openAIModelShutdown, openAIShutdownDate } from '@ai-xiutu/contracts';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
+import { createDeploymentGate } from '@ai-xiutu/storage';
 import multipart from '@fastify/multipart';
 import { z, ZodError } from 'zod';
 import { listUnknownAiJobs } from './ai-reconciliation.js';
@@ -107,6 +108,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   await migrate(db);
   const storage = new LocalPrivateStorage(config);
   await storage.initialize();
+  const deploymentHeld = createDeploymentGate(config.storageDir);
   const app = Fastify({
     logger: false,
     bodyLimit: 2 * 1024 * 1024,
@@ -125,6 +127,17 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       .header('X-Content-Type-Options', 'nosniff')
       .header('Cache-Control', 'no-store')
       .header('Referrer-Policy', 'no-referrer');
+    if (deploymentHeld()) {
+      const path = req.url.split('?', 1)[0];
+      const probe = req.method === 'GET' &&
+        (path === '/health' || path === '/v1/public-config' || path === '/v1/modules' ||
+          path === '/v1/media-capabilities' ||
+          (!req.cookies.xiutu_session && (path === '/v1/session' || path === '/v1/projects')));
+      if (!probe) {
+        reply.header('Retry-After', '5');
+        throw new HttpError(503, 'DEPLOYMENT_IN_PROGRESS', '服务升级中，请稍后重试');
+      }
+    }
     if (!['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
       const origin = req.headers.origin;
       if (typeof origin !== 'string' || !config.origins.includes(origin))
@@ -284,6 +297,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   });
   app.get('/v1/public-config', async () => ({
     ...(await publicSettings(db)),
+    ...(config.siteFiling && { siteFiling: config.siteFiling }),
     capabilities: capabilities(),
     media: storage.capabilities(),
     limits: { maxUploadBytes: config.maxUploadBytes, maxPixels: config.maxPixels },
@@ -356,7 +370,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
           : executorStatus.reason,
       };
     }
-    return { protocolVersion: 1, modules: moduleRegistry.discover(gates) };
+    return { protocolVersion: 1, modules: moduleRegistry.discover(gates), assistantConnection: assistantRuntime.connectionStatus() };
   });
   app.get('/v1/public-logo', async (_req, reply) => {
     const asset = (
@@ -491,7 +505,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   registerSpaces(app, db);
   registerProjects(app, db, storage);
   registerPhotoTrash(app, db, storage);
-  startPhotoTrashCleanup(app, db, storage);
+  startPhotoTrashCleanup(app, db, storage, deploymentHeld);
   registerRevisionRender(app, db, storage);
   registerCollaboration(app, db);
   registerRealtimeCollaboration(app, db);

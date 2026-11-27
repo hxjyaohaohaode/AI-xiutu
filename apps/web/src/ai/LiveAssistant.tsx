@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import './voice-workspace.css';
 import { readModelCatalog } from '../lib/api';
 import { pickAssistantModel } from './model-selection';
+import { AssistantConnectionStatus, type AssistantConnection } from './AssistantConnectionStatus';
 import { ModelReadStatus } from './ModelReadStatus';
 import { t, useLocale, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
@@ -153,6 +154,7 @@ interface Model {
   responsePrice?: AssistantResponsePricing;
 }
 interface Catalog {
+  connection?: AssistantConnection;
   ready: boolean;
   voiceReady: boolean;
   transcriptionModels?: string[];
@@ -1010,7 +1012,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               appStatus: turn.state === 'completed' ? undefined : turnStatus(turn),
               citations: turn.output?.citations,
               search: turn.output?.search,
-              hasSpecialistReview: turn.output?.toolRecords?.some((record) => record.tool === 'consult_specialists'),
+              hasSpecialistReview: turn.output?.toolRecords?.some((record) => ['consult_specialists', 'delegate_studio_task'].includes(record.tool)),
             });
           }
           for (const message of old) if (!merged.has(message.id)) merged.set(message.id, message);
@@ -1975,7 +1977,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             reasoningSummary: result.output!.reasoningSummary,
             citations: result.output!.citations,
             search: result.output!.search,
-            hasSpecialistReview: result.output!.toolRecords?.some((record) => record.tool === 'consult_specialists'),
+            hasSpecialistReview: result.output!.toolRecords?.some((record) => ['consult_specialists', 'delegate_studio_task'].includes(record.tool)),
           },
         ].slice(-40),
       );
@@ -2800,7 +2802,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
         } else dismissVoice();
       }}
     >
-      <div className="voice-workspace-center">{voicePanel}</div>
+      <div className="voice-workspace-center">{voicePanel}
+        {catalog?.connection && props.visible !== false && <AssistantConnectionStatus initial={catalog.connection} />}
+      </div>
       <div className="voice-workspace-footer">
         {props.captureCanvasPreview && selectedVoice && (
           <div className="voice-canvas-share">
@@ -3011,7 +3015,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
             node.scrollHeight - node.clientHeight - node.scrollTop < 64;
         }}
       >
-          {isLoggedIn && !catalog && catalogStatus}
+        {isLoggedIn && catalog?.connection && !voiceVisible && props.visible !== false &&
+          <AssistantConnectionStatus initial={catalog.connection} />}
+        {isLoggedIn && !catalog && catalogStatus}
         {!isLoggedIn ? (
           <div className="ai-conversation-empty ai-login-empty">
             <ComposerVisual kind="assistant" />

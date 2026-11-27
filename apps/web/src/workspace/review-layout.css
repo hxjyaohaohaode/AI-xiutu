@@ -117,12 +117,10 @@
 }
 .studio-view .document-code-body {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   min-height: min(340px, 45dvh);
-  font: 13px/1.6 'IBM Plex Mono', ui-monospace, Consolas, monospace;
-  border-block: 1px solid var(--line);
+  font: inherit;
 }
-.studio-view .document-line-gutter { max-height: 100%; display: flex; flex-direction: column; padding: 10px 6px 0 0; text-align: end; color: var(--muted); overflow: hidden; user-select: none; }
 .studio-view .document-code-body textarea { min-width: 0; width: 100%; min-height: 0; margin: 0; padding: 10px; resize: vertical; border: 0; background: transparent; color: var(--ink); font: inherit; }
 .studio-view .document-code-body textarea:focus { outline-offset: -2px; }
 
@@ -322,7 +320,7 @@
   .studio-workspace .library-folders { position: relative; inset: auto; margin-block-end: 8px; padding: 0 0 4px; max-height: 144px; border: 0; border-block-end: 1px solid var(--line); }
   .document-tree-root { min-height: 38px; }
   .studio-view.documents-view .document-list, .studio-view.documents-view .document-editor { border-radius: 8px; border: 0; }
-  .studio-view .document-code-body { font-size: 16px; min-height: 32dvh; grid-template-columns: 23px minmax(0, 1fr); }
+  .studio-view .document-code-body { font-size: 16px; min-height: 32dvh; grid-template-columns: minmax(0, 1fr); }
   .studio-view .document-code-body textarea { padding: 10px 5px; }
   .studio-view.collaboration-view .collaboration-grid { gap: 9px; }
   .studio-view.collaboration-view .collaboration-grid > .surface { padding: 8px; }
@@ -379,7 +377,29 @@
 @media (width < 760px) {
   .project-asset-tools .asset-tool-asset-list { max-height: clamp(72px, calc(100dvh - 380px), 235px); }
 }
-.studio-workspace .library-masonry-more { position: absolute; top: 9px; right: 9px; z-index: 2; width: 33px; min-width: 33px; min-height: 33px; height: 33px; padding: 4px; border-radius: 7px; color: white; background: #111a; opacity: 0; transition: opacity .2s; }
+.studio-workspace .library-masonry-more {
+  position: absolute; top: 3px; right: 3px; z-index: 2; isolation: isolate;
+  width: 44px; min-width: 44px; height: 44px; min-height: 44px; padding: 0;
+  border: 0; border-radius: 50%; color: white; background: transparent;
+  opacity: 0; transition: opacity 160ms ease-out;
+}
+.studio-workspace .library-masonry-more::before {
+  content: ''; position: absolute; inset: 6px; z-index: -1; border-radius: inherit;
+  background: rgb(20 20 24 / 72%);
+}
+@supports (backdrop-filter: blur(6px)) {
+  .studio-workspace .library-masonry-more::before {
+    background: rgb(20 20 24 / 58%); backdrop-filter: blur(6px);
+  }
+}
+@media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+  .studio-workspace .library-masonry-more::before { background: #29292b; backdrop-filter: none; }
+}
+.studio-workspace .library-group { transition: opacity 150ms ease-out; }
+.studio-workspace .library-group[inert] { opacity: .58; }
+@media (prefers-reduced-motion: reduce) {
+  .studio-workspace .library-group, .studio-workspace .library-masonry-more { transition: none; }
+}
 .studio-workspace .masonry__item:is(:hover,:focus-within) .library-masonry-more { opacity: 1; }
 .studio-workspace .masonry__item:is(:hover,:focus-within) { z-index: 3; }
 .studio-workspace .library-reference-masonry .masonry__caption { overflow-wrap: anywhere; }
@@ -623,14 +643,6 @@
   .studio-workspace .library-hub .library-context-tabs > :is([aria-haspopup='dialog'],.library-original-action) { width: 40px; padding: 0; }
   .studio-workspace .library-hub .library-scope-heading { min-height: 36px; margin-block: 2px 3px; }
   .studio-workspace .library-hub .library-search input { padding-block: 2px; }
-  .studio-workspace .library-hub .library-reference-masonry .library-masonry-more {
-    inline-size: 36px;
-    min-inline-size: 36px;
-    block-size: 36px;
-    min-block-size: 36px;
-    border-radius: 9px;
-    background: rgb(20 20 24 / 54%);
-  }
   .studio-workspace .collaboration-view:not(.collaboration-panel) > .view-heading {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -673,3 +685,5 @@
   .studio-workspace .library-hub .library-context-tabs > button[data-library-tab] > svg { display: none; }
   .studio-workspace .library-hub .library-context-tabs > button[data-library-tab] { min-width: 0; }
 }
+
+.studio-view .document-format-toggle { justify-self: start; align-self: start; }

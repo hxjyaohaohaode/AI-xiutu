@@ -1,3 +1,4 @@
+import { createDeploymentGate } from '@ai-xiutu/storage';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import WebSocket, { WebSocketServer, type RawData } from 'ws';
@@ -143,6 +144,7 @@ export function attachVoiceBridge(
   config: AppConfig,
   service: AssistantService,
 ) {
+  const deploymentHeld = createDeploymentGate(config.storageDir);
   const server = new WebSocketServer({
     noServer: true,
     maxPayload: 1_600_000,
@@ -154,6 +156,7 @@ export function attachVoiceBridge(
   const upgrading = new Set<Promise<void>>();
   let accepting = true;
   const cleanup = setInterval(() => {
+    if (deploymentHeld()) return;
     for (const [id, value] of snapshots) if (value.expiresAt < Date.now()) snapshots.delete(id);
     void service.recoverStale().catch(() => undefined);
   }, 20_000);
@@ -1377,6 +1380,10 @@ export function attachVoiceBridge(
   });
 
   app.server.on('upgrade', (request, socket, head) => {
+    if (deploymentHeld()) {
+      socket.end('HTTP/1.1 503 Service Unavailable\r\nRetry-After: 5\r\nConnection: close\r\n\r\n');
+      return;
+    }
     let path: string;
     try {
       path = new URL(request.url ?? '/', 'http://local').pathname;

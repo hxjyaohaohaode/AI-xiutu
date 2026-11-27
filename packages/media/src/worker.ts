@@ -21,6 +21,7 @@ import { readPsd, initializeCanvas, type Layer } from 'ag-psd';
 import { attachPngIcc, attachTiffIcc, srgbProfile } from './icc.js';
 import { editMaster16, fitPrecisionPreview, precisionRecord, previewWindow } from './precision.js';
 import { parsePrecisionEdit, NEUTRAL_PRECISION_EDIT, type PrecisionEdit } from '@ai-xiutu/editor';
+import { MiB, requireResident } from './memory.js';
 import type { NormalizedMediaOptions } from './process.js';
 import {
   MEDIA_MAX_PIXELS,
@@ -152,6 +153,12 @@ async function preflightRaster(metadata: Metadata, options: NormalizedMediaOptio
         'Format and orientation require more decoded working memory than available',
       );
   }
+  // Streaming TIFF construction has a bounded libvips cache. Progressive,
+  // interlaced and quarter-turned inputs can also hold full decoded frames.
+  const frameCodec = metadata.isProgressive || ['gif', 'webp', 'heif'].includes(format);
+  const sampleBytes = Math.max(1, Math.ceil(depth(metadata) / 8));
+  const bytesPerPixel = frameCodec ? 12 * sampleBytes : (orientation ?? 1) >= 3 ? 4 * sampleBytes : 2 * sampleBytes;
+  requireResident(options.residentBudgetBytes, 150, pixels, bytesPerPixel);
   const pyramid = options.generateTiles ? pyramidSize(width, height, options.tileSize) : null;
   if (pyramid && pyramid.tiles > MEDIA_MAX_TILE_COUNT)
     throw new MediaLimitError('Tile count exceeds budget; use a larger tile size or disable tiles');
@@ -209,6 +216,11 @@ async function nativeDecode(
         'gain-map': MEDIA_MAX_GAIN_MAP_PIXELS,
         'heic-hdr': MEDIA_MAX_HEIC_HLG_PIXELS,
       }[kind]),
+      // Includes both the Node isolation worker and native codec/array working sets.
+      maxResidentPixels: Math.max(0, Math.floor(
+        (job.options.residentBudgetBytes - (kind === 'raw' ? 160 : 192) * MiB) /
+        ({ raw: 16, hdr: 48, 'gain-map': 40, 'heic-hdr': 36 }[kind]),
+      )),
       ...(kind === 'gain-map' ? { ultraHdrLibrary: job.options.ultraHdrLibrary, orientation } : {}),
       ...(kind === 'heic-hdr' ? { heicDecoder: job.options.heicDecoder } : {}),
       resultPath,
@@ -229,7 +241,9 @@ async function nativeDecode(
     child.once('close', (code) =>
       code === 0
         ? resolveDone()
-        : reject(new Error(`Native decoder rejected input: ${error.trim().slice(-1500)}`)),
+        : reject(error.includes('Native development exceeds currently available resident memory')
+            ? new MediaProcessingError('Native development exceeds currently available resident memory', 'memory')
+            : new Error(`Native decoder rejected input: ${error.trim().slice(-1500)}`)),
     );
   });
   const result = JSON.parse(await readFile(resultPath, 'utf8')) as {
@@ -387,6 +401,8 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     warnings.push(...result.result.warnings);
     nativePeakRssBytes = result.result.peakRssBytes;
   } else if (h.toString('ascii', 0, 4) === '8BPS') {
+    const psdPixels = h.readUInt32BE(14) * h.readUInt32BE(18);
+    requireResident(options.residentBudgetBytes - sourceStat.size, 150, psdPixels, 24);
     const decoded = await psdComposite(originalPath, stage, options.maxPixels);
     inputPath = decoded.path;
     layers = decoded.layers;
@@ -436,7 +452,8 @@ async function importMedia(job: Job): Promise<MediaDescriptorV1> {
     if (!options.pythonExecutable || !options.ultraHdrLibrary) {
       warnings.push('Ultra HDR gain map retained in the original. HDR development requires the reference decoder.');
     } else if (
-      !fitsGainMapRaster(metadata) || sourceStat.size > MEDIA_MAX_GAIN_MAP_BYTES
+      !fitsGainMapRaster(metadata) || sourceStat.size > MEDIA_MAX_GAIN_MAP_BYTES ||
+      192 * MiB + metadata.width * metadata.height * 40 + sourceStat.size * 2 > options.residentBudgetBytes
     ) {
       warnings.push('Ultra HDR gain map retained in the original. This image exceeds the HDR development budget.');
     } else {
@@ -707,6 +724,7 @@ async function exportNativeMaster(
   const dimensions = region ?? source;
   const count = dimensions.width * dimensions.height;
   const ultraHdr = job.format === 'ultrahdr';
+  requireResident(job.options.residentBudgetBytes, 192, count, ultraHdr ? 32 : job.format === 'webp' ? 16 : 2);
   if (
     ultraHdr &&
     (!hasDisplayHdr(descriptor.original) || !fitsGainMapRaster(dimensions))
@@ -864,6 +882,7 @@ async function exportMaster(job: Job): Promise<MediaExportResult> {
       throw new MediaLimitError('Precision edits exceed the SDR master pixel budget');
     return exportNativeMaster(job, descriptor, region, 'master16');
   }
+  requireResident(job.options.residentBudgetBytes, 150, pixels, edit ? 32 : format === 'webp' ? 16 : 2);
   if (
     format === 'webp' &&
     (Math.max(descriptor.master.width, descriptor.master.height) > 16383 ||
@@ -941,7 +960,7 @@ try {
 } catch (error) {
   // Diagnostic text stays in the parent process boundary. No binary image or credentials are printed.
   process.stderr.write(`${error instanceof Error ? error.message : 'Media processing failed'}\n`);
-  process.exitCode =
+  process.exitCode = error instanceof MediaProcessingError && error.code === 'memory' ? 3 :
     error instanceof MediaLimitError ||
     (error instanceof MediaProcessingError && error.code === 'limit')
       ? 2

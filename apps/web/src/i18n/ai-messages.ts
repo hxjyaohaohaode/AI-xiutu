@@ -1,5 +1,12 @@
 /** App-owned AI, generation and voice interface copy; never applied to user messages or prompts. */
 export const aiEnglish: Record<string, string> = {
+  '暂时无法读取模型连接状态': 'Could not read the model connection status',
+  '已连接 OpenAI 模型目录': 'Connected to the OpenAI model catalog',
+  '服务器暂时连不上 OpenAI': 'The server cannot reach OpenAI right now',
+  'OpenAI 已响应，当前密钥无法读取模型目录': 'OpenAI responded. This key cannot read the model catalog.',
+  'OpenAI 模型目录暂时无法读取': 'The OpenAI model catalog is temporarily unavailable',
+  '正在检查 OpenAI 连接': 'Checking the OpenAI connection',
+  '重试连接': 'Retry connection',
   '大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。': 'Large originals stay in the project. Oversized references are resized to a maximum edge of 1024 pixels. Masks and annotations keep their coordinates.',
   朗读: 'Read aloud',
   暂停朗读: 'Pause reading',
@@ -713,6 +720,11 @@ Object.assign(aiEnglish, {
   按画面亮度准备调色候选: 'Preparing a tone adjustment using image measurements',
   依据当前画面测量调整明暗: 'Adjust light using current image measurements',
   准备编辑候选: 'Prepare an edit candidate',
+  编辑协调: 'Editing lead',
+  调色助手: 'Colorist',
+  修图子任务: 'Retouching subtask',
+  生图子任务: 'Image design subtask',
+  分派创作任务: 'Delegate studio work',
   色调复核: 'Tone review',
   构图复核: 'Composition review',
   交付复核: 'Delivery review',
@@ -1308,6 +1320,13 @@ export const openAIEnglish = {
 };
 
 export const openAITraditional = {
+  '暂时无法读取模型连接状态': '暫時無法讀取模型連線狀態',
+  '已连接 OpenAI 模型目录': '已連線至 OpenAI 模型目錄',
+  '服务器暂时连不上 OpenAI': '伺服器暫時無法連上 OpenAI',
+  'OpenAI 已响应，当前密钥无法读取模型目录': 'OpenAI 已回應，目前金鑰無法讀取模型目錄',
+  'OpenAI 模型目录暂时无法读取': 'OpenAI 模型目錄暫時無法讀取',
+  '正在检查 OpenAI 连接': '正在檢查 OpenAI 連線',
+  '重试连接': '重試連線',
   '大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。': '大圖保留專案原件。一般參考圖依模型預算縮至最長 1024 像素。遮罩和標註保留原座標。',
   '正在核对上次通话': '正在核對上次通話',
   '」的通话记录。结清后即可再次通话。': '」的通話記錄。結清後即可再次通話。',

@@ -20,6 +20,8 @@ import {
   hashPassword,
   verifyPassword,
   issueSession,
+  lockActiveSession,
+  setSessionCookie,
   sessionDto,
   rateLimit,
   requireUser,
@@ -66,24 +68,34 @@ export function registerAuth(
         [userId],
       )
     ).rows[0] as User;
-  // Failed attempts commit independently; throwing inside a rolled-back auth transaction would erase brute-force limits.
-  async function consumeOtp(phone: string, purpose: OtpPurpose, value: string): Promise<boolean> {
-    return transaction(db, async (tx) => {
-      const { rows } = await tx.query(
-        "SELECT * FROM otp_challenges WHERE phone_key=$1 AND purpose=$2 AND consumed_at IS NULL AND expires_at>clock_timestamp() AND attempts<5 AND state IN ('sent','unknown') ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
+  async function withVerifiedOtp<T>(
+    phone: string, purpose: OtpPurpose, value: string,
+    complete: (tx: Queryable) => Promise<T>,
+  ): Promise<T> {
+    const result = await transaction(db, async (tx) => {
+      const challenge = (await tx.query(
+        "SELECT id,code_hash FROM otp_challenges WHERE phone_key=$1 AND purpose=$2 AND consumed_at IS NULL AND expires_at>clock_timestamp() AND attempts<5 AND state IN ('sent','unknown') ORDER BY created_at DESC LIMIT 1 FOR UPDATE",
         [phoneKey(phone), purpose],
-      );
-      const challenge = rows[0];
-      if (!challenge) return false;
+      )).rows[0];
+      if (!challenge) return { verified: false } as const;
       const actual = Buffer.from(codeHash(phone, purpose, challenge.id, value), 'hex');
       const expected = Buffer.from(challenge.code_hash, 'hex');
-      const valid = expected.length === actual.length && timingSafeEqual(actual, expected);
-      await tx.query(
-        'UPDATE otp_challenges SET attempts=attempts+1,consumed_at=CASE WHEN $2 THEN clock_timestamp() ELSE consumed_at END WHERE id=$1',
-        [challenge.id, valid],
-      );
-      return valid;
+      if (expected.length !== actual.length || !timingSafeEqual(actual, expected)) {
+        // Return normally so failed attempts commit even though the HTTP request is rejected.
+        await tx.query('UPDATE otp_challenges SET attempts=attempts+1 WHERE id=$1', [challenge.id]);
+        return { verified: false } as const;
+      }
+      // A corrected invitation or a rolled-back account write can reuse the same delivered SMS.
+      await tx.query('UPDATE otp_challenges SET attempts=attempts+1,consumed_at=clock_timestamp() WHERE id=$1', [challenge.id]);
+      try {
+        return { verified: true, value: await complete(tx) } as const;
+      } catch (error) {
+        if (error instanceof HttpError) error.details = { ...error.details, otpConsumed: false };
+        throw error; // The business write and the verified challenge roll back together.
+      }
     });
+    if (!result.verified) throw new HttpError(400, 'OTP_INVALID', '验证码无效、已使用或已过期');
+    return result.value;
   }
   app.get('/v1/session', async (req) => sessionDto(db, req.currentUser));
   app.post('/v1/auth/otp', async (req, reply) => {
@@ -158,10 +170,8 @@ export function registerAuth(
       .strict()
       .parse(req.body);
     await authRate(req, p.phone);
-    if (!(await consumeOtp(p.phone, 'register', p.code)))
-      throw new HttpError(400, 'OTP_INVALID', '验证码无效、已使用或已过期');
-    const password = await hashPassword(p.password);
-    const user = await transaction(db, async (tx) => {
+    const session = await withVerifiedOtp(p.phone, 'register', p.code, async (tx) => {
+      const password = await hashPassword(p.password);
       await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`register:${p.phone}`]);
       const existing = (await tx.query('SELECT * FROM users WHERE phone=$1 FOR UPDATE', [p.phone]))
         .rows[0];
@@ -203,11 +213,12 @@ export function registerAuth(
       }
       await createPersonalSpace(tx, row!.id, p.displayName);
       await ensureMonthlyGrant(tx, row!.id);
-      await issueSession(tx, row!.id, reply, config);
+      const token = await issueSession(tx, row!.id);
       await audit(tx, row!.id, 'account.register', 'user', row!.id, { method: 'sms' });
-      return readUser(tx, row!.id);
+      return { token, dto: await sessionDto(tx, await readUser(tx, row!.id)) };
     });
-    return reply.code(201).send(await sessionDto(db, user));
+    setSessionCookie(reply, config, session.token);
+    return reply.code(201).send(session.dto);
   });
   app.post('/v1/auth/login', async (req, reply) => {
     const p = z
@@ -221,7 +232,7 @@ export function registerAuth(
     const valid = await verifyPassword(p.password, found?.password_hash ?? null);
     if (!found || !valid || found.status !== 'active')
       throw new HttpError(401, 'INVALID_CREDENTIALS', '手机号或密码不正确，或账号暂不可用');
-    const user = await transaction(db, async (tx) => {
+    const session = await transaction(db, async (tx) => {
       const current = (
         await tx.query(
           "SELECT id FROM users WHERE id=$1 AND status='active' AND password_hash=$2 FOR SHARE",
@@ -229,27 +240,27 @@ export function registerAuth(
         )
       ).rows[0];
       if (!current) throw new HttpError(401, 'INVALID_CREDENTIALS', '登录信息已更新，请重试');
-      await issueSession(tx, found.id, reply, config);
-      return readUser(tx, found.id);
+      const token = await issueSession(tx, found.id);
+      return { token, dto: await sessionDto(tx, await readUser(tx, found.id)) };
     });
-    return sessionDto(db, user);
+    setSessionCookie(reply, config, session.token);
+    return session.dto;
   });
   app.post('/v1/auth/login-otp', async (req, reply) => {
     const p = z.object({ phone: phoneSchema, code }).strict().parse(req.body);
     await authRate(req, p.phone);
-    if (!(await consumeOtp(p.phone, 'login', p.code)))
-      throw new HttpError(400, 'OTP_INVALID', '验证码无效、已使用或已过期');
-    const user = await transaction(db, async (tx) => {
+    const session = await withVerifiedOtp(p.phone, 'login', p.code, async (tx) => {
       const found = (
         await tx.query("SELECT id FROM users WHERE phone=$1 AND status='active' FOR SHARE", [
           p.phone,
         ])
       ).rows[0];
       if (!found) throw new HttpError(401, 'INVALID_CREDENTIALS', '无法完成登录');
-      await issueSession(tx, found.id, reply, config);
-      return readUser(tx, found.id);
+      const token = await issueSession(tx, found.id);
+      return { token, dto: await sessionDto(tx, await readUser(tx, found.id)) };
     });
-    return sessionDto(db, user);
+    setSessionCookie(reply, config, session.token);
+    return session.dto;
   });
   app.post('/v1/auth/reset', async (req) => {
     const p = z
@@ -257,10 +268,8 @@ export function registerAuth(
       .strict()
       .parse(req.body);
     await authRate(req, p.phone);
-    if (!(await consumeOtp(p.phone, 'reset', p.code)))
-      throw new HttpError(400, 'OTP_INVALID', '验证码无效、已使用或已过期');
-    const password = await hashPassword(p.newPassword);
-    await transaction(db, async (tx) => {
+    await withVerifiedOtp(p.phone, 'reset', p.code, async (tx) => {
+      const password = await hashPassword(p.newPassword);
       const user = (
         await tx.query(
           "UPDATE users SET password_hash=$2,updated_at=clock_timestamp() WHERE phone=$1 AND status='active' RETURNING id",
@@ -272,6 +281,42 @@ export function registerAuth(
       await audit(tx, user.id, 'account.password_reset', 'user', user.id);
     });
     return { ok: true };
+  });
+  app.get('/v1/auth/sessions', async (req, reply) => {
+    const user = requireUser(req);
+    const tokenHash = hash(req.cookies.xiutu_session ?? '');
+    reply.header('Cache-Control', 'private, no-store');
+    const row = (await db.query(
+      `SELECT current.created_at AS "createdAt",current.expires_at AS "expiresAt",
+        (SELECT count(*)::integer FROM sessions other
+         WHERE other.user_id=current.user_id AND other.token_hash<>current.token_hash
+           AND other.expires_at>clock_timestamp()) AS "otherSessions"
+       FROM sessions current JOIN users u ON u.id=current.user_id
+       WHERE current.token_hash=$1 AND current.user_id=$2 AND current.expires_at>clock_timestamp()
+         AND u.status='active'`,
+      [tokenHash, user.id],
+    )).rows[0];
+    if (!row) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+    return row;
+  });
+  app.post('/v1/auth/logout-others', async (req) => {
+    const user = requireUser(req);
+    const { expectedUserId } = z.object({ expectedUserId: z.uuid() }).strict().parse(req.body);
+    if (user.id !== expectedUserId)
+      throw new HttpError(409, 'SESSION_CHANGED', '登录状态已变化，请确认当前账号后继续。');
+    const tokenHash = hash(req.cookies.xiutu_session ?? '');
+    return transaction(db, async (tx) => {
+      // Login locks this user before issuing a session. Serialize concurrent revocations as well.
+      await tx.query("SELECT id FROM users WHERE id=$1 AND status='active' FOR UPDATE", [user.id]);
+      await lockActiveSession(tx, user.id, tokenHash);
+      const removed = await tx.query(
+        'DELETE FROM sessions WHERE user_id=$1 AND token_hash<>$2 AND expires_at>clock_timestamp()',
+        [user.id, tokenHash],
+      );
+      const revoked = removed.rowCount ?? 0;
+      if (revoked) await audit(tx, user.id, 'account.logout_others', 'user', user.id, { revoked });
+      return { revoked };
+    });
   });
   app.post('/v1/auth/logout', async (req, reply) => {
     const token = req.cookies.xiutu_session;

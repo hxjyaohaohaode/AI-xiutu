@@ -38,6 +38,7 @@ export function compileSelectionMask(
   input: SelectionMaskV2,
   dimensions: Dimensions,
   source?: RGBAImage,
+  sourceOrigin?: { x: number; y: number },
 ): SelectionMaskSampler {
   validateTiledDimensions(dimensions);
   const mask = parseSelectionMask(input);
@@ -186,9 +187,16 @@ export function compileSelectionMask(
     // Smaller explicitly supplied source images are useful for approximate UI
     // overlays. The renderer always supplies its entire unchanged input image.
     const original = source;
+    // A streamed tile contains unmodified, full-resolution pixels. A preview
+    // without an origin can instead be a resampled view of the entire original.
+    const sampleWidth = sourceOrigin ? dimensions.width : original.width;
+    const sampleHeight = sourceOrigin ? dimensions.height : original.height;
+    const left = sourceOrigin?.x ?? 0;
+    const top = sourceOrigin?.y ?? 0;
     const pixel = (x: number, y: number) =>
-      (Math.min(original.height - 1, Math.floor(y * original.height)) * original.width +
-        Math.min(original.width - 1, Math.floor(x * original.width))) *
+      ((Math.min(sampleHeight - 1, Math.floor(y * sampleHeight)) - top) * original.width +
+        Math.min(sampleWidth - 1, Math.floor(x * sampleWidth)) -
+        left) *
       4;
     visible = (x, y) => (original.data[pixel(x, y) + 3] === 0 ? 0 : 1);
     const range = (value: number, low: number, high: number): number => {

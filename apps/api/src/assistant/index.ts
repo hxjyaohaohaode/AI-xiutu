@@ -1,9 +1,9 @@
+import { createCatalogConnection } from './catalog-connection.js';
 import { openAIModelShutdown, openAIShutdownDate } from '@ai-xiutu/contracts';
 import { responseDefaults, responsePricing } from '@ai-xiutu/assistant/models';
 import { z } from 'zod';
 import { join } from 'node:path';
 import {
-  listOpenAIProjectModels,
   OPENAI_FILE_TRANSCRIPTION_MODELS,
   OPENAI_IMAGE_MODEL_PROFILES,
 } from '@ai-xiutu/multimodal';
@@ -71,6 +71,12 @@ export function registerAssistant(
     dependencies,
     join((dependencies.env ?? process.env).AI_JOURNAL_DIR ?? config.storageDir, 'assistant'),
   );
+  const connection = createCatalogConnection({
+    key: service.key,
+    live: service.env.NODE_ENV === 'production' && !process.env.NODE_TEST_CONTEXT &&
+      !process.env.CI && dependencies.env === undefined && !dependencies.fetcher,
+    fetcher: dependencies.fetcher,
+  });
   const bridge = attachVoiceBridge(app, db, config, service);
   app.addHook('onClose', async () => {
     await service.waitForIdle();
@@ -152,11 +158,16 @@ export function registerAssistant(
     if (!result.rowCount) throw new HttpError(404, 'GRANT_NOT_FOUND', '授权不存在');
     return { ok: true };
   });
+  app.get('/v1/assistant/connection', async (req) => {
+    requireUser(req);
+    return connection.check();
+  });
   app.get('/v1/assistant/models', async (req) => {
     requireUser(req);
     const rows = (await db.query('SELECT id,config FROM assistant_model_configs ORDER BY id')).rows;
     return {
       ready: service.ready,
+      connection: connection.snapshot(),
       imageReady: service.imageReady,
       voiceReady: service.voiceReady,
       voiceReason: service.voiceReason,
@@ -602,6 +613,7 @@ export function registerAssistant(
       profiles: VOICE_MODELS,
       responsesProfiles: RESPONSES_MODELS,
       ready: service.ready,
+      connection: connection.snapshot(),
       imageReady: service.imageReady,
       voiceReady: service.voiceReady,
       voiceReason: service.voiceReason,
@@ -610,28 +622,12 @@ export function registerAssistant(
       transcriptionModels: CALL_TRANSCRIPTION_MODELS,
     };
   });
-  let inventory: { ids: string[]; checkedAt: number } | undefined;
-  let discovery: Promise<{ ids: string[]; checkedAt: number }> | undefined;
-  let retryDiscoveryAfter = 0;
   app.get('/v1/ops/openai-model-inventory', async (req, reply) => {
     requireOperator(req);
     reply.header('cache-control', 'no-store');
     if (!service.key) return { state: 'unconfigured', models: [] };
-    const now = Date.now();
-    if ((!inventory || now - inventory.checkedAt >= 5 * 60_000) && now >= retryDiscoveryAfter) {
-      discovery ??= listOpenAIProjectModels(service.key, service.dependencies.fetcher)
-        .then((ids) => ({ ids, checkedAt: Date.now() }))
-        .finally(() => {
-          discovery = undefined;
-        });
-      try {
-        inventory = await discovery;
-      } catch {
-        retryDiscoveryAfter = Date.now() + 15_000;
-      }
-    }
-    if (!inventory || Date.now() - inventory.checkedAt >= 30 * 60_000)
-      return { state: 'unavailable', models: [] };
+    const inventory = await connection.inventory();
+    if (!inventory) return { state: 'unavailable', models: [] };
     return {
       state: 'visible',
       stale: Date.now() - inventory.checkedAt >= 5 * 60_000,
@@ -752,5 +748,5 @@ export function registerAssistant(
       params = z.object({ kind: z.enum(['voice', 'turn']), recordId: id }).parse(req.params);
     return service.resolve(user.id, params.kind, params.recordId, req.body);
   });
-  return service;
+  return { ...service, connectionStatus: connection.snapshot };
 }

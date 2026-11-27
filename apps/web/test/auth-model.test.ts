@@ -351,6 +351,8 @@ test('only definitive post-verification business failures explain a consumed OTP
   assert.equal(authFailureConsumedCode('register', failure('REGISTRATION_UNAVAILABLE')), true);
   assert.equal(authFailureConsumedCode('otp', failure('INVALID_CREDENTIALS')), true);
   assert.equal(authFailureConsumedCode('password', failure('INVALID_CREDENTIALS')), false);
+  assert.equal(authFailureConsumedCode('register',
+    new ApiError('INVITE_INVALID', 'rejected', 400, { otpConsumed: false })), false);
   assert.equal(authFailureConsumedCode('reset', failure('RESET_UNAVAILABLE')), true);
   for (const mode of ['password', 'otp', 'register', 'reset'] as const) {
     assert.equal(authFailureConsumedCode(mode, failure('OTP_INVALID')), false);

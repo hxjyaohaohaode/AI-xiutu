@@ -4191,3 +4191,313 @@ test(
     }
   },
 );
+
+test(
+  'two levels of studio delegation apply a reviewed revision once under one grant and replay its saved tree',
+  { skip: !databaseUrl },
+  async () => {
+    let requests = 0;
+    const prompt = '请分工将曝光降至 -1.5 EV，保留构图。';
+    const call = (name: string, args: unknown) => ({
+      type: 'function_call',
+      call_id: 'call-' + requests,
+      name,
+      arguments: JSON.stringify(args),
+    });
+    const f = await fixture({
+      fetcher: async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        if (++requests === 1 || requests === 2)
+          return response([
+            call('delegate_studio_task', {
+              tasks: [
+                {
+                  role: 'retoucher',
+                  brief: requests === 1 ? prompt : '曝光降至 -1.5 EV',
+                },
+              ],
+            }),
+          ]);
+        if (requests === 3) return response([editCall()]);
+        assert.equal(requests, 4);
+        const outcome = JSON.parse(
+          body.input.find((item: any) => item.type === 'function_call_output').output,
+        );
+        assert.equal(outcome.tasks[0].child.candidateIndex, 0);
+        assert.equal(outcome.observations[0].candidateIndex, 0);
+        const pixel = body.input.at(-1).content.find((item: any) => item.type === 'input_image');
+        assert.ok(pixel.image_url.startsWith('data:image/'));
+        return response([
+          call('select_candidate', {
+            candidateIndex: 0,
+            reason: '已检查当前画面与实际渲染后的候选',
+          }),
+        ]);
+      },
+    });
+    try {
+      const grant = await f.call('POST', '/v1/projects/' + f.projectId + '/assistant-grants', {
+        mode: 'auto',
+        unitLimit: 10,
+        stepLimit: 4,
+        minutes: 30,
+        allowedActions: ['assistant-turn', 'edit'],
+        modelIds: [f.modelId],
+      });
+      assert.equal(grant.statusCode, 200, grant.body);
+      const grantId = grant.json().grant.id;
+      const png = await sharp({
+        create: { width: 64, height: 48, channels: 4, background: '#559988' },
+      })
+        .png()
+        .toBuffer();
+      const request = {
+        ...f.turn(prompt),
+        context: { ...f.context, imageDataUrl: 'data:image/png;base64,' + png.toString('base64') },
+        scope: { ...f.scope, executionGrantId: grantId },
+      };
+      const endpoint = '/v1/projects/' + f.projectId + '/assistant-turns';
+      const admitted = await f.call('POST', endpoint, request);
+      assert.equal(admitted.statusCode, 202, admitted.body);
+      const id = admitted.json().id;
+      const done = await until(
+        () => f.readTurn(id),
+        (v) => v.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      assert.equal(done.output.termination, 'completed');
+      assert.equal(done.output.execution.state, 'applied');
+      assert.equal(done.output.candidates[0].id, done.output.selectedCandidateId);
+      assert.deepEqual(
+        done.output.toolRecords.map((r: any) => r.tool),
+        ['delegate_studio_task'],
+      );
+      const revisions = (
+        await f.db.query(
+          'SELECT version,recipe FROM revisions WHERE artwork_id=$1 ORDER BY version',
+          [f.context.artworkId],
+        )
+      ).rows;
+      assert.deepEqual(
+        revisions.map((v: any) => v.recipe.adjustments.exposure),
+        [0, -1.5],
+      );
+      const treePath = '/v1/assistant-turns/' + id + '/branches';
+      const nodes = (await f.call('GET', treePath)).json().branches;
+      const workers = nodes.filter((n: any) => n.kind === 'retoucher');
+      assert.equal(workers.length, 2);
+      assert.ok(workers.every((n: any) => n.state === 'completed'));
+      assert.equal(workers[1].parentId, workers[0].id);
+      assert.equal(nodes.find((n: any) => n.kind === 'candidate').parentId, workers[1].id);
+      assert.equal((await f.call('GET', treePath, undefined, 'editor')).statusCode, 404);
+      const dispatches = (
+        await f.db.query(
+          'SELECT branch_key,completed_at FROM assistant_dispatches WHERE turn_id=$1 ORDER BY sequence',
+          [id],
+        )
+      ).rows;
+      assert.deepEqual(
+        dispatches.map((d: any) => d.branch_key),
+        ['root', workers[0].id, workers[1].id, 'root'],
+      );
+      assert.ok(dispatches.every((d: any) => d.completed_at));
+      assert.equal((await f.call('POST', endpoint, request)).json().id, id);
+      assert.equal(requests, 4);
+      const used = (await f.call('GET', '/v1/assistant-grants/' + grantId)).json().grant;
+      assert.equal(used.usedUnits, 5);
+      assert.equal(used.usedSteps, 2);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'ambiguous tool-using sibling leaves one unknown hold and never replays the paid graph or publishes a partial candidate',
+  { skip: !databaseUrl },
+  async () => {
+    let sends = 0;
+    const prompt = '提高曝光并生成海报';
+    const f = await fixture({
+      fetcher: async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        sends++;
+        if (body.instructions.includes('You are a delegated retoucher'))
+          return response([editCall()]);
+        if (body.instructions.includes('You are a delegated image-designer'))
+          throw Error('missing local provider receipt');
+        return response([
+          {
+            type: 'function_call',
+            name: 'delegate_studio_task',
+            call_id: 'pair',
+            arguments: JSON.stringify({
+              tasks: [
+                { role: 'retoucher', brief: '提高曝光' },
+                { role: 'image-designer', brief: '生成海报' },
+              ],
+            }),
+          },
+        ]);
+      },
+    });
+    try {
+      const request = f.turn(prompt);
+      const path = '/v1/projects/' + f.projectId + '/assistant-turns';
+      const admitted = await f.call('POST', path, request);
+      assert.equal(admitted.statusCode, 202, admitted.body);
+      const id = admitted.json().id;
+      const done = await until(
+        () => f.readTurn(id),
+        (r) => r.state !== 'running',
+      );
+      assert.equal(done.state, 'unknown', JSON.stringify(done));
+      const dispatches = (
+        await f.db.query(
+          'SELECT sequence,branch_key,completed_at,rejected_at FROM assistant_dispatches WHERE turn_id=$1 ORDER BY sequence',
+          [id],
+        )
+      ).rows;
+      assert.equal(dispatches.length, 3);
+      assert.equal(dispatches.filter((d: any) => d.completed_at).length, 2);
+      assert.equal(dispatches.filter((d: any) => !d.completed_at && !d.rejected_at).length, 1);
+      const hold = (
+        await f.db.query(
+          'SELECT h.state FROM quota_holds h JOIN assistant_turns a ON a.hold_id=h.id WHERE a.id=$1',
+          [id],
+        )
+      ).rows[0];
+      assert.equal(hold?.state, 'unknown');
+      assert.equal(
+        (
+          await f.db.query('SELECT count(*)::int AS n FROM assistant_candidates WHERE turn_id=$1', [
+            id,
+          ])
+        ).rows[0]?.n,
+        0,
+      );
+      assert.equal((await f.call('POST', path, request)).json().id, id);
+      assert.equal(sends, 3);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'nested editing agents persist lineage, settle once, and apply a real authorized revision',
+  { skip: !databaseUrl },
+  async () => {
+    const prompt = '请让编辑协调员委派调色助手，把曝光降到 -1.5。';
+    const spawn = (role: string) => ({
+      type: 'function_call', name: 'delegate_studio_task', call_id: 'branch-local-id',
+      arguments: JSON.stringify({ tasks: [{role, brief: prompt}] }),
+    });
+    let sends = 0;
+    const f = await fixture({
+      fetcher: async (_url, options) => {
+        const body = JSON.parse(String(options?.body));
+        sends++;
+        if (body.instructions.startsWith('You are a delegated editing-lead'))
+          return response([spawn('colorist')]);
+        if (body.instructions.startsWith('You are a delegated colorist')) {
+          assert.deepEqual(
+            body.tools.map((tool: any) => tool.name),
+            ['propose_edit'],
+          );
+          return response([editCall()]);
+        }
+        const receipt = body.input.find((item: any) => item.type === 'function_call_output');
+        if (!receipt) return response([spawn('editing-lead')]);
+        const { tasks, observations } = JSON.parse(receipt.output);
+        assert.ok(observations[0].observation.changedPixels > 0);
+        assert.match(body.input.at(-1).content[1].image_url, /^data:image\/jpeg;base64,/);
+        assert.equal(tasks[0].child.candidateIndex, 0);
+        assert.equal(tasks[0].child.role, 'colorist');
+        return response([
+          outputText('已按候选的实测像素复核曝光。'),
+          {
+            type: 'function_call',
+            name: 'select_candidate',
+            call_id: 'reviewed-choice',
+            arguments: JSON.stringify({ candidateIndex: 0, reason: '已复核实际渲染的画面' }),
+          },
+        ]);
+      },
+    });
+    try {
+      const grant = await f.call('POST', `/v1/projects/${f.projectId}/assistant-grants`, {
+        mode: 'auto',
+        unitLimit: 20,
+        stepLimit: 5,
+        minutes: 30,
+        allowedActions: ['assistant-turn', 'edit'],
+        modelIds: [f.modelId],
+      });
+      assert.equal(grant.statusCode, 200, grant.body);
+      const shared = await sharp({
+        create: { width: 64, height: 48, channels: 4, background: '#559988' },
+      })
+        .png()
+        .toBuffer();
+      const request = {
+        ...f.turn(prompt),
+        context: {
+          ...f.context,
+          imageDataUrl: 'data:image/png;base64,' + shared.toString('base64'),
+        },
+        scope: { ...f.scope, executionGrantId: grant.json().grant.id },
+      };
+      const endpoint = `/v1/projects/${f.projectId}/assistant-turns`;
+      const started = await f.call('POST', endpoint, request);
+      assert.equal(started.statusCode, 202, started.body);
+      const id = started.json().id;
+      const done = await until(
+        () => f.readTurn(id),
+        (row) => row.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      assert.equal(done.output.execution.state, 'applied', JSON.stringify(done));
+      assert.ok(done.output.candidates[0].appliedRevisionId);
+      assert.equal(done.output.toolRecords[0].tool, 'delegate_studio_task');
+      const revision = (
+        await f.db.query('SELECT recipe FROM revisions WHERE id=$1', [
+          done.output.candidates[0].appliedRevisionId,
+        ])
+      ).rows[0]!;
+      assert.equal(revision.recipe.adjustments.exposure, -1.5);
+      const branches = (await f.call('GET', `/v1/assistant-turns/${id}/branches`)).json().branches;
+      const lead = branches.find((branch: any) => branch.kind === 'editing-lead');
+      const leaf = branches.find((branch: any) => branch.kind === 'colorist');
+      assert.equal(lead.parentId, 'root');
+      assert.equal(leaf.parentId, lead.id);
+      const review = branches.find((branch: any) => branch.kind === 'pixel-review');
+      assert.equal(review.parentId, leaf.id);
+      assert.deepEqual(branches.find((branch: any) => branch.kind === 'nomination').dependsOn, [
+        review.id,
+      ]);
+      assert.equal(branches.find((branch: any) => branch.kind === 'candidate').parentId, leaf.id);
+      assert.equal(
+        (await f.call('GET', `/v1/assistant-turns/${id}/branches`, undefined, 'editor')).statusCode,
+        404,
+      );
+      assert.equal((await f.call('POST', endpoint, request)).json().id, id);
+      const head = await f.db.query('SELECT head_version FROM artworks WHERE id=$1', [f.context.artworkId]);
+      assert.equal(head.rows[0]!.head_version, f.context.expectedVersion + 1);
+      const dispatches = (
+        await f.db.query(
+          'SELECT sequence,branch_key,completed_at FROM assistant_dispatches WHERE turn_id=$1 ORDER BY sequence',
+          [id],
+        )
+      ).rows;
+      assert.deepEqual(
+        dispatches.map((row) => row.branch_key),
+        ['root', lead.id, leaf.id, 'root'],
+      );
+      assert.ok(dispatches.every((row) => row.completed_at));
+      assert.equal(sends, 4);
+    } finally {
+      await f.close();
+    }
+  },
+);

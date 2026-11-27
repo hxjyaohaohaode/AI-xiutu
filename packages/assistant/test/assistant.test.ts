@@ -1032,3 +1032,435 @@ test('voice profiles expose only per-model voices and transcript chunks preserve
   transcript.clear();
   assert.equal(transcript.toString(), '');
 });
+
+test('nested studio delegation renders the child candidate before final reviewed nomination within the original budget', async () => {
+  const brief = '把暗部提高一点';
+  const tasks = [{ role: 'retoucher', brief }];
+  const branches: any[] = [],
+    requests: string[] = [];
+  const output = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      prompt: brief + '，保留现有构图。',
+      imageDataUrl: 'data:image/png;base64,b3JpZw==',
+      memory: 'PRIVATE_MEMORY_ONLY',
+      history: [{ role: 'user', content: 'PRIVATE_HISTORY_ONLY' }],
+      onBranch: async (node) => {
+        branches.push(node);
+      },
+      beforeDispatch: async (_i, _h, m) => {
+        requests.push(m.branchId);
+      },
+      inspectCandidate: async (recipe) => {
+        assert.equal(recipe.adjustments.exposure, 0.75);
+        return { observation: { delta: 31 }, imageDataUrl: 'data:image/png;base64,ZWRpdA==' };
+      },
+    }),
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (requests.length === 1) return response([tool('delegate_studio_task', { tasks })]);
+      if (requests.length <= 3) {
+        const names = body.tools.map((t: any) => t.name);
+        assert.doesNotMatch(JSON.stringify(body.input), /PRIVATE_MEMORY_ONLY|PRIVATE_HISTORY_ONLY/);
+        assert.ok(
+          !names.includes('search_resources') &&
+            !names.includes('select_candidate') &&
+            !names.includes('draft_generation'),
+        );
+        if (requests.length === 2) {
+          assert.ok(names.includes('delegate_studio_task'));
+          return response([tool('delegate_studio_task', { tasks })]);
+        }
+        assert.ok(!names.includes('delegate_studio_task'));
+        return response([
+          tool('propose_edit', {
+            summary: '提亮暗部',
+            target: 'global',
+            targetId: null,
+            changes: [{ path: 'adjustments.exposure', value: 0.75 }],
+          }),
+        ]);
+      }
+      assert.equal(requests.length, 4);
+      assert.ok(!body.tools.some((t: any) => t.name === 'delegate_studio_task'));
+      const handoff = JSON.parse(
+        body.input.find((i: any) => i.type === 'function_call_output').output,
+      );
+      assert.equal(handoff.tasks[0].child.candidateIndex, 0);
+      assert.deepEqual(handoff.observations, [{ candidateIndex: 0, observation: { delta: 31 } }]);
+      assert.match(JSON.stringify(body.input.at(-1)), /ZWRpdA==/);
+      return response([
+        tool('select_candidate', { candidateIndex: 0, reason: '已比对原图与实际编辑预览' }),
+      ]);
+    },
+  );
+  assert.equal(output.termination, 'completed');
+  assert.equal(output.selectedCandidateIndex, 0);
+  assert.deepEqual(output.candidates[0]?.observation, { delta: 31 });
+  const workers = branches.filter((b) => b.kind === 'retoucher' && b.state === 'completed');
+  assert.equal(workers.length, 2);
+  assert.deepEqual(requests, ['root', workers[1].id, workers[0].id, 'root']);
+  assert.equal(workers[0].parentId, workers[1].id);
+  assert.equal(branches.find((b) => b.kind === 'candidate').parentId, workers[0].id);
+});
+
+test('studio siblings produce separate edit and generation actions with isolated capabilities and exact current references', async () => {
+  const source = 'b5426dfa-7fbf-4659-b4fd-d3b5358f0000';
+  const privateId = '025c23b3-9aa3-4140-9c0d-d8bc39e52511';
+  const branchIds: string[] = [],
+    stored: string[] = [];
+  let running = 0;
+  let release!: () => void;
+  const both = new Promise<void>((r) => {
+    release = r;
+  });
+  const prompt = '提高曝光；生成海报';
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      prompt,
+      selectedReferenceIds: [source],
+      priorResourceCards: [
+        { assetId: privateId, name: 'private-resource', sourceTurnId: privateId },
+      ],
+      beforeDispatch: async (_i, _hash, m) => {
+        branchIds.push(m.branchId);
+      },
+      validateReferenceIds: async (refs) => assert.deepEqual(refs, [source]),
+      storeToolResult: async (_id, data) => {
+        stored.push(data);
+        return source;
+      },
+    }),
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.instructions.includes('You are a delegated')) {
+        if (++running === 2) release();
+        await both;
+        const names = body.tools.map((x: any) => x.name);
+        assert.ok(!names.includes('delegate_studio_task'));
+        assert.doesNotMatch(JSON.stringify(body.input), new RegExp(privateId));
+        if (names.includes('draft_generation')) {
+          assert.deepEqual(names, ['draft_generation']);
+          assert.match(JSON.stringify(body.input), new RegExp(source));
+          return response([
+            tool('draft_generation', {
+              summary: '生成活动海报',
+              prompt: '竖版自然色的活动海报',
+              referenceAssetIds: [source],
+            }),
+          ]);
+        }
+        assert.doesNotMatch(JSON.stringify(body.input), new RegExp(source));
+        return response([
+          tool('propose_edit', {
+            summary: '提亮照片',
+            target: 'global',
+            targetId: null,
+            changes: [{ path: 'adjustments.exposure', value: 0.5 }],
+          }),
+        ]);
+      }
+      if (branchIds.length === 1)
+        return response([
+          tool('delegate_studio_task', {
+            tasks: [
+              { role: 'retoucher', brief: '提高曝光' },
+              { role: 'image-designer', brief: '生成海报' },
+            ],
+          }),
+        ]);
+      const handoff = JSON.parse(body.input.at(-1).output);
+      assert.equal(handoff.tasks.length, 2);
+      assert.notEqual(handoff.tasks[0].candidateIndex, handoff.tasks[1].candidateIndex);
+      return response([text('两个候选可供使用。')]);
+    },
+  );
+  assert.equal(result.termination, 'completed');
+  assert.equal(result.candidates.find((c) => c.kind === 'edit')?.recipe?.adjustments.exposure, 0.5);
+  assert.deepEqual(
+    result.candidates.find((c) => c.kind === 'generation')?.generationEvidence?.references,
+    [{ assetId: source, from: 'selected' }],
+  );
+  assert.ok(result.toolRecords?.some((r) => r.tool === 'delegate_studio_task'));
+  assert.equal(stored.length, 1);
+  assert.equal(branchIds.length, 4);
+});
+
+test('invalid assignments do not dispatch; workers cannot purchase, read private history or use hidden references', async () => {
+  const hidden = '8d61ffb8-fb84-4772-bafb-1eb98ee1393b';
+  const run = async (scenario: 'forged' | 'wrong-tool' | 'private-reference' | 'stop') => {
+    let calls = 0,
+      stop = false;
+    const execution = runEditorAgent(
+      'fixture',
+      'fixture',
+      settings,
+      context({
+        prompt: '生成一张海报',
+        priorResourceCards: [{ assetId: hidden, name: 'private-resource', sourceTurnId: hidden }],
+        assertAccess: async () => {
+          if (stop) throw Error('REVOKED');
+        },
+        validateReferenceIds: async () => {
+          throw Error('worker reached unauthorized reference validation');
+        },
+      }),
+      async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        calls++;
+        if (calls === 1)
+          return response([
+            tool('delegate_studio_task', {
+              tasks: [
+                {
+                  role: 'image-designer',
+                  brief: scenario === 'forged' ? 'private memory copied here' : '生成一张海报',
+                },
+              ],
+            }),
+          ]);
+        if (body.instructions.includes('You are a delegated')) {
+          if (scenario === 'stop') stop = true;
+          assert.doesNotMatch(JSON.stringify(body.input[0]), new RegExp(hidden));
+          if (scenario === 'private-reference')
+            return response([
+              tool('draft_generation', {
+                summary: '海报',
+                prompt: '竖版',
+                referenceAssetIds: [hidden],
+              }),
+            ]);
+          return response([tool('read_history', { sourceTurnId: hidden, offset: 0, limit: 6000 })]);
+        }
+        return response([text('没有生成可用候选。')]);
+      },
+    );
+    if (scenario === 'stop') await assert.rejects(execution, /REVOKED/);
+    else assert.deepEqual((await execution).candidates, []);
+    assert.equal(calls, scenario === 'forged' || scenario === 'stop' ? 2 : scenario === 'wrong-tool' ? 3 : 4);
+  };
+  for (const scenario of ['forged', 'wrong-tool', 'private-reference', 'stop'] as const)
+    await run(scenario);
+});
+
+test('a studio worker uses an informational MCP tool and continues in the same branch before handing its edit back', async () => {
+  const ids: string[] = [];
+  const prompt = '检查当前编辑器后将曝光降低半档。';
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      prompt,
+      beforeDispatch: async (_i, _h, meta) => {
+        ids.push(meta.branchId);
+      },
+    }),
+    async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      const names = body.tools.map((v: any) => v.name);
+      if (ids.length === 1)
+        return response([
+          tool('delegate_studio_task', { tasks: [{ role: 'retoucher', brief: prompt }] }),
+        ]);
+      if (ids.length === 2) {
+        assert.ok(names.includes('describe_editor'));
+        const spec = body.tools.find((v: any) => v.name === 'delegate_studio_task').parameters
+          .properties.tasks;
+        assert.deepEqual(spec.items.properties.role.enum, ['retoucher']);
+        assert.equal(spec.maxItems, 1);
+        return response([tool('describe_editor', {}, 'lookup')]);
+      }
+      if (ids.length === 3) {
+        assert.ok(!names.includes('describe_editor') && !names.includes('delegate_studio_task'));
+        const registry = JSON.parse(body.input.at(-1).output);
+        assert.ok(
+          registry.parameters.some(
+            (p: any) => p.path === 'adjustments.exposure' && p.current === 0,
+          ),
+        );
+        return response([
+          tool(
+            'propose_edit',
+            {
+              summary: '降低半档',
+              target: 'global',
+              targetId: null,
+              changes: [{ path: 'adjustments.exposure', value: -0.5 }],
+            },
+            'prepare',
+          ),
+        ]);
+      }
+      return response([text('已准备曝光候选。')]);
+    },
+  );
+  assert.equal(result.candidates[0]?.recipe?.adjustments.exposure, -0.5);
+  assert.equal(result.termination, 'completed');
+  assert.equal(ids.length, 4);
+  assert.equal(ids[1], ids[2]);
+  assert.notEqual(ids[1], 'root');
+});
+
+test('parallel editing workers keep stable candidate order, scope their inputs and tools, and reserve root synthesis', async () => {
+  const selected = '11111111-1111-4111-8111-111111111111';
+  const hidden = '22222222-2222-4222-8222-222222222222';
+  const bodies: any[] = [];
+  let release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      prompt: '两位助手分别准备调色方案与再生图草案',
+      memory: 'private-memory-marker',
+      history: [{ role: 'user', content: 'private-history-marker' }],
+      selectedReferenceIds: [selected],
+      selectedImages: [{ id: selected, dataUrl: 'data:image/png;base64,U0VDUkVU' }],
+      priorResourceCards: [{ assetId: hidden, sourceTurnId: 'previous', name: 'private-card' }],
+      async validateReferenceIds(ids) {
+        assert.deepEqual(ids, [selected]);
+      },
+    }),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      bodies.push(body);
+      if (!body.instructions.startsWith('You are a delegated')) {
+        if (bodies.length === 1)
+          return response([tool('delegate_studio_task', { tasks: [{role: 'colorist', brief: '调色'}, {role: 'image-designer', brief: '再生图'}] })]);
+        assert.equal(
+          body.tools.some((item: any) => item.name === 'delegate_studio_task'),
+          false,
+        );
+        const merged = JSON.parse(body.input.at(-1).output).tasks;
+        assert.deepEqual(
+          merged.map((item: any) => [item.role, item.candidateIndex]),
+          [
+            ['colorist', 0],
+            ['image-designer', 1],
+          ],
+        );
+        return response([text('两项候选已准备好。')]);
+      }
+      assert.doesNotMatch(
+        JSON.stringify(body),
+        /private-memory-marker|private-history-marker|private-card|U0VDUkVU|22222222/,
+      );
+      if (body.instructions.startsWith('You are a delegated colorist')) {
+        assert.deepEqual(
+          body.tools.map((item: any) => item.name),
+          ['propose_edit'],
+        );
+        await started;
+        return response([
+          tool('propose_edit', {
+            summary: '曝光',
+            target: 'global',
+            targetId: null,
+            changes: [{ path: 'adjustments.exposure', value: 0.5 }],
+          }),
+        ]);
+      }
+      assert.deepEqual(
+        body.tools.map((item: any) => item.name),
+        ['draft_generation'],
+      );
+      release();
+      return response([
+        tool('draft_generation', {
+          summary: '再生图草案',
+          prompt: '保留轮廓',
+          referenceAssetIds: [selected],
+        }),
+      ]);
+    },
+  );
+  assert.equal(bodies.length, 4);
+  assert.equal(result.termination, 'completed');
+  assert.equal(result.candidates[0]?.recipe?.adjustments.exposure, 0.5);
+  assert.deepEqual(result.candidates[1]?.generationEvidence?.references, [
+    { assetId: selected, from: 'selected' },
+  ]);
+});
+
+test('an editing leaf cannot redelegate, write a document or read private library references', async () => {
+  const withheldReference = '11111111-1111-4111-8111-111111111111';
+  for (const [role, attempted] of [
+    ['colorist', tool('delegate_studio_task', { tasks: [{role:'editing-lead', brief:'自然'}] })],
+    ['colorist', tool('save_document', { body: 'draft' })],
+    [
+      'image-designer',
+      tool('draft_generation', {
+        summary: '变化',
+        prompt: '保留色彩',
+        referenceAssetIds: [withheldReference],
+      }),
+    ],
+  ] as const) {
+    let requests = 0;
+    const result = await runEditorAgent(
+      'fixture',
+      'fixture',
+      settings,
+      context({
+        priorResourceCards: [
+          { assetId: withheldReference, sourceTurnId: 'prior', name: 'history only' },
+        ],
+      }),
+      async (_url, options) => {
+        const body = JSON.parse(String(options?.body));
+        if (++requests === 1) return response([tool('delegate_studio_task', { tasks: [{role, brief:'自然'}] })]);
+        if (body.instructions.startsWith('You are a delegated')) return response([attempted]);
+        assert.equal(JSON.parse(body.input.at(-1).output).tasks[0].status, 'unavailable');
+        return response([text('没有可用候选。')]);
+      },
+    );
+    assert.equal(requests, role === 'image-designer' ? 4 : 3);
+    assert.deepEqual(result.candidates, []);
+  }
+});
+
+test('renumbered team calls reuse the original handoff without another paid worker or duplicate candidate', async () => {
+  let requests = 0;
+  const team = { tasks: [{role:'colorist', brief:'自然'}] };
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context(),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      if (++requests === 1)
+        return response([
+          tool('delegate_studio_task', team, 'team-1'),
+          tool('delegate_studio_task', team, 'team-2'),
+        ]);
+      if (requests === 2)
+        return response([
+          tool('propose_edit', {
+            summary: '降曝光',
+            target: 'global',
+            targetId: null,
+            changes: [{ path: 'adjustments.exposure', value: -0.5 }],
+          }),
+        ]);
+      const outputs = body.input.filter((entry: any) => entry.type === 'function_call_output');
+      assert.deepEqual(
+        outputs.map((entry: any) => entry.call_id),
+        ['team-1', 'team-2'],
+      );
+      assert.equal(outputs[0].output, outputs[1].output);
+      return response([text('已准备候选。')]);
+    },
+  );
+  assert.equal(requests, 3);
+  assert.equal(result.candidates.length, 1);
+});

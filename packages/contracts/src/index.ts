@@ -18,3 +18,5 @@ export * from './openai-responses-models.js';
 export * from './openai-live.js';
 export * from './openai-specialist.js';
 export * from './openai-lifecycle.js';
+
+export * from './document-format.js';

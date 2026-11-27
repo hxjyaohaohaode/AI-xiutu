@@ -1,4 +1,5 @@
-import { validateImage } from './engine.js';
+import { MAX_INPUT_PIXELS } from './geometry.js';
+import { validateTiledImage } from './tiled.js';
 import type { Dimensions, RGBAImage } from './types.js';
 
 export const PNG_SIGNATURE = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
@@ -36,25 +37,28 @@ function* scanlines({ width, height, data }: RGBAImage) {
   }
 }
 
-/** The zlib wrapper for uncompressed DEFLATE. Validated rows fit one block. */
+/** Each stored DEFLATE block can contain at most 65,535 bytes. */
 function* storedDeflate(rows: Iterable<Uint8Array>) {
   yield Uint8Array.of(0x78, 0x01);
   const modulus = 65521;
   let low = 1,
     high = 0;
   for (const row of rows) {
-    const block = new Uint8Array(row.length + 5);
-    const header = new DataView(block.buffer);
-    header.setUint16(1, row.length, true);
-    header.setUint16(3, 0xffff ^ row.length, true);
-    block.set(row, 5);
+    for (let start = 0; start < row.length; start += 65_535) {
+      const part = row.subarray(start, start + 65_535);
+      const block = new Uint8Array(part.length + 5);
+      const header = new DataView(block.buffer);
+      header.setUint16(1, part.length, true);
+      header.setUint16(3, 0xffff ^ part.length, true);
+      block.set(part, 5);
+      yield block;
+    }
     for (const byte of row) {
       low += byte;
       if (low >= modulus) low -= modulus;
       high += low;
       if (high >= modulus) high -= modulus;
     }
-    yield block;
   }
   const end = Uint8Array.of(1, 0, 0, 255, 255, 0, 0, 0, 0);
   new DataView(end.buffer).setUint32(5, high * 65536 + low);
@@ -116,7 +120,6 @@ export async function encodeRgbaPngStrips(
       reader.releaseLock();
     }
   } else {
-    if (width * 4 + 1 > 65_535) throw new Error('Large PNG rows require CompressionStream');
     for (const part of storedDeflate(rows)) append(part);
   }
   parts.push(chunk('IEND', new Uint8Array(0)));
@@ -125,7 +128,7 @@ export async function encodeRgbaPngStrips(
 }
 
 /** Encode straight sRGB samples without a premultiplied canvas round trip. */
-export async function encodeRgbaPng(image: RGBAImage): Promise<Blob> {
-  validateImage(image);
+export async function encodeRgbaPng(image: RGBAImage, maxPixels = MAX_INPUT_PIXELS): Promise<Blob> {
+  validateTiledImage(image, { maxPixels });
   return encodeRgbaPngStrips(image, [image]);
 }

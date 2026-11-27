@@ -6,11 +6,24 @@ RUN npm ci
 RUN if [ "$WITH_PORTRAIT_MODELS" = "true" ]; then npm run vision:prepare; fi
 RUN npm run build
 
+# The API and worker do not serve the browser bundle or run build-time tooling.
+# Install the production dependency graph from the same checked-in lockfile.
+FROM node:24-bookworm-slim AS runtime-files
+WORKDIR /app
+COPY . .
+RUN npm ci --omit=dev --workspace @ai-xiutu/api --workspace @ai-xiutu/worker-ai --include-workspace-root \
+    && mkdir -p /runtime/apps/api /runtime/apps/worker-ai \
+    && cp -a node_modules packages scripts third-party package.json package-lock.json /runtime/ \
+    && cp -a apps/api/package.json apps/api/src /runtime/apps/api/ \
+    && cp -a apps/worker-ai/package.json apps/worker-ai/src /runtime/apps/worker-ai/ \
+    && rm -rf /runtime/scripts/qa \
+    && find /runtime/packages -mindepth 2 -maxdepth 2 -type d -name test -exec rm -rf {} +
+
 FROM node:24-bookworm-slim AS server
 WORKDIR /app
 ENV NODE_ENV=production
 RUN apt-get update && apt-get install -y --no-install-recommends tini util-linux tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-sim && rm -rf /var/lib/apt/lists/*
-COPY --from=build --chown=node:node /app /app
+COPY --from=runtime-files --chown=node:node /runtime/ /app/
 ENV TESSDATA_PREFIX=/opt/ocr-tessdata
 RUN node --use-env-proxy scripts/prepare-ocr.mjs /opt/ocr-tessdata
 RUN mkdir -p /app/.data/private /app/.data/ai-dispatch-journal && chown -R node:node /app/.data
@@ -59,6 +72,10 @@ ENV MEDIA_PYTHON=/opt/media/bin/python
 ENV MEDIA_UHDR_LIBRARY=/opt/ultrahdr/lib/libuhdr.so
 ENV MEDIA_HEIC_DECODER=/opt/heic/bin/heic-pq
 USER node
+
+# Only CI overlays the full development tree for native format and test discovery.
+FROM server-media AS server-media-test
+COPY --from=build --chown=node:node /app /app
 
 FROM caddy:2-alpine AS web
 COPY --from=build /app/apps/web/dist /srv

@@ -1,10 +1,32 @@
 # 智能体与编辑器交付验收
 
+## 项目内文字排版、表格与图表（schema 31）
+
+在既有项目文档点击「文字排版」后，可以选中文字加粗、设斜体、加下划线、切换六种字体及 9–48 pt 的预设字号。对齐及段后间距作用于选中段落。编辑器支持键盘快捷键、撤销与重做。团队文档保存版式后，下一次打开直接回到排版视图。粘贴外部内容采用纯文本，保留空行、连续空格、Unicode 字符。文档编辑权限和乐观锁同时约束正文与排版，项目复制会带走当前格式。AI 引用指定版本的正文，模型收到的内容中没有 HTML、远程字体或排版标记。[项目编辑器](../../apps/web/src/project-files/RichDocumentEditor.tsx) · [文档格式契约](../../packages/contracts/src/document-format.ts) · [接口与版本行为](../../apps/api/API.md#document-typography-and-editable-project-worksheets)
+
+| 浏览器内的实际操作 | 本地原生 PostgreSQL 与 Chromium 的验收结果 |
+| --- | --- |
+| 粘贴包含外部 HTML 的中文内容，选中「重点」，调整字形和段落 | 两个前置空格、空段、两个连续空格和 emoji 都保留。仅所选两个汉字为 Georgia 24 pt 粗斜体下划线；首段居中、段后 12 pt。重新打开时仍能选中、编辑和导出。解包 DOCX 核对半磅字号 48 和 240 twips 段距，PPTX 核对字号 2400 和居中对齐。两种实际下载文件分别用 LibreOffice 渲染，第一段强调文字、第二段位置、表情符号均可见。字体最终字形由打开文件的设备提供。 |
+| 两名成员先后保存，另从只读账号改动，随后复制项目 | 旧版本更新返回 409，编辑器仍显示本地标题和格式。只读成员的修改返回 403。超出行尾的样式范围返回 400。标题更新保留全部版式，项目副本的第一版本含相同版式。普通文本客户端插入一行后，未修改段落的样式跟随移动。三份历史版本的首个排版段索引分别为 0、0、1。 |
+| 导入 XLSX「源数据」A1:C3，在工作台单元格编辑并生成图表 | B2 从 12 改为 19，C2 从 50% 改为 62.5%，预览出现这两个新值。版本 1 保留原数据，版本 2 保留来源哈希和修改值。将版本 2 发给本地 AI 协议服务后导出 XLSX，独立读回单元格及两个原生图表的 B/C 列引用。另实测从工作表切回正文、下载包含项目画面的 PPTX、四个视口下载 DOCX/PPTX/XLSX/SVG，浏览器报告零页面异常、零外部网络请求。 |
+
+原件导入、版本持久化、浏览器选区、真实下载和 OOXML 结构的复验可从[工作台回归](../../scripts/qa/project-files.browser.mjs)启动。局部字符格式用于文字段落；文档中的结构化表格使用表格导出的样式。导入的工作表支持更新单元格值与列标题，尚未提供公式求值、合并格编辑、透视表编辑或任意幻灯片元素拖动。
+
+| 已查阅的第一方实现、产品工作流或社区反馈 | 本项目中可检查的对应行为 |
+| --- | --- |
+| Microsoft [Word 文字格式](https://support.microsoft.com/en-us/word/format-your-word-document) 和[段落间距](https://support.microsoft.com/en-us/word/adjust-indents-and-spacing) | 选区字形与段落属性分开处理，DOCX 使用可编辑的原生 TextRun、Paragraph，连续空格由文本节点保留。 |
+| Google [Docs 选区与段落设置](https://support.google.com/docs/answer/1663349)、[Gemini 编辑当前文档](https://support.google.com/docs/answer/14206696) 和 [Google One AI 计划](https://one.google.com/intl/en/about/google-ai-plans/) | 在当前文档格式化和选择源版本，继续用本项目既有 AI 创作入口，避免把显示格式写入提示词。Google One 的订阅权益与本项目的服务点分别计算。 |
+| Canva [Docs 内格式与工具栏](https://www.canva.com/help/add-format-content/) 和[文字强调](https://www.canva.com/help/format-text/) | 选区仍在原位置，字体与字形直接生效，工具栏仅在排版模式展示。 |
+| Gamma [卡片中文字的选择与样式](https://help.gamma.app/en/articles/11028318-how-do-i-add-edit-and-style-text-in-gamma) 和[导出后版式差异说明](https://help.gamma.app/en/articles/15939201-why-doesn-t-my-exported-pdf-or-powerpoint-match-what-i-see-in-gamma) | PowerPoint 使用原生文字对象和 run 字号，根据字形宽度与字号估算分页。额外打开实际导出文件核对不同排版引擎的显示。 |
+| Apple [Pages 段后间距](https://support.apple.com/guide/pages/set-line-and-paragraph-spacing-tanb74d5cbe9/mac)、金山 [Writer 段落布局](https://help.wps.com/articles/wps-special-paragraph-layout-tool/) | 段落设置作用于选区覆盖的段落，字号以 pt 表示，DOCX 段距以 1/20 磅精确写入。 |
+| ProseMirror [选区和事务源码](https://github.com/ProseMirror/prosemirror-state/blob/1.4.4/src/transaction.ts)、[切换标记](https://github.com/ProseMirror/prosemirror-commands/blob/1.7.2/src/commands.ts)、[剪贴板实现](https://github.com/ProseMirror/prosemirror-view/blob/1.44.0/src/clipboard.ts)，以及[社区的粘贴空格问题](https://discuss.prosemirror.net/t/how-to-preserve-white-spaces-when-pasting-html-with-leading-whitespaces/8023) | 使用上述固定版本的选区、stored marks、事务和历史模块。接口使用 UTF-16 范围并禁止截断代理对；补测了外部 HTML 与纯文本不一致、空行、反复空格和 emoji。 |
+
+
 ## 大图、画幅与交付
 
 用正常工作台路径验证：助手提议 864 × 1536 像素的竖幅插画，报价 3 个测试服务点，点击后数据库出现一个任务。模型适配器收到相同尺寸，私有素材的 PNG 解码也为 864 × 1536。打开该结果继续编辑，在原导出窗口选择长边 1080，实际下载并独立解码的 PNG、JPEG、WebP 均为 608 × 1080。报价还根据引用素材的宽高比、模型开放尺寸、像素步长和整批预算选择尺寸，用户点下的报价与提交的是同一份参数。模型响应使用本地协议样本。[完整浏览器场景](../../scripts/qa/agent-image.browser.mjs) · [尺寸和报价测试](../../apps/web/test/ai-capabilities.test.ts)
 
-导出尺寸按裁切和旋转后的画面计算。工具栏下载对可重放的大图配方直接生成原片尺寸的编辑 PNG，复用导出面板显示进度和取消；需要代理的配方先显示可导出的实际尺寸。小图继续一键下载。手动选择长边缩小时保持比例，透明像素按 Alpha 加权参与缩放。超过编辑预算的原片和编辑代理分别标尺寸，原件下载保留源字节。浏览器支持 Worker、OffscreenCanvas 和流式压缩时，静态 JPEG/PNG 的全局逐像素调色、裁切、直角旋转和翻转可以重新读取原片、分条带计算并输出原分辨率 PNG。含图层、局部修复、蒙版等空间操作的配方按编辑副本的实际尺寸输出。[导出工作线程](../../apps/web/src/editor/render.worker.ts) · [尺寸和透明边缘测试](../../apps/web/test/export-size.test.ts) · [Adobe Lightroom 长边与禁止放大](https://helpx.adobe.com/lightroom-classic/desktop/export-photos/export-files-disk-or-cd.html) · [libvips 的透明图缩小实现](https://github.com/libvips/libvips/blob/master/libvips/resample/thumbnail.c)
+导出尺寸按裁切和旋转后的画面计算。工具栏下载对可重放的大图配方直接生成原片尺寸的编辑 PNG，复用导出面板显示进度和取消；需要代理的配方先显示可导出的实际尺寸。小图继续一键下载。手动选择长边缩小时保持比例，透明像素按 Alpha 加权参与缩放。超过编辑预算的原片和编辑代理分别标尺寸，原件下载保留源字节。浏览器支持 Worker、OffscreenCanvas 和流式压缩时，静态 JPEG/PNG 的全局调色、基本局部蒙版、v2 多选区、锐化/柔化/清晰度/纹理、暗角与固定种子颗粒，以及裁切、直角旋转、翻转，可以重新读取原片并输出原分辨率 PNG。每个空间处理块最多读取 512 × 512 原片像素，含对应算法所需的相邻像素，蒙版始终按整个原片定位。含图层、精细仿射、v3 高级区域或局部修复的配方仍按编辑副本实际尺寸输出。[导出工作线程](../../apps/web/src/editor/render.worker.ts) · [尺寸和透明边缘测试](../../apps/web/test/export-size.test.ts) · [Adobe Lightroom 长边与禁止放大](https://helpx.adobe.com/lightroom-classic/desktop/export-photos/export-files-disk-or-cd.html) · [libvips 的透明图缩小实现](https://github.com/libvips/libvips/blob/master/libvips/resample/thumbnail.c)
 
 真实 48 MP Worker 验收对 25,235,741 字节、EXIF 6 的相机片施加 +0.45 EV、色温 −14、90° 旋转和翻转，得到 8000 × 6000 PNG（163,465,937 字节）。四角、相邻像素和条带交界等 12 处的 RGBA 均与同一浏览器从原件独立解码、执行参考算法的结果相同。另用透明 PNG 比对全部像素。PNG 文件尺寸取决于图像内容；实际下载字节数显示在导出面板。[正式 Worker 与参考像素](../../scripts/qa/original-photo-export.browser.mjs) · [四种旋转和全部翻转的像素回归](../../packages/editor/test/original-photo-export.test.ts)
 
@@ -18,7 +40,7 @@
 
 窄画布的工具栏允许整组换行，给拼图和布局按钮各自保留可点击区域。在手机上收起顶部导航时，已有的导航按钮使用同一产品标识。浏览器验收同时检查按钮中心的实际点击目标、暗色手机上标识的可见性，以及标识与 favicon 的源文件一致性。[响应式编辑流程](../../scripts/qa/system-redesign.browser.mjs)
 
-同一个 8 MP 作品的工具栏验收覆盖三种结果。获取云端原件过程中取消，浏览器没有开始下载；在水平翻转配方下只点击一次工具栏下载，得到 3200 × 2500 PNG，独立解码后的 32,000,000 个 RGBA 字节均与参考翻转一致（SHA-256 `39f6f2207eb07525710bfcca4d790f21591da320024d63f9177773ce23743391`）。启用局部径向蒙版并设置 +0.5 EV 后，工作台先显示 3200 × 2500 原件和 2317 × 1810 编辑副本。用户选定下载后才生成实际为 2317 × 1810 的 PNG。[工具栏下载回归](../../scripts/qa/large-photo.browser.mjs) · [导出期间切换图片和配方](../../apps/web/test/export-flow.test.ts)
+同一个 8 MP 作品的工具栏验收覆盖三种结果。获取云端原件过程中取消，浏览器没有开始下载；在水平翻转配方下只点击一次工具栏下载，得到 3200 × 2500 PNG，独立解码后的 32,000,000 个 RGBA 字节均与参考翻转一致（SHA-256 `39f6f2207eb07525710bfcca4d790f21591da320024d63f9177773ce23743391`）。启用局部径向蒙版并设置 +0.5 EV 后，一键得到 3200 × 2500 PNG。独立解码全部 32,000,000 个 RGBA 字节，与整张图运行参考引擎的结果相同（SHA-256 `eb8de5633fcc81a01f09283ed90f7d7e484dd07ba4fadb6ad7b266b48bf46f89`）。另加 3° 精细旋转后，工作台显示原件与副本尺寸，用户确认后实际生成 2317 × 1810 PNG。[工具栏下载回归](../../scripts/qa/large-photo.browser.mjs) · [导出期间切换图片和配方](../../apps/web/test/export-flow.test.ts)
 
 ## 上次开发基线（schema 29）
 
@@ -62,6 +84,20 @@ Chromium 生产构建验收通过 24 个助手场景，覆盖对话回放、项�
 
 封面归属回归覆盖跨项目、底图错配、截图时切换项目及文件编码过程中变更账号、作品版本、源或配方。导出器会在下载前复核。结构限额回归覆盖稀疏大表、图表重复引用的长分类标签及 PowerPoint 超长表头。超限会提示拆分或调整数据。[具体限额](../../apps/api/API.md) · [回归用例](../../apps/web/test/project-file-export.test.ts)
 
+## 从项目相册查图，再交付局部修图成品
+
+在项目素材、跨空间查找、长期素材的原有搜索框输入「近7天 PNG 武汉」，会按当前用户的入库日期、文件类型和可搜索的名称、标注等文字共同查询。同一组条件由服务端应用于完整列表、目录汇总和游标，权限校验沿用原接口。英文可用 `last 7 days PNG`，简繁中文均可用「昨天」，明确日期可用 `2026-11-26`，双引号保留搜索字面的词。这里未提供按照片里的人物或物体做视觉向量搜索。[查询和缓存](../../apps/web/src/resources/useLibraryCollection.ts) · [组合条件与边界回归](../../apps/web/test/library-query.test.ts)
+
+320px 宽 Chromium 的新查询回归使用原生 PostgreSQL 和实际服务返回的照片。人为暂停首次列表响应，确认旧相片在等待时不可点击。接着只放行列表，保持目录请求挂起，确认仍可从返回照片打开详情。44px 点击区可用，减少动态效果时过渡为零。对刷新注入 403 后，页面上的私有照片卡片数为零，恢复真实接口并清空搜索后重新显示。该独立场景没有页面异常。[正常入口的浏览器回归](../../scripts/qa/launch-readiness.browser.mjs)
+
+| 核对的真实材料 | 项目内对应的行为或边界 |
+| --- | --- |
+| 小米 HyperOS 4 的[官方相册演示图](https://cia.hyperos.mi.com/hyperos4homepage/ai-album.png)展示了用户描述活动、位置和高光瞬间，助手挑选、组合照片并给出分享入口。[产品页](https://os.mi.com/) | 在既有相册范围内合并可证实的检索条件，免去层层菜单。人物识别、自动精选和故事图集仍属不同能力。 |
+| [Google Photos 的过滤请求](https://developers.google.com/photos/library/guides/apply-filters)按时间和媒体类型组合；[Immich 用户报告](https://github.com/immich-app/immich/issues/32205)描述隐藏筛选从另一页延续造成错觉。 | 用户打字切换查询时，旧卡片立即停止响应。经授权的照片列表先到即可打开，目录统计单独更新。明确的撤权响应清除该范围的会话缓存。 |
+| 美图秀秀公开了[取选区后的画布与邻近工具面板截图](https://xiuxiu-pro.meitudata.com/poster/ab336ffeae84e2234dfe7c75fd6fdc57.png)和[局部调色点、半径、羽化、锐化/纹理的操作方式](https://www.meituxiuxiu.com/zh-Hans/academy/color-adjustment)。[醒图开发者产品页](https://apps.apple.com/cn/app/id1500526240)展示人像精修、色彩调整和智能编辑。 | 原画面继续承载局部调整，正式导出使用源像素的绝对位置。将参数复用到同一组照片或复刻专有人像算法仍需单独验证。 |
+| [OPPO ColorOS 17](https://www.oppo.com/cn/newsroom/press/549/)发布自然语言修图与 2K/HDR 影像能力；[libvips 区域计算](https://www.libvips.org/API/current/how-it-works.html)及[卷积源码](https://github.com/libvips/libvips/blob/master/libvips/convolution/convi.c)从上游请求覆盖卷积范围的原区域。 | 将原分辨率导出块向裁切边缘以外扩展到算法所需的相邻像素。只写中间有效区域，位置相关的颗粒与多重选区使用同一源图坐标，避免跨块接缝。当前浏览器原片成品为 8 位 sRGB PNG。 |
+| Apple HIG 的[动效](https://developer.apple.com/design/human-interface-guidelines/motion)与[材质](https://developer.apple.com/design/human-interface-guidelines/materials)将反馈、内容可读性与用户辅助偏好一并考虑。 | 照片详情动作使用 44px 点击区和 32px 可见底色。小范围模糊只位于按钮下方。降低透明度/增强对比时使用实色，减少动态效果时取消过渡。新查询等待期间对旧卡片降低对比并禁止点击。 |
+
 ## 第一方参考与对应取舍
 
 | 领域 | 参考实现 | 用于核对的行为 |
@@ -86,3 +122,12 @@ Chromium 生产构建验收通过 24 个助手场景，覆盖对话回放、项�
 | 交互 | Apple HIG [工具栏](https://developer.apple.com/design/human-interface-guidelines/toolbars) · [菜单](https://developer.apple.com/design/human-interface-guidelines/menus) | 高频操作留在当前工作流，相关下载格式集中选择，低频分享设置按需展开。 |
 
 产品页用于确认公开的功能、交互与输出目标。醒图、美图秀秀和 ColorOS 的专有成像算法及商业模型权重均未取得。
+
+## 编辑工作台与团队操作的补充验收
+
+- 在团队作品请求分工后，可以展开协调员及其调色、精修或生图子代理，查看直接上级和返回的候选。原生数据库验收覆盖 −1.5 EV 调整、实际渲染、一次不可变版本及重复请求的回执复用。自动执行需要当前授权，生图继续使用现有报价、冻结参考素材和独立任务。模型回应用本地协议夹具。
+- “账户 → 安全”显示其他有效会话的数量，可统一退出其他会话。团队成员管理可查看仍有效的邀请，按角色撤回。已移除成员用已领取的邀请码再次加入时应得到明确的无效邀请响应，新的邀请可以正常加入。
+- 已验证的原片编辑组合包括裁切、四分之一圈旋转、镜像、锐化、纹理、清晰度、暗角及颗粒。浏览器下载 PNG 后重新解码，与完整原图参考引擎逐字节比较。短按切换分割，长按查看原图，释放恢复；测试覆盖桌面、平板、手机竖屏与横屏。
+- 文字选区样式、全文默认排版、Markdown 标题、工作表和图表在项目文档入口操作。测试检查真实下载文件的 Office XML 和数值，另用 LibreOffice 打开并渲染。商业供应商、真实手机、Windows Office 的效果需要分别验收。
+
+交互参考来自 [Apple Motion](https://developer.apple.com/design/human-interface-guidelines/motion)、[醒图桌面版](https://retouchpics.com/)、[美图秀秀批处理教程](https://pc.meitu.com/pchelp/mtxxbatch250730)、[ColorOS 17](https://www.oppo.com/tw/coloros17/) 与 [HyperOS 4](https://os.mi.com/)。OPPO、小米在部分地区和设备提供的系统级操作用作交互对照。段落和选区编辑参考 [PowerPoint](https://support.microsoft.com/en-us/powerpoint/change-text-alignment-indentation-and-spacing-in-powerpoint)、[Google Docs](https://support.google.com/docs/answer/1663349)、[Canva SDK](https://www.canva.dev/docs/apps/feature-examples/richtext-elements/) 和 [Gamma](https://help.gamma.app/en/articles/8022861-what-s-the-easiest-way-to-export-my-gamma)。[Google One](https://one.google.com/about/google-ai-plans/) 用于对照订阅与功能权益。

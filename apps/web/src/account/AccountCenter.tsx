@@ -32,6 +32,7 @@ import {
 import { DialogMotionContext } from '../components/Ui';
 import { AccountPageFrame } from './AccountPageFrame';
 import { AccountIdentityCard, AccountLanyard } from './AccountIdentityCard';
+import { AccountSessions } from './AccountSessions';
 import { PlanCatalog } from './PlanCatalog';
 import { AccountAssistantPreferences } from './AccountAssistantPreferences';
 import { QuotaWallet } from './QuotaWallet';
@@ -519,6 +520,7 @@ export function AccountCenter({
                     </button>
                   </div>
                 </div>
+                <AccountSessions key={user.id} userId={user.id} onSessionExpired={onSessionExpired} />
                 {config && !config.capabilities.smsConfigured && (
                   <div className="account-feedback account-feedback-warning" role="status">
                     <WarningCircle size={18} aria-hidden />

@@ -1,5 +1,5 @@
 import { mkdir, unlink, stat, readFile, writeFile, open, rename, rm } from 'node:fs/promises';
-import { createReadStream, createWriteStream } from 'node:fs';
+import { createReadStream, createWriteStream, lstatSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { Transform, type Readable } from 'node:stream';
@@ -7,6 +7,20 @@ import { createHash, randomUUID } from 'node:crypto';
 import sharp, { type OutputInfo } from 'sharp';
 import { syncStorageDirectory } from './durability.js';
 export { syncStorageDirectory } from './durability.js';
+
+/** The deployment script puts the marker in place while both writers are stopped.
+ * Each freshly started process checks for it once. After promotion the steady
+ * state has no filesystem lookup on requests or worker iterations. */
+export function createDeploymentGate(storageDir: string): () => boolean {
+  const marker = join(storageDir, '.xiutu-schema-upgrade');
+  let held = true;
+  const check = () => {
+    if (held) held = lstatSync(marker, { throwIfNoEntry: false }) !== undefined;
+    return held;
+  };
+  check();
+  return check;
+}
 
 export interface StorageConfig {
   storageDir: string;

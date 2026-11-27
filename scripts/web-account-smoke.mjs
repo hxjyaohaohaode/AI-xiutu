@@ -1217,8 +1217,31 @@ try {
     },
   );
 
+  await check('Sign out other sessions keeps the active browser signed in', async () => {
+    const secondary = await app.inject({
+      method: 'POST', url: '/v1/auth/login',
+      headers: { origin }, payload: { phone: primaryPhone, password: newPassword },
+    });
+    assert.equal(secondary.statusCode, 200);
+    const token = secondary.cookies.find((cookie) => cookie.name === 'xiutu_session');
+    assert.ok(token);
+    const page = main.page;
+    const account = await openAccount(page);
+    await page.getByTestId('account-tab-security').click();
+    await page.getByRole('button', { name: '退出其他会话', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '退出其他会话', exact: true });
+    const settled = page.waitForResponse((r) => new URL(r.url()).pathname === '/v1/auth/logout-others');
+    await dialog.getByRole('button', { name: '退出其他会话', exact: true }).click();
+    assert.equal((await settled).status(), 200);
+    await page.getByText('仅当前会话有效', { exact: true }).waitFor();
+    assert.equal((await sessionFromCookie(token)).user, null);
+    assert.equal((await session(main.context)).user.id, primaryUserId);
+    await closeDialog(account);
+    return { otherSessionRevoked: true, currentSessionPreserved: true };
+  });
+
   await check(
-    'Registering an existing account cannot overwrite identity and explains the consumed OTP',
+    'Registering an existing account preserves identity and the rolled-back SMS challenge',
     async () => {
       const page = peer.page;
       currentPage = page;
@@ -1237,15 +1260,11 @@ try {
         (r) => new URL(r.url()).pathname === '/v1/auth/register' && r.request().method() === 'POST',
       );
       await page.getByRole('button', { name: '创建账号', exact: true }).click();
-      assert.equal((await duplicate).status(), 409);
-      await until(
-        async () => (await authControl(page, 'code').inputValue()) === '',
-        'consumed code clears after definitive registration rejection',
-      );
-      assert.match(
-        await page.getByRole('region', { name: '注册账号', exact: true }).innerText(),
-        /验证码已使用/,
-      );
+      const rejection = await duplicate;
+      assert.equal(rejection.status(), 409);
+      assert.equal((await rejection.json()).error.details.otpConsumed, false);
+      await page.getByRole('region', { name: '注册账号', exact: true }).getByRole('alert').waitFor();
+      assert.equal(await authControl(page, 'code').inputValue(), await codeFor(primaryPhone, 'register'));
       const rows = (
         await db.query('SELECT id,display_name FROM users WHERE phone=$1', [primaryPhone])
       ).rows;
@@ -1259,7 +1278,7 @@ try {
       return {
         status: 409,
         preservedAccounts: 1,
-        consumedCodeCleared: true,
+        rolledBackCodePreserved: true,
         noSelfDeletionContractClaimed: true,
       };
     },

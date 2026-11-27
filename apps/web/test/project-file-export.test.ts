@@ -149,3 +149,83 @@ test('Office and SVG stop oversized table and chart expansions before allocating
   await assert.rejects(exportContent('svg', '数据', longLabels), /图表标签过长/);
   await assert.rejects(exportContent('pptx', '数据', '分类,' + '列'.repeat(101) + '\n甲,1'), /表格过宽/);
 });
+
+test('versioned layout preserves legacy text and selection styles across document exports and source-linked charts', async () => {
+  const { documentFormatSchema, defaultLayout, withDocumentLayout, rebaseDocumentFormat, sameDocumentFormat } = await import('@ai-xiutu/contracts');
+  const { formattedRuns, editSelection } = await import('../src/project-files/formatting');
+  const plain = '  第一段\n\n作为旧版文档。';
+  assert.equal(withDocumentLayout(null, defaultLayout), null);
+  assert.equal(rebaseDocumentFormat(plain, 'Updated', null), null);
+  const bold = editSelection('这一段中文', 1, 3, 'bold')!;
+  const both = editSelection(bold.text, bold.start, bold.end, 'italic')!;
+  assert.deepEqual(formattedRuns(both.text), [{ text: '这' }, { text: '一段', bold: true, italic: true }, { text: '中文' }]);
+  const again = editSelection(both.text, both.start, both.end, 'bold')!;
+  assert.equal(again.text, '这*一段*中文');
+  assert.equal(editSelection('1\n2', 0, 2, 'heading')!.text, '## 1\n2');
+  assert.deepEqual(formattedRuns('2 * 3 * 4').map(run => run.text).join(''), '2 * 3 * 4');
+  const text = '### 第三级\n这段有 ***强调*** 与 `**原样**`。\n\n' + source;
+  const layout = { ...defaultLayout, font: 'SimSun', size: 16, line: 1.5, align: 'center', chart: 'line' } as const;
+  const format = withDocumentLayout(null,layout)!;
+  assert.equal(documentFormatSchema.safeParse(format).success,true);
+  assert.equal(documentFormatSchema.safeParse({...format,layout:{...layout,font:'unrecognized'}}).success,false);
+  assert.ok(sameDocumentFormat(format, rebaseDocumentFormat(text,'Updated',format)));
+  async function styledParts(type:'docx'|'pptx'|'xlsx') {
+    return unzipSync(new Uint8Array(await (await exportContent(type, '项目进展', text, undefined, format)).arrayBuffer()));
+  }
+  const word = await styledParts('docx');
+  const document = strFromU8(word['word/document.xml']!);
+  const styles = strFromU8(word['word/styles.xml']!);
+  assert.match(document, /w:pStyle w:val="Heading3"/);
+  assert.match(document, /w:eastAsia="SimSun"/);
+  assert.match(document, /<w:b\/>[^<]*(?:<[^>]+>)*?<w:i\/>/);
+  assert.match(document, /\*\*原样\*\*/);
+  assert.match(styles, /w:line="360"/);
+  assert.match(styles, /w:jc w:val="center"/);
+  assert.doesNotMatch(document, /xiutu-document-layout|\*\*\*强调/);
+  const slides = await styledParts('pptx');
+  const slide = strFromU8(slides['ppt/slides/slide1.xml']!);
+  assert.match(slide, /b="1"[^>]*i="1"/);
+  assert.match(slide, /<a:spcPct val="150000"/);
+  assert.match(slide, /typeface="SimSun"/);
+  const deckCharts = Object.entries(slides).filter(([name]) => /^ppt\/charts\/chart\d+\.xml$/.test(name));
+  assert.equal(deckCharts.length, 2);
+  assert.ok(deckCharts.every(([, bytes]) => strFromU8(bytes).includes('<c:lineChart>')));
+  const book = await styledParts('xlsx');
+  const chart = strFromU8(book['xl/charts/chart1.xml']!);
+  assert.match(chart, /<c:lineChart>/);
+  assert.match(chart, /Data1!\$B\$2:\$B\$4/);
+  const svg = await (await exportContent('svg', '图', text, undefined, format)).text();
+  assert.match(svg, /<polyline /);
+  assert.match(svg, /恩施 · -3/);
+});
+
+test('formatted paragraphs survive rich editing, JSONB property order, unknown writers and Office exports', async () => {
+  const { documentFormatSchema, sameDocumentFormat, rebaseDocumentFormat, formatMatchesBody } = await import('@ai-xiutu/contracts');
+  const { readRichDocument, writeRichDocument } = await import('../src/project-files/rich-document');
+  const text = '  A😀 B  \n\n项目目标\n目标数据\n\n| 地方 | 数量 |\n|---|---|\n| 武汉 | 12 |';
+  const formatting = documentFormatSchema.parse({version:1, paragraphs:[
+    {line:0, align:'right', after:12, runs:[{from:2,to:5,bold:true,italic:true,underline:true,font:'Georgia',size:24}]},
+    {line:2, align:'center', runs:[{from:0,to:2,size:16}]},
+  ]});
+  assert.ok(formatMatchesBody(text,formatting));
+  assert.ok(sameDocumentFormat(writeRichDocument(readRichDocument(text,formatting)).formatting,formatting));
+  assert.equal(writeRichDocument(readRichDocument(text,formatting)).body,text);
+  const moved=rebaseDocumentFormat(text,'前置\n'+text,formatting)!;
+  assert.deepEqual(moved.paragraphs.map(p=>p.line),[1,3]);
+  assert.equal(rebaseDocumentFormat(text,'替换全部',formatting),null);
+  const invalid = structuredClone(formatting);
+  invalid.paragraphs[0]!.runs[0]!.to=4;
+  assert.equal(formatMatchesBody(text,invalid),false,'a format run must not split an emoji');
+  assert.ok(!documentFormatSchema.safeParse({version:1,paragraphs:[{line:0,runs:[{from:0,to:1,font:'url(https://example.test)'}]}]}).success);
+  const reordered=JSON.parse(JSON.stringify(formatting,(k,v) => v && typeof v==='object'&&!Array.isArray(v) ?
+    Object.fromEntries(Object.entries(v).reverse()):v));
+  assert.ok(sameDocumentFormat(reordered,formatting));
+  for(const kind of ['docx','pptx'] as const) {
+    const f=unzipSync(new Uint8Array(await (await exportContent(kind,'项目',text,undefined,formatting)).arrayBuffer()));
+    const xml=strFromU8(f[kind==='docx'?'word/document.xml':'ppt/slides/slide1.xml']!);
+    for(const value of ['A😀','  ',' B  ','Georgia']) assert.ok(xml.includes(value),value);
+    assert.match(xml,kind==='docx'? /<w:sz w:val="48"/:/sz="2400"/);
+    assert.match(xml,kind==='docx'? /<w:jc w:val="right"/:/algn="r"/);
+    assert.ok(Object.values(f).some(v=> strFromU8(v).includes(kind==='docx'?'<w:tbl>':'<a:tbl>')));
+  }
+});

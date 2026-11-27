@@ -1,3 +1,4 @@
+import { createDeploymentGate } from '@ai-xiutu/storage';
 import { constants, createReadStream } from 'node:fs';
 import {
   mkdir, open, readFile, rm, lstat, readdir, statfs, type FileHandle,
@@ -160,6 +161,7 @@ async function releaseReservation(tx: Queryable, row: Record<string, any>) {
 
 /** Resumable bounded uploads. No browser paths/URLs/native commands are accepted. */
 export function registerMediaImport(app: FastifyInstance, db: Database, config: AppConfig) {
+  const deploymentHeld = createDeploymentGate(config.storageDir);
   const storage = new LocalPrivateStorage(config);
   const root = join(config.storageDir, 'media-v1');
   const inputs = join(root, 'uploads');
@@ -395,6 +397,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       const message =
         code === 'SPACE_STORAGE_LIMIT'
           ? '保留原件、母版和图块后的容量超过空间额度；请调整空间存储额度后重新导入。'
+          : code === 'MEDIA_MEMORY'
+            ? '服务器当前可用内存不足以展开这张图片，本次导入未保存；请稍后重试，或导入较小副本。'
           : code === 'MEDIA_UNSUPPORTED'
             ? '此文件的格式、位深或解码器暂不可用，原编辑器内容未改变。'
             : code === 'MEDIA_LIMIT' || code === 'MEDIA_TIMEOUT'
@@ -426,7 +430,7 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
     active.set(row.id, { controller, promise });
   }
   const cleanup = setInterval(() => {
-    if (closing) return;
+    if (closing || deploymentHeld()) return;
     void db
       .query(
         "SELECT id FROM media_import_jobs WHERE (state='uploading' AND updated_at<clock_timestamp()-interval '30 minutes') OR (state IN ('processing','cancelled') AND updated_at<clock_timestamp()-interval '5 minutes' AND (reservation_bytes>0 OR state='processing')) LIMIT 20",
@@ -1132,6 +1136,8 @@ export function registerMediaImport(app: FastifyInstance, db: Database, config: 
       );
     } catch (error) {
       await rm(outputPath, { force: true });
+      if (error instanceof MediaProcessingError && error.code === 'memory')
+        throw new HttpError(503, 'MEDIA_MEMORY', '当前可用内存不足以完成这次母版转换。可以直接下载原件，或缩小预览范围后重试。');
       if (error instanceof MediaProcessingError)
         throw new HttpError(
           error.code === 'limit' ? 413 : 422,

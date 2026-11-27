@@ -386,15 +386,28 @@ export function CanvasStage({
   const [splitOpen, setSplitOpen] = useState(false);
   const [split, setSplit] = useState(50);
   const splitToggle = useRef<HTMLButtonElement>(null);
-  const comparePressStart = useRef(0);
+  const comparePointer = useRef<number | null>(null);
+  const suppressCompareClick = useRef(false);
   const comparePressTimer = useRef(0);
   const focusSplit = useRef(false);
   const comparisonSlider = useRef<HTMLInputElement>(null);
-  function releaseComparison() {
+  function releaseComparison(pointerId?: number) {
+    if (pointerId !== undefined && pointerId !== comparePointer.current) return;
     window.clearTimeout(comparePressTimer.current);
+    comparePointer.current = null;
     setComparing(false);
   }
-  useEffect(() => () => window.clearTimeout(comparePressTimer.current), []);
+  useEffect(() => {
+    const cancel = () => { suppressCompareClick.current = true; releaseComparison(); };
+    const visibility = () => { if (document.hidden) cancel(); };
+    window.addEventListener('blur', cancel);
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      window.removeEventListener('blur', cancel);
+      document.removeEventListener('visibilitychange', visibility);
+      cancel();
+    };
+  }, [editor.file, group, setComparing]);
   function closeSplit() {
     setSplitOpen(false);
     splitToggle.current?.focus({ preventScroll: true });
@@ -2986,21 +2999,30 @@ export function CanvasStage({
               aria-pressed={inspectingOriginal}
               title={t('点击滑动对比，按住查看原图')}
               onPointerDown={(event) => {
-                if (event.button !== 0) return;
+                if (event.button !== 0 || !event.isPrimary || comparePointer.current !== null) return;
                 event.currentTarget.setPointerCapture(event.pointerId);
-                comparePressStart.current = performance.now();
-                window.clearTimeout(comparePressTimer.current);
-                comparePressTimer.current = window.setTimeout(() => setComparing(true), 230);
+                comparePointer.current = event.pointerId;
+                suppressCompareClick.current = false;
+                comparePressTimer.current = window.setTimeout(() => {
+                  suppressCompareClick.current = true;
+                  setComparing(true);
+                }, 230);
               }}
-              onPointerUp={releaseComparison}
+              onPointerUp={(event) => releaseComparison(event.pointerId)}
               onClick={(event) => {
                 if (cropEditing) return;
-                if (event.detail && performance.now() - comparePressStart.current > 260) return;
+                if (event.detail && suppressCompareClick.current) return;
                 focusSplit.current = !splitOpen && event.detail === 0;
                 setSplitOpen(!splitOpen);
               }}
-              onPointerCancel={releaseComparison}
-              onLostPointerCapture={releaseComparison}
+              onPointerCancel={(event) => {
+                if (event.pointerId === comparePointer.current) suppressCompareClick.current = true;
+                releaseComparison(event.pointerId);
+              }}
+              onLostPointerCapture={(event) => {
+                if (event.pointerId === comparePointer.current) suppressCompareClick.current = true;
+                releaseComparison(event.pointerId);
+              }}
               onKeyDown={(event) => {
                 if (event.key === ' ') {
                   event.preventDefault();
@@ -3013,7 +3035,7 @@ export function CanvasStage({
                   setComparing(false);
                 }
               }}
-              onBlur={() => setComparing(false)}
+              onBlur={() => { suppressCompareClick.current = true; releaseComparison(); }}
             >
               <StudioGlyph name="compare" size={17} />
               <span>{t('按住对比')}</span>

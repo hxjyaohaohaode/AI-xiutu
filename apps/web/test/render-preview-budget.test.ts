@@ -89,7 +89,7 @@ test('actual worker protocol keeps native transformed previews and supports expl
       [preview.result.width, preview.result.height],
       [expected.width, expected.height],
     );
-    const exported = await send({ type: 'export', id: 2, recipe });
+    const exported = await send({ type: 'export', id: 2, recipe, format: 'jpeg' });
     assert.equal(exported.error, undefined);
     assert.deepEqual(
       [exported.result.width, exported.result.height],
@@ -196,6 +196,7 @@ test('actual worker protocol keeps native transformed previews and supports expl
         ].entries()) {
           const reply = await send({
             type: stage.type,
+            format: 'jpeg', // Inspect unencoded buffers in the DOM-free worker fallback.
             id: 30 + index,
             recipe: mixedRecipe,
             maxPixels: stage.maxPixels,

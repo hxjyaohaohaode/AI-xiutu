@@ -4,7 +4,7 @@ import sharp from 'sharp';
 import { MAX_HEADER_BYTES, readImageHeader } from '@ai-xiutu/editor';
 import { adjustUnits, audit, getEntitlements, transaction, type Database, type Queryable } from '@ai-xiutu/db';
 import { z } from 'zod';
-import { hash, HttpError, id, lockActiveSession, requireOperator, requireUser } from './core.js';
+import { hash, HttpError, id, lockOperatorSession, requireOperator, requireUser } from './core.js';
 
 const MAX_QR_BYTES = 2 * 1024 * 1024;
 const MAX_QR_PIXELS = 4096 * 4096;
@@ -41,14 +41,6 @@ async function readConfig(db: Queryable, lock = false) {
   return result.rows[0]!;
 }
 
-async function lockSupportOperator(tx: Queryable, actor: string, token: string) {
-  const authorized = await tx.query(
-    "SELECT o.user_id FROM operator_users o JOIN users u ON u.id=o.user_id WHERE o.user_id=$1 AND u.status='active' FOR SHARE OF u,o",
-    [actor],
-  );
-  if (!authorized.rowCount) throw new HttpError(403, 'OPERATOR_REQUIRED', '需要运营权限');
-  await lockActiveSession(tx, actor, hash(token));
-}
 
 function settingsDto(row: SupportConfigRow, fallback: Buffer | null) {
   return {
@@ -147,7 +139,7 @@ export function registerSupport(app: FastifyInstance, db: Database, fallback: Bu
     const operator = requireOperator(req);
     const { expectedVersion, enabled, tiers } = settingsSchema.parse(req.body);
     return transaction(db, async (tx) => {
-      await lockSupportOperator(tx, operator.id, req.cookies.xiutu_session ?? '');
+      await lockOperatorSession(tx, operator.id, req.cookies.xiutu_session ?? '');
       const row = (await tx.query<SupportConfigRow>(
         'UPDATE site_support_config SET enabled=$2,tiers=$3,version=version+1,updated_at=clock_timestamp() WHERE id=true AND version=$1 RETURNING ' + configFields,
         [expectedVersion, enabled, JSON.stringify(tiers.sort((a, b) => a.cents - b.cents))],
@@ -172,7 +164,7 @@ export function registerSupport(app: FastifyInstance, db: Database, fallback: Bu
     }
     if (!png) throw new HttpError(400, 'SUPPORT_QR_INVALID', '请上传一张赞赏码图片');
     return transaction(db, async (tx) => {
-      await lockSupportOperator(tx, operator.id, req.cookies.xiutu_session ?? '');
+      await lockOperatorSession(tx, operator.id, req.cookies.xiutu_session ?? '');
       const row = (await tx.query<SupportConfigRow>(
         'UPDATE site_support_config SET qr_png=$2,version=version+1,updated_at=clock_timestamp() WHERE id=true AND version=$1 RETURNING ' + configFields,
         [expectedVersion, png],
@@ -203,7 +195,7 @@ export function registerSupport(app: FastifyInstance, db: Database, fallback: Bu
     // or the stable reference assigned to that record during reconciliation.
     const reference = `support:wechat:${hash(input.reference.toLowerCase())}`;
     return transaction(db, async (tx) => {
-      await lockSupportOperator(tx, operator.id, req.cookies.xiutu_session ?? '');
+      await lockOperatorSession(tx, operator.id, req.cookies.xiutu_session ?? '');
       await tx.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [reference]);
       const target = (
         await tx.query(

@@ -308,7 +308,16 @@ try {
         if (reviewFixture) {
           let output;
           const message = (text) => ({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] });
-          if (reviewFixture === 'follow-up') output = [message('下一轮已准备好。')];
+          if (reviewFixture === 'editor-team') {
+            const call = (name, args) => ({type: 'function_call', name, call_id: 'editor-team', arguments: JSON.stringify(args)});
+            if (body.instructions.startsWith('You are a delegated editing-lead')) output = [call('delegate_studio_task', {tasks: [{role: 'colorist', brief: '把曝光提高 0.5 EV'}]})];
+            else if (body.instructions.startsWith('You are a delegated colorist')) output = [call('propose_edit', {
+              summary: '提高曝光 0.5 EV', target: 'global', targetId: null, changes: [{path: 'adjustments.exposure', value: 0.5}],
+            })];
+            else if (body.input.some((item) => item.type === 'function_call_output')) output = [message('调色助手已准备曝光候选。')];
+            else output = [call('delegate_studio_task', {tasks: [{role: 'editing-lead', brief: '把曝光提高 0.5 EV'}]})];
+          }
+          else if (reviewFixture === 'follow-up') output = [message('下一轮已准备好。')];
           else if (!body.tools) output = [message(body.instructions.includes('framing') ? reviewFindings.composition : reviewFindings.tone)];
           else if (body.input.some((item) => item.type === 'function_call_output')) output = [message('两位专家的工作已汇总。')];
           else output = [{ type: 'function_call', name: 'consult_specialists', call_id: 'qa-review-pair', arguments: JSON.stringify({ roles: ['tone-review','composition-review'] }) }];
@@ -968,6 +977,28 @@ try {
       } finally {
         page.off('request', countReads);
       }
+    } finally {
+      reviewFixture = null;
+    }
+  });
+  await testCase('nested-editing-agents-show-parentage-and-return-a-real-candidate', async () => {
+    await newConversation();
+    const before = dispatches;
+    const base = (await head()).artwork.headVersion;
+    reviewFixture = 'editor-team';
+    try {
+      await submit('请让编辑协调员委派调色助手，把曝光提高 0.5 EV。');
+      await page.getByText('调色助手已准备曝光候选。', { exact: true }).waitFor();
+      const graph = page.locator('.assistant-research-graph').last();
+      const summary = graph.locator(':scope > summary');
+      if ((await graph.getAttribute('open')) === null) await summary.click();
+      const leaf = graph.locator('.research-task > summary').filter({ hasText: '调色助手' });
+      await leaf.click();
+      await graph.getByText('分派自 编辑协调', { exact: true }).waitFor();
+      assert.equal((await head()).artwork.headVersion, base);
+      assert.equal(dispatches - before, 4);
+      await page.screenshot({ path: resolve(artifacts, 'nested-editing-team.png') });
+      return { modelRequests: 4, headBeforePreview: base };
     } finally {
       reviewFixture = null;
     }

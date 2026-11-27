@@ -28,7 +28,7 @@ jobs:
        github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     permissions:
       actions: read
       contents: write
@@ -66,21 +66,70 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
+      - name: Exercise release transfer and interrupted-download recovery
+        if: steps.checked.outputs.ready == 'true'
+        run: python3 -B infra/tencent/test-fetch-release.py
       - name: Build revision-labelled Linux images
         if: steps.checked.outputs.ready == 'true'
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" == "$(git rev-parse HEAD)" ]]
           compose_hash=$(sha256sum compose.yaml | cut -d ' ' -f 1)
-          for target in server web; do
-            docker build --platform linux/amd64 --file infra/Dockerfile --target "$target" \
+          for role in server web; do
+            build_target=$role
+            if [[ "$role" == server ]]; then build_target=server-media; fi
+            docker build --platform linux/amd64 --file infra/Dockerfile --target "$build_target" \
               --label "org.opencontainers.image.revision=$RELEASE_SHA" \
               --label "io.ai-xiutu.compose-sha256=$compose_hash" \
-              --tag "xiutu-pilot-$target:$RELEASE_SHA" .
+              --label "io.ai-xiutu.build-target=$build_target" \
+              --tag "xiutu-pilot-$role:$RELEASE_SHA" .
           done
+      - name: Import a 10-bit HDR image in the exact server candidate
+        if: steps.checked.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          docker run --rm -i --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
+            --pids-limit 192 --memory 4g --tmpfs /tmp:rw,nosuid,nodev,size=128m,mode=1777 \
+            --mount "type=bind,src=$PWD/packages/media/test/fixtures/pq10.heic,dst=/fixture.heic,readonly" \
+            "xiutu-pilot-server:$RELEASE_SHA" node --import tsx --input-type=module - <<'JS'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { readFile, stat } from 'node:fs/promises';
+          import { getMediaCapabilities, processMedia } from '@ai-xiutu/media';
+          assert.notEqual(process.getuid(), 0);
+          const langs = execFileSync('tesseract', ['--list-langs'], { encoding: 'utf8' }).split(/\s+/);
+          assert.ok(langs.includes('eng') && langs.includes('chi_sim'), 'OCR language data missing');
+          const options = {
+            pythonExecutable: process.env.MEDIA_PYTHON, ultraHdrLibrary: process.env.MEDIA_UHDR_LIBRARY,
+            heicDecoder: process.env.MEDIA_HEIC_DECODER,
+          };
+          const c = await getMediaCapabilities(options);
+          assert.ok(c.available && c.nativeReady && c.heicPq.available && c.heicHlg.available && c.ultraHdrJpeg.available,
+            JSON.stringify({ isolation: c.isolation, nativeVersions: c.nativeVersions }));
+          const origin = '/fixture.heic', workDir = '/tmp/media';
+          const d = await processMedia({ inputPath: origin, workDir, originalName: 'fixture.heic', options });
+          assert.deepEqual([d.master.width, d.master.height, d.original.sampleEncoding,
+            d.original.decodedBitDepth, d.linearMaster?.bitDepth], [32, 24, 'pq', 10, 32]);
+          assert.deepEqual(await readFile(workDir + '/' + d.original.relativePath), await readFile(origin));
+          assert.ok((await stat(workDir + '/' + d.linearMaster.relativePath)).size > 0);
+          console.log(JSON.stringify({ isolation: c.isolation, nativeVersions: c.nativeVersions, fixture: 'PQ10' }));
+          JS
+      - name: Package verified candidate images and measure publication size
+        if: steps.checked.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
           docker image save "xiutu-pilot-server:$RELEASE_SHA" "xiutu-pilot-web:$RELEASE_SHA" \
             | gzip -1 > xiutu-linux-amd64.tar.gz
-          test "$(stat -c '%s' xiutu-linux-amd64.tar.gz)" -lt 2000000000
+          bundle_bytes=$(stat -c '%s' xiutu-linux-amd64.tar.gz)
+          {
+            echo '### Tencent release size (bytes)'
+            for role in server web; do
+              bytes=$(docker image inspect --format '{{.Size}}' "xiutu-pilot-$role:$RELEASE_SHA")
+              echo "- $role image: $bytes"
+            done
+            echo "- Compressed transfer: $bundle_bytes"
+          } >> "$GITHUB_STEP_SUMMARY"
+          test "$bundle_bytes" -gt 0 && test "$bundle_bytes" -lt 2000000000
       - name: Publish the complete bundle
         if: steps.checked.outputs.ready == 'true'
         env:

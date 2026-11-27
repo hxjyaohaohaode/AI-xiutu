@@ -7,6 +7,7 @@ import {
   getEditorOutputDimensions,
   localEditorSourceLimits,
   MAX_EXPLICIT_PIXELS,
+  MAX_CUTOUT_PIXELS,
   computeHistogram,
   pointPreviewMode,
   preparePointPreview,
@@ -132,7 +133,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     if (exporting && message.cutout) {
       if (message.format !== undefined && message.format !== 'png')
         throw new Error('人物素材需要透明 PNG 格式。');
-      const blob = await encodeRgbaPng(resizeForExport(renderCutout(source, message.cutout), message.maxLongEdge));
+      const blob = await encodeRgbaPng(resizeForExport(renderCutout(source, message.cutout), message.maxLongEdge), MAX_CUTOUT_PIXELS);
       self.postMessage({ id: message.id, type: message.type, blob });
       return;
     }
@@ -186,6 +187,12 @@ self.onmessage = async (event: MessageEvent<Message>) => {
           })
       : renderPreview();
     const result = exporting ? resizeForExport(rendered, message.maxLongEdge) : rendered;
+    // Canvas encoding premultiplies alpha and loses RGB detail in translucent edge pixels.
+    if (exporting && (message.format ?? 'png') === 'png') {
+      const blob = await encodeRgbaPng(result, localEditorSourceLimits(recipe.schemaVersion).maxPixels);
+      self.postMessage({ id: message.id, type: message.type, blob });
+      return;
+    }
     if (exporting && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);

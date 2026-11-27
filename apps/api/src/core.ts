@@ -98,6 +98,15 @@ export function requireOperator(req: FastifyRequest): User {
   if (!user.is_operator) throw new HttpError(403, 'OPERATOR_REQUIRED', '此操作需要平台运营权限');
   return user;
 }
+export async function lockOperatorSession(tx: Queryable, actor: string, token: string) {
+  const authorized = await tx.query(
+    "SELECT o.user_id FROM operator_users o JOIN users u ON u.id=o.user_id WHERE o.user_id=$1 AND u.status='active' FOR SHARE OF u,o",
+    [actor],
+  );
+  if (!authorized.rowCount) throw new HttpError(403, 'OPERATOR_REQUIRED', '需要运营权限');
+  await lockActiveSession(tx, actor, hash(token));
+}
+
 export async function spacesFor(db: Queryable, userId: string) {
   return (
     await db.query(
@@ -112,14 +121,15 @@ export async function sessionDto(db: Queryable, user: User | null) {
 export async function issueSession(
   tx: Queryable,
   userId: string,
-  reply: FastifyReply,
-  config: AppConfig,
-): Promise<void> {
+): Promise<string> {
   const token = opaqueToken();
   await tx.query(
     "INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,clock_timestamp()+interval '14 days')",
     [hash(token), userId],
   );
+  return token;
+}
+export function setSessionCookie(reply: FastifyReply, config: AppConfig, token: string): void {
   reply.setCookie('xiutu_session', token, {
     path: '/',
     httpOnly: true,
@@ -229,6 +239,10 @@ export async function lockActiveSession(tx: Queryable, actorId: string, authHash
     [authHash, actorId],
   );
   if (!session.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+}
+export async function lockUserSession(tx: Queryable, userId: string, token: string) {
+  await lockActiveUser(tx, userId);
+  await lockActiveSession(tx, userId, hash(token));
 }
 export const projectDto = (p: ProjectAccess) => ({
   id: p.id,

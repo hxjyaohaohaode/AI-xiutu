@@ -469,6 +469,9 @@ export function AboutPage({
         <div>
           <span>{brand}</span>
           <small>{c.footer}</small>
+          {config?.siteFiling && (
+            <small><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer">{config.siteFiling}</a></small>
+          )}
         </div>
         <a href="#top">
           {c.backTop}

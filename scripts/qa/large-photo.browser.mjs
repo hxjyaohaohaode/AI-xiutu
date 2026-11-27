@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
-import { createRecipeV4, photoProxySize } from '@ai-xiutu/editor';
+import { createRecipeV4, photoProxySize, renderEditorRecipeTiled } from '@ai-xiutu/editor';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { preview } from 'vite';
@@ -134,6 +134,25 @@ async function checkQuickDownload(page, file, expected) {
   recipe.local.enabled = true;
   recipe.local.adjustments.exposure = 0.5;
   await applyRecipe(page, recipe);
+  const [masked] = await Promise.all([page.waitForEvent('download', { timeout: 120_000 }), direct.click()]);
+  const full = await sharp(await masked.path()).metadata();
+  assert.deepEqual([full.width, full.height], [expected.width, expected.height]);
+  const reference = await sharp(file).autoOrient().toColourspace('srgb').ensureAlpha().raw().toBuffer();
+  const referenceImage = { width: expected.width, height: expected.height,
+    data: new Uint8ClampedArray(reference.buffer, reference.byteOffset, reference.length) };
+  const maskedHash = await pixelDigest(await masked.path());
+  const referenceHash = createHash('sha256').update(renderEditorRecipeTiled(referenceImage, recipe, {
+    maxPixels: Math.max(expected.width * expected.height, 4_194_304),
+  }).data).digest('hex');
+  assert.equal(maskedHash, referenceHash, 'Every pixel of the full-resolution local adjustment');
+  assert.notEqual(maskedHash, rgbaSha256, 'Local exposure changed the image');
+  assert.equal(downloads, 2);
+  assert.equal(requests, 3);
+  await close.click();
+
+  recipe.transform.rotationDegrees = 3;
+  recipe.transform.fit = 'crop';
+  await applyRecipe(page, recipe);
   await direct.click();
   await dialog.getByText(new RegExp('原件.*' + expected.width + '.*' + expected.height)).waitFor();
   const proxy = photoProxySize(expected.width, expected.height);
@@ -141,16 +160,16 @@ async function checkQuickDownload(page, file, expected) {
   assert.ok((await choice.textContent()).includes('编辑副本 · ' + proxy.width + ' × ' + proxy.height));
   const confirm = dialog.getByRole('button', { name: '下载 PNG', exact: true });
   assert.equal(await confirm.isEnabled(), true);
-  assert.equal(downloads, 1);
-  assert.equal(requests, 2);
+  assert.equal(downloads, 2);
+  assert.equal(requests, 3);
   const [copy] = await Promise.all([page.waitForEvent('download', { timeout: 120_000 }), confirm.click()]);
   const raster = await sharp(await copy.path()).metadata();
   assert.deepEqual([raster.width, raster.height], [proxy.width, proxy.height]);
-  assert.equal(downloads, 2);
-  assert.equal(requests, 2);
+  assert.equal(downloads, 3);
+  assert.equal(requests, 3);
   console.log(JSON.stringify({ toolbarDownload: basename(file), cancelledWithoutDownload: true,
     flippedRgbaSha256: rgbaSha256, editedSize: [decoded.width, decoded.height],
-    explicitlySelectedMaskedCopy: [raster.width, raster.height] }));
+    fullLocalAdjustmentRgbaSha256: maskedHash, explicitlySelectedFineRotatedCopy: [raster.width, raster.height] }));
   await close.click();
 }
 async function context() {

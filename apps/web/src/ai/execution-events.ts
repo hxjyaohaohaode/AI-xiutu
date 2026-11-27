@@ -2,6 +2,7 @@ import type { StatusMarkState } from '../components/StatusMark';
 import type { RunEvent } from './turnStream';
 
 const toolNames: Readonly<Record<string, string>> = {
+  delegate_studio_task: '分派创作任务',
   consult_specialists: '独立专业复核',
   describe_editor: '读取编辑参数',
   search_resources: '检索素材',

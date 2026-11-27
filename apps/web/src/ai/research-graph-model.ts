@@ -15,6 +15,10 @@ export const branchNames = {
   'tone-review': '色调复核',
   'composition-review': '构图复核',
   'delivery-review': '交付复核',
+  'editing-lead': '编辑协调',
+  colorist: '调色助手',
+  retoucher: '修图子任务',
+  'image-designer': '生图子任务',
 } as const;
 export const branchStates = {
   running: '进行中',
@@ -41,7 +45,7 @@ export function isResearchBranch(value: unknown): value is ResearchBranch {
     (branch.finding === undefined || (
       typeof branch.finding === 'string' && branch.finding.length <= 1800 &&
       branch.state === 'completed' && branch.execution === 'provider' &&
-      ['tone-review', 'composition-review', 'delivery-review'].includes(branch.kind)
+      ['tone-review', 'composition-review', 'delivery-review', 'editing-lead', 'colorist', 'retoucher', 'image-designer'].includes(branch.kind)
     )) &&
     (branch.resultCount === undefined ||
       (Number.isInteger(branch.resultCount) && branch.resultCount >= 0))

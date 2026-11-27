@@ -118,11 +118,11 @@ export async function sweepPhotoTrash(db: Database, storage: LocalPrivateStorage
   for (let index = 0; index < 100 && await removeQueuedBytes(db, storage); index += 1) { /* bounded batch */ }
 }
 
-export function startPhotoTrashCleanup(app: FastifyInstance, db: Database, storage: LocalPrivateStorage) {
+export function startPhotoTrashCleanup(app: FastifyInstance, db: Database, storage: LocalPrivateStorage, deploymentHeld: () => boolean) {
   let timer: ReturnType<typeof setInterval> | undefined;
   let pending: Promise<void> | undefined;
   function tick() {
-    if (!pending) {
+    if (!pending && !deploymentHeld()) {
       pending = sweepPhotoTrash(db, storage)
         .catch(() => { process.stderr.write('Photo recycle-bin maintenance will retry.\n'); })
         .finally(() => { pending = undefined; });

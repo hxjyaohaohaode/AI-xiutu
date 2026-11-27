@@ -1,7 +1,12 @@
+import { defaultLayout } from '@ai-xiutu/contracts';
+import { headingScales } from './formatting';
+import type { OfficeLayout } from './office-layout';
+import type { IParagraphOptions } from 'docx';
+import type pptxgen from 'pptxgenjs';
 import type { MessageBlock } from '../ai/message-format';
 import { chartSeries } from './content';
 
-export async function wordDocument(title: string, blocks: MessageBlock[]) {
+export async function wordDocument(title: string, blocks: MessageBlock[], layout?: OfficeLayout, pageStyle = defaultLayout) {
   let textLines = 0;
   const count = (text: string) => {
     textLines += 1 + (text.match(/\n/g)?.length ?? 0);
@@ -26,12 +31,26 @@ export async function wordDocument(title: string, blocks: MessageBlock[]) {
     TableRow,
     TableCell,
     WidthType,
+    LineRuleType,
   } = await import('docx');
   const children: (InstanceType<typeof Paragraph> | InstanceType<typeof Table>)[] = [
     new Paragraph({ text: title, heading: HeadingLevel.TITLE }),
   ];
+  const face = (font: string) => ({ ascii: font, hAnsi: font, eastAsia: font, cs: font });
+  const headings = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3,
+    HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
   const lines = (text: string) =>
     text.split('\n').map((line, index) => new TextRun({ text: line, break: index ? 1 : 0 }));
+  function formatted(text: string, line: number, extra: IParagraphOptions = {}, prefix = '', code = false) {
+    const p = layout?.paragraph(line, text, undefined, code);
+    const runs = (p?.runs ?? [{text,style:{}}]).map(({text, style}) => new TextRun({
+      text, bold: style.bold, italics: style.italic, underline: style.underline ? {} : undefined,
+      font: face(style.font ?? (code ? 'Courier New' : pageStyle.font)), size: style.size == null ? undefined : style.size * 2,
+    }));
+    return new Paragraph({ ...extra, ...(p?.align ? {alignment: p.align === 'justify' ? 'both' : p.align} : {}),
+      ...(p?.after !== undefined ? {spacing:{after:p.after * 20}} : {}),
+      children: [...(prefix ? [new TextRun(prefix)] : []), ...runs] });
+  }
   for (const block of blocks) {
     if (block.kind === 'table') {
       children.push(
@@ -53,26 +72,26 @@ export async function wordDocument(title: string, blocks: MessageBlock[]) {
         }),
       );
     } else if (block.kind === 'list') {
-      for (const item of block.items)
-        children.push(
-          new Paragraph(
-            block.ordered
-              ? { text: `${item.number}. ${item.text}` }
-              : { text: item.text, bullet: { level: 0 } },
-          ),
-        );
-    } else if (block.kind === 'heading')
-      children.push(new Paragraph({ text: block.text, heading: HeadingLevel.HEADING_1 }));
-    else children.push(new Paragraph({ children: lines(block.text) }));
+      block.items.forEach((item, i) =>
+        children.push(formatted(item.text, block.line + i, block.ordered ? {} : { bullet: { level: 0 } },
+          block.ordered ? item.number + '. ' : '')));
+    } else if (block.kind === 'heading') {
+      children.push(formatted(block.text, block.line, { heading: headings[(block.level ?? 1) - 1] }));
+    } else if (layout) {
+      block.text.split('\n').forEach((text, i) => children.push(formatted(text, block.line + i + (block.kind === 'code' ? 1 : 0), block.kind === 'quote' ? { indent: {left:360} } : {}, '', block.kind === 'code')));
+    } else children.push(new Paragraph({ children: lines(block.text) }));
   }
   return Packer.toBlob(
     new Document({
       title,
       styles: {
         default: {
+          ...Object.fromEntries(headingScales.map((scale, i) => ['heading' + (i + 1), {
+            run: { size: Math.round(pageStyle.size * scale * 2), bold: true, color: '223632', font: face(pageStyle.font) },
+          }])),
           document: {
-            run: { font: 'Aptos', size: 23, color: '223632' },
-            paragraph: { spacing: { after: 140 } },
+            run: { font: face(pageStyle.font), size: Math.round(pageStyle.size * 2), color: '223632' },
+            paragraph: { alignment: pageStyle.align === 'justify' ? 'both' : pageStyle.align, spacing: { after: 140, line: Math.round(pageStyle.line * 240), lineRule: LineRuleType.AUTO } },
           },
         },
       },
@@ -81,13 +100,16 @@ export async function wordDocument(title: string, blocks: MessageBlock[]) {
   );
 }
 
-export async function presentation(title: string, blocks: MessageBlock[], cover?: string) {
+export async function presentation(title: string, blocks: MessageBlock[], cover?: string, layout?: OfficeLayout, pageStyle = defaultLayout) {
   const { default: PptxGenJS } = await import('pptxgenjs');
   const deck = new PptxGenJS();
   deck.layout = 'LAYOUT_WIDE';
   deck.title = title;
   const ink = '213935';
-  const fontFace = 'Aptos';
+  const fontFace = pageStyle.font;
+  const bodySize = Math.round(18 * pageStyle.size / defaultLayout.size);
+  deck.theme = { headFontFace: fontFace, bodyFontFace: fontFace };
+  let headingLine = -1;
   let heading = title,
     pageCount = 0,
     pageLines = 0,
@@ -100,7 +122,8 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
       throw new Error('演示文稿的重复标题过长，请缩短标题或按章节导出。');
     const slide = deck.addSlide();
     slide.background = { color: 'F9FCFB' };
-    slide.addText(heading, {
+    const headingStyle = layout?.paragraph(headingLine, heading);
+    slide.addText(headingStyle ? slideRuns(headingStyle.runs) : heading, {
       x: 0.65,
       y: 0.38,
       w: 12.05,
@@ -112,7 +135,7 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
       bold: true,
       color: ink,
       valign: 'middle',
-      breakLine: false,
+      breakLine: false, align: headingStyle?.align, paraSpaceAfter: headingStyle?.after,
     });
     slide.addShape(deck.ShapeType.line, {
       x: 0.65,
@@ -135,44 +158,45 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
     pageLines = 0;
     return slide;
   }
-  function paragraph(text: string) {
-    // CJK glyphs use roughly twice the horizontal advance of Latin glyphs.
-    const parts: string[] = [];
-    let chunk = '',
-      width = 0;
-    for (const glyph of text) {
-      if (width >= 350 || glyph === '\n') {
-        if (chunk) parts.push(chunk);
-        chunk = '';
-        width = 0;
+  function slideRuns(runs: ReturnType<OfficeLayout['paragraph']>['runs']): pptxgen.TextProps[] {
+    return runs.map(({ text, style }) => ({text, options: {bold:style.bold,italic:style.italic,
+      underline:style.underline ? {style:'sng'} : undefined, fontFace:style.font, fontSize:style.size}}));
+  }
+  function paragraph(text: string, line: number, prefix = '', code = false) {
+    text.split('\n').forEach((source, i) => {
+      const style = layout?.paragraph(line + i, source, undefined, code);
+      const parts = style?.runs ?? [{text:source,style:{}}];
+      const runs = prefix ? [{text:prefix,style:{}}, ...parts] : parts;
+      // Bound each editable text box by glyph widths and the largest point size.
+      let textRuns: typeof runs = [], width = 0, maxSize = 18;
+      function flush() {
+        const height = Math.max(1,Math.ceil(width / 77)) * Math.max(maxSize,bodySize) / 18 * pageStyle.line + .65;
+        const after = (style?.after ?? 0) / 72 / .41;
+        if (!page || pageLines + height > 12) page = newPage();
+        if (textRuns.length) page.addText(slideRuns(textRuns), {
+          x: .7, y: 1.76 + pageLines * .41, w: 11.85, h: Math.min(height,12) * .41,
+          margin: 0, fontFace: code ? 'Courier New' : fontFace, fontSize: bodySize, lineSpacingMultiple: pageStyle.line, color: ink, fit: 'shrink', valign: 'top',
+          align: style?.align ?? pageStyle.align, paraSpaceAfter: style?.after,
+        });
+        pageLines += height + after;
+        textRuns = []; width = 0; maxSize = 18;
       }
-      if (glyph !== '\n') {
-        chunk += glyph;
-        width += glyph.codePointAt(0)! > 255 ? 2 : 1;
+      for (const run of runs) {
+        let part = '';
+        for (const glyph of run.text) {
+          const pointSize = run.style.size ?? bodySize;
+          const widthUnits = (glyph.codePointAt(0)! > 255 ? 2 : 1) * pointSize / 18;
+          if (width && (Math.ceil((width + widthUnits) / 77) * Math.max(pointSize,maxSize) * pageStyle.line / 18 > 10 || width >= 350)) {
+            if (part) textRuns.push({text:part,style:run.style});
+            flush(); part = '';
+          }
+          maxSize = Math.max(maxSize,pointSize);
+          width += widthUnits; part += glyph;
+        }
+        if (part) textRuns.push({text:part,style:run.style});
       }
-    }
-    if (chunk) parts.push(chunk);
-    for (const part of parts) {
-      const widthUnits = Array.from(part).reduce(
-        (n, ch) => n + (ch.codePointAt(0)! > 255 ? 2 : 1),
-        0,
-      );
-      const height = Math.ceil(widthUnits / 77) + 0.65;
-      if (!page || pageLines + height > 12) page = newPage();
-      page.addText(part, {
-        x: 0.7,
-        y: 1.76 + pageLines * 0.41,
-        w: 11.85,
-        h: height * 0.41,
-        margin: 0,
-        fontFace,
-        fontSize: 18,
-        valign: 'top',
-        color: ink,
-        fit: 'shrink',
-      });
-      pageLines += height;
-    }
+      if (textRuns.length || layout) flush();
+    });
   }
   if (cover) {
     const prefix = 'data:image/jpeg;base64,';
@@ -199,6 +223,7 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
     if (block.kind === 'heading') {
       if (pendingHeading) newPage();
       heading = block.text;
+      headingLine = block.line;
       page = undefined;
       pendingHeading = true;
     } else if (block.kind === 'table') {
@@ -234,7 +259,7 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
         for (const series of chartSeries(block)) {
           const slide = newPage();
           slide.addChart(
-            deck.ChartType.bar,
+            pageStyle.chart === 'line' ? deck.ChartType.line : deck.ChartType.bar,
             [{ name: series.name, labels: block.rows.map((r) => r[0]), values: series.values }],
             {
               x: 0.7,
@@ -256,11 +281,10 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
       page = undefined;
     } else if (block.kind === 'list') {
       pendingHeading = false;
-      for (const item of block.items)
-        paragraph((block.ordered ? `${item.number}. ` : '• ') + item.text);
+      block.items.forEach((item, i) => paragraph(item.text, block.line + i, block.ordered ? item.number + '. ' : '• '));
     } else {
       pendingHeading = false;
-      paragraph(block.text);
+      paragraph(block.text, block.line + (block.kind === 'code' ? 1 : 0), '', block.kind === 'code');
     }
   }
   if (pendingHeading || pageCount === 0) newPage();

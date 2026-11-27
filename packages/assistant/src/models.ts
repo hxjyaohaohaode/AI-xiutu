@@ -338,6 +338,7 @@ export const ASSISTANT_TOOL_NAMES = [
   'search_resources',
   'delegate_research',
   'consult_specialists',
+  'delegate_studio_task',
   'describe_editor',
   'propose_edit',
   'propose_curve',

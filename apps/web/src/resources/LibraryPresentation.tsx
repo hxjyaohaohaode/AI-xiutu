@@ -38,7 +38,7 @@ export function LibraryToolbar({
           value={query}
           maxLength={120}
           onChange={(event) => onQuery(event.target.value)}
-          placeholder={t('搜索名称、标题、标签…')}
+          placeholder={t('搜索素材，如「近7天 PNG」')}
         />
         {query && (
           <button type="button" className="library-clear-search" aria-label={t('清除素材搜索')}

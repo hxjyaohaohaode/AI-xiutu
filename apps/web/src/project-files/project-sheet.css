@@ -1,0 +1,54 @@
+.project-sheet {
+  min-width: 0;
+}
+.project-sheet-bar,
+.project-sheet-pages {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.6rem 0;
+}
+.project-sheet-bar > span {
+  margin-inline-end: auto;
+  overflow-wrap: anywhere;
+}
+.project-sheet-scroll {
+  max-width: 100%;
+  overflow: auto;
+}
+.project-sheet table {
+  width: 100%;
+  border-spacing: 0;
+  text-align: start;
+}
+.project-sheet :is(td, th) {
+  min-width: 5rem;
+  padding: 0;
+  border-bottom: 1px solid var(--line);
+}
+.project-sheet textarea {
+  display: block;
+  width: 100%;
+  min-height: 2.5rem;
+  max-height: 7rem;
+  margin: 0;
+  border: none;
+  background: transparent;
+  padding: 0.55rem;
+  box-sizing: border-box;
+  resize: vertical;
+  color: inherit;
+  font: inherit;
+}
+.project-sheet th {
+  font-weight: 650;
+  background: color-mix(in srgb, currentColor 5%, transparent);
+}
+.project-sheet img {
+  display: block;
+  width: 100%;
+  max-width: 52rem;
+  height: auto;
+  margin: 1rem auto;
+}

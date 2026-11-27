@@ -4,6 +4,7 @@ import { constants } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import { MiB, freeMediaMemory, residentBudget, requireResident } from './memory.js';
 import { parsePrecisionEdit } from '@ai-xiutu/editor';
 import { exportMasterWindow, type LinearWindowContext } from './linear-window.js';
 import {
@@ -29,6 +30,7 @@ export interface NormalizedMediaOptions {
   generateTiles: boolean;
   timeoutMs: number;
   memoryBytes: number;
+  residentBudgetBytes: number;
   pythonExecutable?: string;
   ultraHdrLibrary?: string;
   heicDecoder?: string;
@@ -103,6 +105,7 @@ export function normalizeMediaOptions(
       8_589_934_592,
       'Job address space',
     ),
+    residentBudgetBytes: integer(options.residentBudgetBytes, Number.MAX_SAFE_INTEGER, 1, Number.MAX_SAFE_INTEGER, 'Resident working set'),
     ...(options.pythonExecutable ? { pythonExecutable: options.pythonExecutable } : {}),
     ...(options.ultraHdrLibrary ? { ultraHdrLibrary: options.ultraHdrLibrary } : {}),
     ...(options.heicDecoder ? { heicDecoder: options.heicDecoder } : {}),
@@ -187,6 +190,7 @@ async function isolated<T>(
   const releaseSlot = await slot(signal);
   let control: string | undefined;
   try {
+    options = { ...options, residentBudgetBytes: await residentBudget(options.residentBudgetBytes) };
     control = await mkdtemp(join(tmpdir(), 'xiutu-media-control-'));
     if (signal?.aborted) throw new MediaProcessingError('Media operation cancelled', 'aborted');
     const requestPath = join(control, 'request.json'),
@@ -249,6 +253,20 @@ async function isolated<T>(
         terminal = new MediaProcessingError('Media operation cancelled', 'aborted');
         kill();
       };
+      // Other co-tenants can consume headroom after admission. On tight hosts
+      // stop this process group while the API still has memory to report it.
+      let finished = false, checking = false;
+      const pressure = options.residentBudgetBytes < 1024 * MiB ? setInterval(async () => {
+        if (finished || checking || terminal) return;
+        checking = true;
+        try {
+          const free = await freeMediaMemory();
+          if (!finished && !terminal && free < 64 * MiB) {
+            terminal = new MediaProcessingError('Insufficient resident memory to continue this media operation', 'memory');
+            kill();
+          }
+        } finally { checking = false; }
+      }, 250).unref() : undefined;
       const timer = setTimeout(() => {
         terminal = new MediaProcessingError(
           'Media processing exceeded its wall-time budget',
@@ -259,6 +277,8 @@ async function isolated<T>(
       signal?.addEventListener('abort', abort, { once: true });
       if (signal?.aborted) abort();
       const finish = () => {
+        finished = true;
+        clearInterval(pressure);
         clearTimeout(timer);
         signal?.removeEventListener('abort', abort);
       };
@@ -274,6 +294,7 @@ async function isolated<T>(
       child.once('close', (code, killedBy) => {
         finish();
         if (terminal) reject(terminal);
+        else if (code === 3) reject(new MediaProcessingError('This media operation exceeds currently available resident memory', 'memory'));
         else if (code === 2 || killedBy === 'SIGXFSZ')
           reject(
             new MediaProcessingError(
@@ -391,8 +412,13 @@ export async function exportMedia(
       ))
     ) {
       await assertIsolation();
-      const releaseSlot = await windowSlot(request.signal);
+      const available = await residentBudget(options.residentBudgetBytes);
+      const constrained = process.constrainedMemory();
+      const lane = available < 512 * MiB || (constrained > 0 && constrained <= 1024 * MiB) ? slot : windowSlot;
+      const releaseSlot = await lane(request.signal);
       try {
+        const bounds = request.preview.region ?? request.preview.fitRegion!;
+        requireResident(await residentBudget(options.residentBudgetBytes), 100, bounds.width * bounds.height, 16);
         return await exportMasterWindow(
           window,
           workDir,

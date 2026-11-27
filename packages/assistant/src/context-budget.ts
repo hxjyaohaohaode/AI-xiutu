@@ -1,10 +1,12 @@
-import { getEncoding } from 'js-tiktoken';
+import { get_encoding } from 'tiktoken';
 
-let encoder: ReturnType<typeof getEncoding> | undefined;
+let encoder: ReturnType<typeof get_encoding> | undefined;
 /** Text estimate using the explicit o200k vocabulary; visual usage is reserved separately. */
 export function textTokens(text: string): number {
-  encoder ??= getEncoding('o200k_base');
-  return encoder.encode(text, [], []).length;
+  encoder ??= get_encoding('o200k_base');
+  // User and tool strings can contain literal model control markers. Count
+  // these as ordinary text, including when budgeting previously saved turns.
+  return encoder.encode_ordinary(text).length;
 }
 export interface HistoryMessage {
   role: 'user' | 'assistant';

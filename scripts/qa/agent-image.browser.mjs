@@ -34,15 +34,27 @@ const moderator = {
 };
 async function respondToAssistant(_url, init) {
   report.assistantRounds++;
-  const { input } = JSON.parse(init.body);
+  const { input, instructions, tools } = JSON.parse(init.body);
   const final = input.some((item) => item.type === 'function_call_output');
   const fn = (name, args) => ({
     type: 'function_call', name, call_id: 'fixture-' + name, arguments: JSON.stringify(args),
   });
   const sentence = '陶瓷花瓶插画已准备好。';
+  if (instructions.includes('You are a delegated image-designer')) {
+    assert.ok(tools.some((tool) => tool.name === 'draft_generation'));
+    assert.ok(!tools.some((tool) => tool.name === 'select_candidate' || tool.name === 'search_resources'));
+    const draft = fn('draft_generation', { summary: '陶瓷花瓶插画', prompt, referenceAssetIds: [] });
+    return Response.json({ status: 'completed', output: [draft], usage: { input_tokens: 30, output_tokens: 15 } },
+      { headers: { 'x-request-id': 'fixture-worker-' + report.assistantRounds } });
+  }
+  if (final) {
+    const handoff = JSON.parse(input.find((item) => item.type === 'function_call_output').output);
+    assert.equal(handoff.tasks[0].candidateIndex, 0);
+    assert.equal(handoff.tasks[0].tool, 'draft_generation');
+  }
   const output = final
     ? [{ type: 'message', role: 'assistant', content: [{ type: 'output_text', text: sentence }] }]
-    : [fn('draft_generation', { summary: '陶瓷花瓶插画', prompt, referenceAssetIds: [] }),
+    : [fn('delegate_studio_task', { tasks: [{ role: 'image-designer', brief: prompt }] }),
        fn('compose_workspace', { title: '图片创作', sections: [{ type: 'candidates', title: '生图草案', candidateIndices: [0] }] })];
   const events = final ? [{ type: 'response.output_text.delta', delta: sentence }] : [];
   events.push({ type: 'response.completed', response: { id: 'fixture-' + report.assistantRounds, status: 'completed', output,
@@ -118,6 +130,13 @@ try {
   await generate.waitFor();
   assert.equal(await generate.isEnabled(), true);
   assert.equal(report.imageCalls, 0);
+  const graph = page.locator('.assistant-research-graph');
+  const graphToggle = graph.locator(':scope > summary');
+  if (await graphToggle.getAttribute('aria-expanded') === 'false') await graphToggle.click();
+  const delegated = graph.locator('summary[aria-label*="生图子任务 · 完成"]');
+  await delegated.click();
+  await delegated.locator('..').getByText('陶瓷花瓶插画', { exact: true }).waitFor();
+  assert.equal(report.assistantRounds, 3);
   for (const viewport of [{ width: 1440, height: 960 }, { width: 820, height: 1180 },
     { width: 390, height: 844 }, { width: 844, height: 390 }]) {
     await page.setViewportSize(viewport);
@@ -143,7 +162,7 @@ try {
   const meta = await sharp(file.rawPayload).metadata();
   assert.deepEqual([meta.format, meta.width, meta.height], ['png', 864, 1536]);
   report.projectJobs = (await fixture.db.query('SELECT COUNT(*)::int AS n FROM ai_jobs WHERE project_id=$1', [fixture.projectId])).rows[0].n;
-  assert.deepEqual([report.projectJobs, report.imageCalls, report.assistantRounds], [1, 1, 2]);
+  assert.deepEqual([report.projectJobs, report.imageCalls, report.assistantRounds], [1, 1, 3]);
   await page.getByRole('button', { name: '打开并编辑', exact: true }).click();
   await page.locator('canvas[aria-label="照片编辑预览"]').waitFor();
   await page.locator('.canvas-stage[aria-busy="false"]').waitFor();

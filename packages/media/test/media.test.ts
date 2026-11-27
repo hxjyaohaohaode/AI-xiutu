@@ -12,6 +12,7 @@ import {
   getMediaCapabilities,
   MediaProcessingError,
 } from '../src/index.js';
+import { cgroupHeadroom, MiB } from '../src/memory.js';
 import { srgbProfile, attachPngIcc } from '../src/icc.js';
 
 async function fixture(run: (path: string) => Promise<void>) {
@@ -377,3 +378,33 @@ test('resource admission, cancellation, malformed files and duplicate output ide
     assert.equal(caps.maxPixels, 200_000_000);
     assert.equal(caps.nativeConfigured, false);
   }));
+
+test('tight resident budget leaves an existing original and master available after a refused conversion', async () => {
+  await fixture(async (dir) => {
+    const source = join(dir, 'camera.jpg'), workDir = join(dir, 'retained');
+    const bytes = await sharp({ create: { width: 64, height: 48, channels: 3, background: '#705040' } }).jpeg().toBuffer();
+    await writeFile(source, bytes);
+    const descriptor = await processMedia({ inputPath: source, workDir, options: { generateTiles: false } });
+    const limited = (e: unknown) => e instanceof MediaProcessingError && e.code === 'memory';
+    const options = { residentBudgetBytes: 128 * 1024 ** 2 };
+    const outputPath = join(dir, 'denied.png');
+    await assert.rejects(exportMedia({ workDir, outputPath, format: 'png16', options }), limited);
+    await assert.rejects(lstat(outputPath), { code: 'ENOENT' });
+    assert.deepEqual(await readFile(join(workDir, descriptor.original.relativePath)), bytes);
+    assert.equal((await lstat(join(workDir, descriptor.master.relativePath))).size, descriptor.master.bytes);
+    const refused = join(dir, 'refused-import');
+    await assert.rejects(processMedia({ inputPath: source, workDir: refused, options }), limited);
+    await assert.rejects(lstat(refused), { code: 'ENOENT' });
+    assert.deepEqual(await readFile(source), bytes);
+  });
+});
+
+test('cgroup resident headroom counts reclaimable cache within the container cap', () => {
+  const cap = String(680 * MiB), used = String(500 * MiB);
+  assert.deepEqual(cgroupHeadroom(cap, used, 'inactive_file ' + 40 * MiB, false),
+    { cap: 680 * MiB, free: 220 * MiB });
+  assert.deepEqual(cgroupHeadroom(cap, used, 'inactive_file 1000\ntotal_inactive_file ' + 80 * MiB, true),
+    { cap: 680 * MiB, free: 260 * MiB });
+  assert.equal(cgroupHeadroom(cap, used, 'inactive_file ' + 1000 * MiB, false)?.free, 680 * MiB);
+  assert.equal(cgroupHeadroom('max', used, '', false), undefined);
+});

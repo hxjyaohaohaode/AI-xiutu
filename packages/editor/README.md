@@ -345,8 +345,8 @@ node node_modules/typescript/bin/tsc -p packages/editor/tsconfig.json --noEmit
 
 ## 普通相机照片的原尺寸 PNG
 
-静态 JPEG 和 PNG 原件最多 50 MiB、6400 万像素，单边最多 16384 像素。导出时先用文件头和 EXIF 校验已保存的正向尺寸，再由浏览器工作线程解码一次。输出是 8 位 sRGB RGBA PNG。曝光、冷暖、亮度、曲线、HSL 等逐像素调整可与裁切、直角旋转和翻转叠加。资格判断复用 `pointPreviewMode`，启用锐化、柔化、晕影、颗粒、局部编辑、有效图层或透视等空间运算会转回编辑副本规格。[ImageBitmap 规范](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#imagebitmap)
+静态 JPEG 和 PNG 原件最多 50 MiB、6400 万像素，单边最多 16384 像素。工作线程校验文件头、EXIF 方向和已保存尺寸，从原片生成 8 位 sRGB RGBA PNG。逐像素调色、曲线、HSL、锐化、柔化、纹理、清晰度、暗角、颗粒、v1 径向局部，以及 v2 的几何、笔刷、栅格和颜色范围选区均可与裁切、直角旋转、翻转组合。使用图层合成、精细仿射、透视、液化或 v4 修复等操作时，下载面板显示实际可用的编辑副本尺寸。[ImageBitmap 规范](https://html.spec.whatwg.org/multipage/imagebitmap-and-animations.html#imagebitmap)
 
-每个输出条带最多 262144 像素。渲染器从输出首尾像素反算原片的整数矩形，调用既有配方渲染器处理该区域。归一化裁切先按原片尺寸量化一次，旋转与反射复用已有像素排列。PNG 编码器按行使用同一条 zlib 流，生成连续 IDAT 块，避免为导出另建整张 RGBA 画布。终止工作线程可取消原片解码、渲染或编码。[PNG 第三版第 10.2 节](https://www.w3.org/TR/png-3/)
+每个输入窗口最多读取 262144 个像素。锐化等邻域运算从裁切边缘和块边界之外取齐所需像素，蒙版与颗粒以原片坐标求值，输出时只拼接各块的有效区域。多个条带写入同一条 PNG 数据流。普通 PNG 下载和人物抠图直接编码 RGBA，保留引擎输出的半透明边缘颜色。工作线程终止时一同取消原片处理。[GEGL 邻域运算机制](https://www.gegl.org/operation-api.html) · [PNG 规范](https://www.w3.org/TR/png-3/)
 
 `node --import tsx --test packages/editor/test/original-photo-export.test.ts packages/editor/test/png.test.ts` 会解码输出并逐通道对照整图参考。用 `node scripts/qa/large-photo-fixtures.mjs /tmp/xiutu-photo-fixtures` 生成实图后，运行 `node scripts/qa/original-photo-export.browser.mjs /tmp/xiutu-photo-fixtures/camera.jpg`，可检验真实工作线程、EXIF 6 方向、曝光及冷暖、48MP 输出采样、半透明 PNG、进度与取消。

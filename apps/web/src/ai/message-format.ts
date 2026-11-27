@@ -1,6 +1,7 @@
 /** Deliberately small, non-executable message format. HTML and image embeds stay text. */
 export type MessageBlock =
-  | { kind: 'paragraph' | 'heading' | 'quote'; text: string; line: number }
+  | { kind: 'paragraph' | 'quote'; text: string; line: number }
+  | { kind: 'heading'; text: string; line: number; level?: number }
   | { kind: 'code'; text: string; language: string; line: number }
   | { kind: 'list'; ordered: boolean; items: { text: string; number?: number }[]; line: number }
   | { kind: 'table'; headers: string[]; rows: string[][]; line: number; textCells?: Set<number> };

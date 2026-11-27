@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import sharp from 'sharp';
 import { createRecipeV3, type RGBAImage } from '@ai-xiutu/editor';
 
 test('worker fallback keeps original pixels after transfer, resolves layer aliases and clears them for a new source', async () => {
@@ -41,7 +42,7 @@ test('worker fallback keeps original pixels after transfer, resolves layer alias
       id: 1,
       originalOnly: true,
       recipe: createRecipeV3(),
-      format: 'png',
+      format: 'jpeg',
     });
     assert.equal(first.id, 1);
     assert.deepEqual([...first.result.data], untouched);
@@ -51,7 +52,7 @@ test('worker fallback keeps original pixels after transfer, resolves layer alias
       id: 2,
       originalOnly: true,
       recipe: createRecipeV3(),
-      format: 'png',
+      format: 'jpeg',
     });
     assert.equal(second.id, 2);
     assert.deepEqual([...second.result.data], untouched);
@@ -74,21 +75,27 @@ test('worker fallback keeps original pixels after transfer, resolves layer alias
       mask: null,
     });
     await send({ type: 'rekey-sources', mapping: new Map([['local-one', 'cloud-one']]) });
-    const composite = await send({ type: 'export', id: 3, recipe, format: 'png' });
+    const composite = await send({ type: 'export', id: 3, recipe, format: 'jpeg' });
     assert.equal(composite.error, undefined);
     assert.deepEqual([...composite.result.data], [...layer.data]);
     assert.deepEqual([...original.data], untouched);
     // Retaining the old key permits undo before cloud save to keep rendering.
     recipe.imageLayers[0]!.sourceId = 'local-one';
-    const undone = await send({ type: 'export', id: 4, recipe, format: 'png' });
+    const undone = await send({ type: 'export', id: 4, recipe, format: 'jpeg' });
     assert.deepEqual([...undone.result.data], [...layer.data]);
     const next = image(230, 160, 40);
     await send({ type: 'source', image: next, original: next });
-    const missing = await send({ type: 'export', id: 5, recipe, format: 'png' });
+    const missing = await send({ type: 'export', id: 5, recipe, format: 'jpeg' });
     assert.equal(missing.id, 5);
     assert.ok(missing.error, 'a new source must not inherit private layers from the old source');
-    const clean = await send({ type: 'export', id: 6, recipe: createRecipeV3(), format: 'png' });
+    const clean = await send({ type: 'export', id: 6, recipe: createRecipeV3(), format: 'jpeg' });
     assert.deepEqual([...clean.result.data], [...next.data]);
+    const alpha = { width: 2, height: 1, data: Uint8ClampedArray.of(42, 128, 250, 1, 77, 62, 17, 0) };
+    await send({ type: 'source', image: alpha, original: alpha });
+    const png = await send({ type: 'export', id: 7, recipe: createRecipeV3(), format: 'png' });
+    assert.equal(png.blob.type, 'image/png');
+    const pixels = await sharp(Buffer.from(await png.blob.arrayBuffer())).ensureAlpha().raw().toBuffer();
+    assert.deepEqual([...pixels], [...alpha.data], 'PNG delivery retains RGB under partial and zero alpha');
   } finally {
     if (previous) Object.defineProperty(globalThis, 'self', previous);
     else Reflect.deleteProperty(globalThis, 'self');

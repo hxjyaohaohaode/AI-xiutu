@@ -105,8 +105,12 @@ export function CompareReveal({ before, value, onChange, onClose, inputRef }: {
         <path ref={edge} d={straight} fill="none" stroke="white" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
         <g ref={particles} fill="white">{Array.from({ length: 6 }, (_, index) => <ellipse key={index} opacity="0" />)}</g>
       </svg>
-      <span className="compare-reveal-label compare-reveal-before">{t('原图')}</span>
-      <span className="compare-reveal-label compare-reveal-after">{t('当前')}</span>
+      <div aria-hidden="true" className="compare-label-track" style={{ left: 0, width: value + '%' }}>
+        <span className="compare-reveal-label compare-reveal-before">{t('原图')}</span>
+      </div>
+      <div aria-hidden="true" className="compare-label-track" style={{ right: 0, width: (100 - value) + '%' }}>
+        <span className="compare-reveal-label compare-reveal-after">{t('当前')}</span>
+      </div>
       <span className="compare-reveal-boundary compare-reveal-handle" style={{ left: value + '%' }} aria-hidden="true"><ArrowsHorizontal size={20} /></span>
       <input ref={inputRef} className="compare-reveal-input" type="range" min="0" max="100" step="1" value={value}
         aria-label={t('原图与当前图的分界')} aria-valuetext={t('原图 {percent}%', { percent: value })}

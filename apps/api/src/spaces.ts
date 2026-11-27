@@ -7,7 +7,8 @@ import {
   title,
   role,
   requireUser,
-  lockActiveUser,
+  lockUserSession,
+  lockActiveSession,
   spaceRole,
   spacesFor,
   hash,
@@ -25,6 +26,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
       const owner = await tx.query("SELECT id FROM users WHERE id=$1 AND status='active' FOR UPDATE", [user.id]);
       if (!owner.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+      await lockActiveSession(tx, user.id, hash(req.cookies.xiutu_session ?? ''));
       const count = await tx.query(
         "SELECT count(*) FROM spaces WHERE owner_id=$1 AND kind='team'",
         [user.id],
@@ -63,6 +65,25 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       })),
     };
   });
+  app.get('/v1/spaces/:id/invitations', async (req, reply) => {
+    const user = requireUser(req);
+    const p = z.object({ id }).parse(req.params);
+    const { cursor } = z.object({ cursor: id.optional() }).strict().parse(req.query);
+    reply.header('Cache-Control', 'private, no-store');
+    await spaceRole(db, p.id, user.id, ['owner', 'admin']);
+    const rows = (await db.query(
+      `SELECT i.id,i.role,i.uses,i.max_uses AS "maxUses",i.expires_at AS "expiresAt"
+       FROM invitations i JOIN memberships m ON m.space_id=i.space_id AND m.user_id=$2
+       WHERE i.space_id=$1 AND i.kind='space' AND i.revoked_at IS NULL
+         AND i.uses<i.max_uses AND i.expires_at>clock_timestamp()
+         AND (m.role='owner' OR (m.role='admin' AND i.role<>'admin'))
+         AND ($3::uuid IS NULL OR (i.created_at,i.id) < (
+           SELECT c.created_at,c.id FROM invitations c WHERE c.id=$3 AND c.space_id=$1))
+       ORDER BY i.created_at DESC,i.id DESC LIMIT 21`, [p.id, user.id, cursor ?? null],
+    )).rows;
+    const items = rows.slice(0, 20);
+    return { invitations: items, nextCursor: rows.length > items.length ? items.at(-1)!.id : null };
+  });
   app.post('/v1/spaces/:id/invitations', async (req, reply) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
@@ -76,6 +97,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       .parse(req.body);
     const code = opaqueToken();
     const invitation = await transaction(db, async (tx) => {
+      await lockUserSession(tx, user.id, req.cookies.xiutu_session ?? '');
       const space = (await tx.query('SELECT kind FROM spaces WHERE id=$1 FOR UPDATE', [p.id]))
         .rows[0];
       const current = await spaceRole(tx, p.id, user.id, ['owner', 'admin']);
@@ -106,7 +128,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       .parse(req.body);
     const space = await transaction(db, async (tx) => {
       await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
-      await lockActiveUser(tx, user.id);
+      await lockUserSession(tx, user.id, req.cookies.xiutu_session ?? '');
       const hint = (
         await tx.query("SELECT space_id FROM invitations WHERE code_hash=$1 AND kind='space'", [
           hash(p.code),
@@ -135,9 +157,15 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
         };
       if (invitation.uses >= invitation.max_uses)
         throw new HttpError(400, 'INVITE_INVALID', '邀请已用完');
+      const previousUse = await tx.query(
+        'SELECT 1 FROM invitation_uses WHERE invitation_id=$1 AND user_id=$2',
+        [invitation.id, user.id],
+      );
+      if (previousUse.rowCount)
+        throw new HttpError(400, 'INVITE_INVALID', '该邀请码已使用，请向团队申请新邀请');
       const inviter = (
         await tx.query(
-          "SELECT role FROM memberships WHERE space_id=$1 AND user_id=$2 AND role IN ('owner','admin')",
+          "SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.space_id=$1 AND m.user_id=$2 AND m.role IN ('owner','admin') AND u.status='active'",
           [invitation.space_id, invitation.created_by],
         )
       ).rows[0];
@@ -167,11 +195,18 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
     const user = requireUser(req);
     const p = z.object({ id, invitationId: id }).parse(req.params);
     await transaction(db, async (tx) => {
-      await spaceRole(tx, p.id, user.id, ['owner', 'admin']);
-      await tx.query(
-        'UPDATE invitations SET revoked_at=clock_timestamp() WHERE id=$1 AND space_id=$2',
+      await lockUserSession(tx, user.id, req.cookies.xiutu_session ?? '');
+      await tx.query('SELECT id FROM spaces WHERE id=$1 FOR UPDATE', [p.id]);
+      const acting = await spaceRole(tx, p.id, user.id, ['owner', 'admin']);
+      const invitation = (await tx.query(
+        "SELECT role,revoked_at FROM invitations WHERE id=$1 AND space_id=$2 AND kind='space' FOR UPDATE",
         [p.invitationId, p.id],
-      );
+      )).rows[0];
+      if (!invitation) throw new HttpError(404, 'INVITE_NOT_FOUND', '团队邀请不存在');
+      if (acting !== 'owner' && invitation.role === 'admin')
+        throw new HttpError(403, 'ROLE_FORBIDDEN', '仅所有者可管理管理员邀请');
+      if (invitation.revoked_at) return;
+      await tx.query('UPDATE invitations SET revoked_at=clock_timestamp() WHERE id=$1', [p.invitationId]);
       await audit(tx, user.id, 'invitation.revoke', 'invitation', p.invitationId);
     });
     return { ok: true };
@@ -186,6 +221,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
         const next =
           method === 'PATCH' ? z.object({ role: invitedRole }).strict().parse(req.body).role : null;
         await transaction(db, async (tx) => {
+          await lockUserSession(tx, user.id, req.cookies.xiutu_session ?? '');
           await tx.query('SELECT id FROM spaces WHERE id=$1 FOR UPDATE', [p.id]);
           await tx.query("SELECT set_config('ai_xiutu.membership_actor',$1,true)", [user.id]);
           const leaving = method === 'DELETE' && p.userId === user.id;
@@ -207,6 +243,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
             (!leaving && acting !== 'owner' && (target.role === 'admin' || next === 'admin'))
           )
             throw new HttpError(403, 'ROLE_FORBIDDEN', '不能修改此成员角色');
+          if (next === target.role) return;
           if (next)
             await tx.query('UPDATE memberships SET role=$3 WHERE space_id=$1 AND user_id=$2', [
               p.id,
@@ -254,6 +291,7 @@ export function registerSpaces(app: FastifyInstance, db: Database): void {
       );
       if (!active.rows.some((row) => row.id === actor.id))
         throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
+      await lockActiveSession(tx, actor.id, hash(req.cookies.xiutu_session ?? ''));
       if (active.rowCount !== 2)
         throw new HttpError(400, 'MEMBER_REQUIRED', '新所有者须是当前有效成员');
       const space = (await tx.query('SELECT * FROM spaces WHERE id=$1 FOR UPDATE', [params.id]))

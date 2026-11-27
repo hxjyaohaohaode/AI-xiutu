@@ -8,8 +8,13 @@ import {
   type RGBAImage,
 } from '@ai-xiutu/editor';
 
-import { editorGeometryKey } from './useEditor';
+import { editorGeometryKey } from './coordinates';
+import { fitsNativePreview } from './native-preview';
+import { MAX_PREVIEW_PIXELS } from './previewBudget';
 import { ensureWorker, releaseWorker } from './workerLifecycle';
+
+const originalGeometry = new Set([createRecipe(), createRecipeV3(), createRecipeV4()]
+  .map(recipe => editorGeometryKey(recipe, false)));
 
 type PreviewKind = 'compare' | 'crop' | 'remote';
 type PreviewJob = {
@@ -61,6 +66,12 @@ export function useStagePreviews(
   const [error, setError] = useState<string | null>(null);
   // The comparison frame shows unwarped source content with the current output geometry.
   const comparisonKey = editorGeometryKey(recipe, false);
+  const nativeSource = source && sourceDimensions &&
+    source.width === sourceDimensions.width && source.height === sourceDimensions.height &&
+    fitsNativePreview(source.width, source.height);
+  const directCompare = source && originalGeometry.has(comparisonKey) &&
+    (nativeSource || source.width * source.height <= MAX_PREVIEW_PIXELS) ? source : null;
+  const needsWorker = cropOpen || remoteRecipe !== null || (comparing && !directCompare);
   const uncropped = useMemo(
     () => ({ ...recipe, geometry: { ...recipe.geometry, crop: null } }),
     [recipe],
@@ -97,8 +108,7 @@ export function useStagePreviews(
     pump();
   }
   useEffect(() => {
-    // Only a new source (or a new mounted stage) starts another worker. Ordinary
-    // recipe changes and processing failures must not create a restart loop.
+    // Allocate this extra raster worker only while a view actually needs it.
     latest.current = { compare: 0, crop: 0, remote: 0 };
     pending.current = { compare: null, crop: null, remote: null };
     inFlight.current = null;
@@ -106,7 +116,7 @@ export function useStagePreviews(
     setCrop(null);
     setCompare(null);
     setError(null);
-    if (!source) return;
+    if (!source || !needsWorker) return;
     try {
       const w = ensureWorker(
         worker,
@@ -138,7 +148,7 @@ export function useStagePreviews(
         failWorker,
       );
       // This complete source is queued before the later preview effects run.
-      w.postMessage({ type: 'source', image: source, sourceDimensions, images });
+      w.postMessage({ type: 'source', image: source, sourceDimensions });
     } catch {
       failWorker();
     }
@@ -147,18 +157,17 @@ export function useStagePreviews(
       inFlight.current = null;
       pending.current = { compare: null, crop: null, remote: null };
     };
-  }, [source, sourceDimensions]);
+  }, [source, sourceDimensions, needsWorker]);
   useEffect(() => {
     try {
       worker.current?.postMessage({ type: 'layer-sources', images: new Map(images) });
     } catch {
       failWorker();
     }
-  }, [images]);
+  }, [images, source, sourceDimensions, needsWorker]);
   useEffect(() => {
     if (
-      source &&
-      (comparing || compare?.source !== source) &&
+      source && comparing && !directCompare &&
       (compare?.source !== source || compare.key !== comparisonKey)
     )
       enqueue(
@@ -174,7 +183,7 @@ export function useStagePreviews(
             ? createRecipeV3({ geometry: recipe.geometry, transform: recipe.transform })
             : createRecipe({ geometry: recipe.geometry }),
       );
-  }, [source, comparisonKey, comparing]);
+  }, [source, sourceDimensions, comparisonKey, comparing, directCompare, needsWorker]);
   useEffect(() => {
     if (!source || !cropOpen) {
       pending.current.crop = null;
@@ -189,20 +198,20 @@ export function useStagePreviews(
       return;
     }
     enqueue('crop', cropKey, uncropped, live);
-  }, [source, cropOpen, cropKey, images, live]);
+  }, [source, sourceDimensions, cropOpen, cropKey, images, live, needsWorker]);
   useEffect(() => {
     if (source && remoteRecipe) enqueue('remote', remoteKey, remoteRecipe);
     else {
       pending.current.remote = null;
       setRemote(null);
     }
-  }, [source, remoteKey, images]);
+  }, [source, sourceDimensions, remoteKey, images, needsWorker]);
   return {
     remote:
       remote?.source === source && remote.images === images && remote.key === remoteKey
         ? remote.image
         : null,
-    compare: compare?.source === source && compare.key === comparisonKey ? compare.image : null,
+    compare: directCompare ?? (compare?.source === source && compare.key === comparisonKey ? compare.image : null),
     crop:
       crop?.source === source && crop.images === images && crop.geometryKey === cropGeometryKey
         ? crop.image

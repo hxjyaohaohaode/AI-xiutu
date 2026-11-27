@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
+import { documentFormatSchema, formatMatchesBody, rebaseDocumentFormat } from '@ai-xiutu/contracts';
 import { transaction, emit, type Database, type Queryable } from '@ai-xiutu/db';
 import {
   HttpError,
@@ -43,6 +44,7 @@ const documentDto = (d: Record<string, any>) => ({
   projectId: d.project_id,
   title: d.title,
   body: d.body,
+  ...(d.formatting ? { formatting: d.formatting } : {}),
   version: d.version,
   authorId: d.author_id,
   createdAt: d.created_at,
@@ -266,33 +268,33 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
   app.get('/v1/projects/:id/documents', async (req) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
-    await projectAccess(db, p.id, user.id);
-    return {
-      documents: (
-        await db.query('SELECT * FROM documents WHERE project_id=$1 ORDER BY updated_at DESC', [
-          p.id,
-        ])
-      ).rows.map(documentDto),
-    };
+    return transaction(db, async tx => {
+      await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      await projectAccess(tx, p.id, user.id);
+      const result = await tx.query('SELECT * FROM documents WHERE project_id=$1 ORDER BY updated_at DESC', [p.id]);
+      return { documents: result.rows.map(documentDto) };
+    });
   });
   app.post('/v1/projects/:id/documents', async (req, reply) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
     const body = z
-      .object({ title, body: z.string().max(100000).default('') })
+      .object({ title, body: z.string().max(100000).default(''), formatting: documentFormatSchema.nullable().optional() })
       .strict()
       .parse(req.body);
     const document = await transaction(db, async (tx) => {
       const project = await projectAccess(tx, p.id, user.id, 'edit');
+      if (body.formatting && !formatMatchesBody(body.body, body.formatting))
+        throw new HttpError(400, 'DOCUMENT_FORMAT_MISMATCH', '文字排版与正文不匹配');
       const row = (
         await tx.query(
-          'INSERT INTO documents(project_id,title,body,author_id) VALUES($1,$2,$3,$4) RETURNING *',
-          [p.id, body.title, body.body, user.id],
+          'INSERT INTO documents(project_id,title,body,author_id,formatting) VALUES($1,$2,$3,$4,$5) RETURNING *',
+          [p.id, body.title, body.body, user.id, body.formatting ?? null],
         )
       ).rows[0]!;
       await tx.query(
-        'INSERT INTO document_versions(document_id,version,title,body,author_id) VALUES($1,1,$2,$3,$4)',
-        [row.id, body.title, body.body, user.id],
+        'INSERT INTO document_versions(document_id,version,title,body,author_id,formatting) VALUES($1,1,$2,$3,$4,$5)',
+        [row.id, body.title, body.body, user.id, row.formatting],
       );
       await emit(tx, project.space_id, p.id, 'document.created', row.id);
       return documentDto(row);
@@ -307,6 +309,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
         expectedVersion: z.number().int().positive(),
         title: title.optional(),
         body: z.string().max(100000).optional(),
+        formatting: documentFormatSchema.nullable().optional(),
       })
       .strict()
       .parse(req.body);
@@ -316,15 +319,19 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       if (!old) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', '文档不存在');
       const project = await projectAccess(tx, old.project_id, user.id, 'edit');
       assertVersion(old.version, body.expectedVersion);
+      const text = body.body ?? old.body;
+      const formatting = body.formatting === undefined ? rebaseDocumentFormat(old.body, text, old.formatting) : body.formatting;
+      if (formatting && !formatMatchesBody(text, formatting))
+        throw new HttpError(400, 'DOCUMENT_FORMAT_MISMATCH', '文字排版与正文不匹配');
       const row = (
         await tx.query(
-          'UPDATE documents SET title=$2,body=$3,version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *',
-          [p.id, body.title ?? old.title, body.body ?? old.body],
+          'UPDATE documents SET title=$2,body=$3,formatting=$4,version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *',
+          [p.id, body.title ?? old.title, text, formatting],
         )
       ).rows[0]!;
       await tx.query(
-        'INSERT INTO document_versions(document_id,version,title,body,author_id) VALUES($1,$2,$3,$4,$5)',
-        [p.id, row.version, row.title, row.body, user.id],
+        'INSERT INTO document_versions(document_id,version,title,body,author_id,formatting) VALUES($1,$2,$3,$4,$5,$6)',
+        [p.id, row.version, row.title, row.body, user.id, row.formatting],
       );
       await emit(tx, project.space_id, project.id, 'document.updated', p.id);
       return documentDto(row);

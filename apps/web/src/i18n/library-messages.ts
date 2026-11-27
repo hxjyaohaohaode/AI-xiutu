@@ -47,6 +47,7 @@ export const libraryEnglish: Readonly<Record<string, string>> = {
     'Sign in to choose a personal or team space. You can still open and edit photos locally.',
   创建项目: 'Create project',
   搜索当前范围素材: 'Search assets in current scope',
+  '搜索素材，如「近7天 PNG」': 'Search photos, e.g. “last 7 days PNG”',
   '搜索名称、标题、标签…': 'Search names, titles, tags…',
   清除素材搜索: 'Clear asset search',
   项目: 'Project',

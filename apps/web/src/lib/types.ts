@@ -25,6 +25,7 @@ export type SupportSettings = {
   previewUrl: string | null;
 };
 export type PublicConfig = {
+  siteFiling?: string;
   brand: { name: string; tagline: string; logoAssetId?: string | null; logoUrl?: string | null };
   capabilities: {
     smsConfigured: boolean;
@@ -128,6 +129,7 @@ export type Task = {
   createdAt: string;
 };
 export type ProjectDocument = {
+  formatting?: import('@ai-xiutu/contracts').DocumentFormat | null;
   id: string;
   title: string;
   body: string;

@@ -1,8 +1,12 @@
+import { DocumentComposer } from '../project-files/DocumentComposer';
+import { defaultLayout, withDocumentLayout, sameDocumentFormat, type DocumentFormat } from '@ai-xiutu/contracts';
+import { readProjectSheet } from '../project-files/project-sheet';
+import { ProjectSheetEditor } from '../project-files/ProjectSheetEditor';
 import { SpreadsheetImport } from '../project-files/SpreadsheetImport';
 import type { CaptureProjectCover } from '../project-files/cover';
 import { ExportContent } from '../project-files/ExportContent';
 import { getLocale, t } from '../i18n';
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import {
   ArrowRight,
   ArrowLeft,
@@ -69,6 +73,10 @@ import {
   serializeDocumentDraft,
 } from '../account/document-drafts';
 import '../ai/decisions.css';
+
+const RichDocumentEditor = lazy(() => import('../project-files/RichDocumentEditor')
+  .then(module => ({ default: module.RichDocumentEditor })));
+type DocumentContent = { title: string; body: string; formatting?: DocumentFormat | null };
 
 // These gates reflect the API's current project role. The API remains authoritative.
 export function workspacePermissions(role: string) {
@@ -1130,6 +1138,11 @@ export function DocumentsView({
   const [query, setQuery] = useState('');
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [formatting, setFormatting] = useState<DocumentFormat | null>(null);
+  const [showFormatting, setShowFormatting] = useState(false);
+  const [editorSession, setEditorSession] = useState(0);
+  const [sheetSource, setSheetSource] = useState(false);
+  const projectSheet = useMemo(() => formatting?.paragraphs.length ? null : readProjectSheet(body), [body, formatting]);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<'save' | 'read' | null>(null);
   const busy = pending !== null;
@@ -1142,8 +1155,8 @@ export function DocumentsView({
   const requestGeneration = useRef(0);
   const activeOwner = useRef<string | null>(ownerKey);
   activeOwner.current = ownerKey;
-  const currentDraft = useRef({ title, body });
-  currentDraft.current = { title, body };
+  const currentDraft = useRef<DocumentContent>({ title, body, formatting });
+  currentDraft.current = { title, body, formatting };
   const confirmation = useConfirmation();
   const documentScope = useRef({ selectedId: selected?.id, version: selected?.version, canEdit });
   documentScope.current = { selectedId: selected?.id, version: selected?.version, canEdit };
@@ -1208,6 +1221,9 @@ export function DocumentsView({
     setQuery('');
     setTitle('');
     setBody('');
+    setFormatting(null);
+    setShowFormatting(false);
+    setEditorSession(n => n + 1); setSheetSource(false);
     setDirty(false);
     setConflict(false);
     setError(null);
@@ -1238,7 +1254,7 @@ export function DocumentsView({
         setConflict(false);
         setDirty(
           currentDraft.current.title.trim() !== saved.title ||
-            currentDraft.current.body !== saved.body,
+            currentDraft.current.body !== saved.body || !sameDocumentFormat(currentDraft.current.formatting, saved.formatting),
         );
       }),
     [actorId, project.id, ownerKey],
@@ -1261,10 +1277,13 @@ export function DocumentsView({
         requestGeneration.current++;
         saveLock.current = false;
         editingLineage.current = null;
-        currentDraft.current = { title: base?.title ?? '', body: base?.body ?? '' };
+        currentDraft.current = { title: base?.title ?? '', body: base?.body ?? '', formatting: base?.formatting };
         setSelected(base);
         setTitle(currentDraft.current.title);
         setBody(currentDraft.current.body);
+        setFormatting(base?.formatting ?? null);
+        setShowFormatting(!!base?.formatting?.paragraphs.length);
+        setEditorSession(n => n + 1); setSheetSource(false);
         setPending(null);
         setCreating(false);
         setDraftInEditor(!!base);
@@ -1276,11 +1295,12 @@ export function DocumentsView({
     [actorId, project.id, ownerKey],
   );
 
-  function updateDraft(next: { title: string; body: string }) {
-    if (!actorId || activeOwner.current !== ownerKey || !canEdit) return;
+  function updateDraft(next: DocumentContent): boolean {
+    if (!actorId || activeOwner.current !== ownerKey || !canEdit) return false;
     const previous = documentDrafts.get(actorId, project.id);
     const base = previous && previous.lineage === editingLineage.current ? previous.base : selected;
-    const changed = next.title !== (base?.title ?? '') || next.body !== (base?.body ?? '');
+    const changed = next.title !== (base?.title ?? '') || next.body !== (base?.body ?? '') ||
+      !sameDocumentFormat(next.formatting, base?.formatting);
     const awaitingResult = !!previous && previous.saveState !== 'idle';
     const retainReversion = awaitingResult || conflict || !!newerVersion;
     if (changed || retainReversion) {
@@ -1297,7 +1317,7 @@ export function DocumentsView({
             ? '本页保留的文档草稿已达上限。请先返回已有草稿的项目保存，或导出并丢弃，再编辑新的文档。'
             : '文字超过草稿保留范围，本次输入未应用。',
         );
-        return;
+        return false;
       }
       editingLineage.current = captured.draft.lineage;
     } else {
@@ -1309,8 +1329,10 @@ export function DocumentsView({
     currentDraft.current = next;
     setTitle(next.title);
     setBody(next.body);
+    setFormatting(next.formatting ?? null);
     setDirty(changed || retainReversion);
     setDraftInEditor(true);
+    return true;
   }
 
   function recoverDraft() {
@@ -1318,7 +1340,10 @@ export function DocumentsView({
     if (!draft || busy || activeOwner.current !== ownerKey) return;
     setSelected(draft.base ? { ...draft.base } : null);
     setCreating(!draft.base);
-    currentDraft.current = { title: draft.title, body: draft.body };
+    currentDraft.current = { title: draft.title, body: draft.body, formatting: draft.formatting };
+    setFormatting(draft.formatting ?? null);
+    setShowFormatting(!!draft.formatting?.paragraphs.length);
+    setEditorSession(n => n + 1); setSheetSource(false);
     setTitle(draft.title);
     setBody(draft.body);
     setDirty(true);
@@ -1377,7 +1402,7 @@ export function DocumentsView({
     if (activeOwner.current !== ownerKey) return false;
     const previous = documentDrafts.get(actorId, project.id);
     if (previous && actorId) documentDrafts.remove(actorId, project.id, previous.revision);
-    let next = { title: doc?.title ?? '', body: doc?.body ?? '' };
+    let next: DocumentContent = { title: doc?.title ?? '', body: doc?.body ?? '', formatting: doc?.formatting };
     editingLineage.current = null;
     if (imported && actorId) {
       const captured = documentDrafts.put({ ...imported, actorId, projectId: project.id, projectTitle: project.title, base: null });
@@ -1394,6 +1419,9 @@ export function DocumentsView({
     setTitle(next.title);
     setBody(next.body);
     currentDraft.current = next;
+    setFormatting(next.formatting ?? null);
+    setShowFormatting(!!next.formatting?.paragraphs.length);
+    setEditorSession(n => n + 1); setSheetSource(false);
     setDraftInEditor(true);
     setDirty(!!imported);
     setError(null);
@@ -1426,7 +1454,12 @@ export function DocumentsView({
     saveLock.current = true;
     setPending('save');
     setError(null);
-    const snapshot = { title: capturedDraft.title.trim(), body: capturedDraft.body };
+    const snapshot = {
+      title: capturedDraft.title.trim(),
+      body: capturedDraft.body,
+      ...(capturedDraft.formatting || capturedDraft.base?.formatting
+        ? { formatting: capturedDraft.formatting ?? null } : {}),
+    };
     let confirmedReceipt = false;
     try {
       const result = await api<{ document?: unknown }>(
@@ -1499,7 +1532,10 @@ export function DocumentsView({
       setSelected(latest);
       setTitle(latest.title);
       setBody(latest.body);
-      currentDraft.current = { title: latest.title, body: latest.body };
+      currentDraft.current = { title: latest.title, body: latest.body, formatting: latest.formatting };
+      setFormatting(latest.formatting ?? null);
+      setShowFormatting(!!latest.formatting?.paragraphs.length);
+      setEditorSession(n => n + 1); setSheetSource(false);
       if (replacedDraft && actorId)
         documentDrafts.remove(actorId, project.id, replacedDraft.revision);
       editingLineage.current = null;
@@ -1758,26 +1794,29 @@ export function DocumentsView({
               value={title}
               readOnly={!canEdit || pending === 'read'}
               onChange={(event) => {
-                updateDraft({ title: event.target.value, body: currentDraft.current.body });
+                updateDraft({ ...currentDraft.current, title: event.target.value });
               }}
               maxLength={120}
               required
             />
-            <div className="document-code-body">
-              <div className="document-line-gutter" aria-hidden>
-                {Array.from({ length: Math.min(200, body.split('\n').length + 18) }, (_, index) => <span key={index}>{index + 1}</span>)}
-              </div>
-              <textarea
-              aria-label={t('文档内容')}
-              placeholder={t('输入项目说明、参考要求或交付文案…')}
-              value={body}
-              readOnly={!canEdit || pending === 'read'}
-              onChange={(event) => {
-                updateDraft({ title: currentDraft.current.title, body: event.target.value });
-              }}
-              maxLength={100000}
+            {projectSheet && !sheetSource ? <ProjectSheetEditor key={editorSession} sheet={projectSheet} title={title}
+              chart={formatting?.layout?.chart ?? 'bar'} onChart={chart => updateDraft({...currentDraft.current,
+                formatting: withDocumentLayout(formatting, {...(formatting?.layout ?? defaultLayout), chart})})}
+              onSource={()=>setSheetSource(true)} readOnly={!canEdit || pending === 'read'}
+              onChange={value => updateDraft({...currentDraft.current,body:value})}/>
+            : <>
+              {projectSheet && <button type="button" className="text-button document-format-toggle"
+                onClick={() => setSheetSource(false)}>{t('工作表')}</button>}
+              <DocumentComposer key={editorSession} body={body} title={title} formatting={formatting}
+                readOnly={!canEdit || pending === 'read'}
+                onChange={(value, nextFormat) => updateDraft({ title: currentDraft.current.title, body:value, formatting:nextFormat })}
+                onRich={!showFormatting && !formatting?.paragraphs.length && !projectSheet ? () => setShowFormatting(true) : undefined}
+                richEditor={(showFormatting || !!formatting?.paragraphs.length) && <Suspense fallback={<Busy label={t('读取中')} />}>
+                  <RichDocumentEditor body={body} formatting={formatting} readOnly={!canEdit || pending === 'read'}
+                    onChange={next => updateDraft({...next, title:currentDraft.current.title})}/>
+                </Suspense> || undefined}
               />
-            </div>
+            </>}
             {(newerVersion || conflict) && (
               <div className="document-conflict">
                 <span>{t('云端已有更新。当前文字已保留，读取前可先复制需要的内容。')}</span>
@@ -1802,7 +1841,7 @@ export function DocumentsView({
                   <button type="button" className="text-button" disabled={busy || pendingSave}
                     onClick={() => onUseDocument(selected)}>{t('用此文档与 AI 创作')}</button>
                 )}
-                <ExportContent key={selected?.id ?? ownerKey} title={title} body={body} captureCover={captureCover} />
+                <ExportContent key={selected?.id ?? ownerKey} title={title} body={body} formatting={formatting} captureCover={captureCover} />
                 {dirty && retainedDraft && (
                   <button type="button" className="button button-secondary" onClick={exportDraft}>
                     <DownloadSimple size={16} aria-hidden />

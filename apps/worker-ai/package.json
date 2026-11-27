@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@ai-xiutu/ai": "*",
-    "@ai-xiutu/db": "*"
+    "@ai-xiutu/db": "*",
+    "@ai-xiutu/storage": "*"
   }
 }

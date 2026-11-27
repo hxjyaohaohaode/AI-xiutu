@@ -177,9 +177,10 @@ export function isAuthOtpReceipt(
   );
 }
 
-/** Only these definitive errors occur after the backend has consumed a valid code. */
+/** Old servers consumed a valid code before checking eligibility. New servers report rollback explicitly. */
 export function authFailureConsumedCode(mode: AuthMode, error: unknown): boolean {
-  const code = authFailure(error).code;
+  const { code, details } = authFailure(error);
+  if (record(details) && details.otpConsumed === false) return false;
   return mode === 'register'
     ? ['INVITE_INVALID', 'INVITE_REQUIRED', 'REGISTRATION_UNAVAILABLE'].includes(String(code))
     : mode === 'otp'

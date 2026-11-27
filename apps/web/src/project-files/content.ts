@@ -68,6 +68,8 @@ export function contentBlocks(body: string, strictTables = false): MessageBlock[
   if (plainTable) return [plainTable];
   const lines = body.replace(/\r\n?/g, '\n').split('\n');
   return messageBlocks(body, 256).map((block) => {
+    if (block.kind === 'heading')
+      return { ...block, level: lines[block.line]!.trimStart().match(/^#+/)![0].length };
     if (
       strictTables &&
       block.kind === 'table' &&

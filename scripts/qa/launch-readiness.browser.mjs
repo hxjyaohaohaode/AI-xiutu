@@ -485,6 +485,59 @@ try {
   assert.ok(await narrow.locator('.library-context-tabs:visible').evaluate((node) =>
     node.getBoundingClientRect().height <= 44 && node.clientWidth + 2 >= node.scrollWidth),
   'the narrow gallery navigation fits all sections and actions on one line');
+  // Hold only grouping: a completed authorized list is independently usable.
+  const assetRow = (await fixture.db.query('SELECT mime,name FROM assets WHERE id=$1', [fixture.assetId])).rows[0];
+  const mimeTerm = assetRow.mime.split('/')[1].toUpperCase();
+  const search = gallery.getByRole('searchbox', { name: '搜索当前范围素材' });
+  const card = gallery.locator('[data-id="' + fixture.assetId + '"]');
+  let releaseList, releaseFolder;
+  const holdList = new Promise((resolve) => { releaseList = resolve; });
+  const holdFolder = new Promise((resolve) => { releaseFolder = resolve; });
+  const pattern = '**/v1/resources?**';
+  const delayFolder = async (route) => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get('query') === assetRow.name) await (params.has('groupBy') ? holdFolder : holdList);
+    await route.continue().catch(() => {});
+  };
+  await narrow.route(pattern, delayFolder);
+  try {
+    const listRead = narrow.waitForResponse((response) => {
+      const { pathname, searchParams } = new URL(response.url());
+      return pathname === '/v1/resources' && !searchParams.has('groupBy') && searchParams.get('query') === assetRow.name;
+    });
+    await search.fill('近7天 ' + mimeTerm + ' "' + assetRow.name + '"');
+    await gallery.locator('.library-group[inert]').waitFor();
+    releaseList();
+    const listing = await listRead;
+    assert.equal(listing.status(), 200);
+    const params = new URL(listing.url()).searchParams;
+    assert.equal(params.get('mime'), assetRow.mime);
+    assert.ok(params.get('createdFrom'));
+    const details = card.locator('.library-masonry-more');
+    await details.click({ timeout: 5000 });
+    const hit = await details.boundingBox();
+    assert.ok(hit.width >= 44 && hit.height >= 44);
+    assert.ok(await details.evaluate((node) => parseFloat(getComputedStyle(node).transitionDuration) < 0.001));
+    await narrow.getByRole('dialog').getByRole('button', { name: '打开原图', exact: true }).waitFor();
+    await narrow.keyboard.press('Escape');
+    await narrow.getByRole('dialog').waitFor({ state: 'hidden' });
+  } finally {
+    releaseList();
+    releaseFolder();
+    await narrow.unroute(pattern, delayFolder);
+  }
+  // If a refresh reports revoked access, cached thumbnails must disappear.
+  const denied = (route) => route.fulfill({ status: 403, contentType: 'application/json',
+    body: JSON.stringify({ error: { code: 'FORBIDDEN', message: '项目访问权限已变化' } }) });
+  await narrow.route(pattern, denied);
+  try {
+    await gallery.getByRole('button', { name: '刷新', exact: true }).click();
+    await gallery.getByText('项目访问权限已变化', { exact: true }).first().waitFor();
+    assert.equal(await gallery.locator('[data-id]').count(), 0);
+  } finally { await narrow.unroute(pattern, denied); }
+  await search.fill('');
+  await gallery.locator('.library-reference-masonry img:visible').first().waitFor();
+  result.cases.push('authorized compound photo search shows the list before folders, clears denied cached images, and recovers');
   await take(narrow, 'narrow-phone-library');
   result.cases.push('operator replaces code and updates the visible exchange on another context');
   await narrow.getByRole('button', { name: '打开空间与项目', exact: true }).click();

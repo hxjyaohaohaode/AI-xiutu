@@ -4,13 +4,12 @@ umask 077
 
 # Install as an administrator-owned script on the Lighthouse host. The existing
 # Compose project, volume names, TLS endpoint and provider settings are local.
+tool_dir=$(cd -- "$(dirname -- "$0")" && pwd)
 cd /home/ubuntu/xiutu-pilot
 repo=hxjyaohaohaode/AI-xiutu
 api="https://api.github.com/repos/$repo"
 asset=xiutu-linux-amd64.tar.gz
 mkdir -p state
-exec 9>state/deploy.lock
-flock -n 9 || exit 0
 
 github_api() {
   curl --fail --silent --show-error --connect-timeout 12 --max-time 26 \
@@ -34,16 +33,79 @@ image_ref() {
   fi
 }
 
+smoke() {
+  local ref=$1 service target id expected actual origin hostname code registration_mode
+  local -a probe
+  for service in api worker web; do
+    target=server
+    [[ "$service" != web ]] || target=web
+    id=$(compose ps --quiet "$service") || return 1
+    local image
+    image=$(compose config --format json | jq -er --arg service "$service" '.services[$service].image') || return 1
+    if [[ "$image" != "xiutu-pilot-$target:$ref" && ! ( "$service" == web && "$image" == "xiutu-pilot-web:$ref-icp" ) ]]; then return 1; fi
+    expected=$(docker image inspect --format '{{.Id}}' "$image") || return 1
+    actual=$(docker inspect --format '{{.State.Running}} {{.Image}}' "$id") || return 1
+    [[ "$actual" == "true $expected" ]] || return 1
+  done
+  origin=$(sed -n 's/^APP_ORIGIN=\(https:\/\/[A-Za-z0-9.-]*\)\r*$/\1/p' .env)
+  [[ -n "$origin" ]] || return 1
+  hostname=${origin#https://}
+  probe=(curl --silent --show-error --max-time 12 --resolve "$hostname:443:127.0.0.1")
+  if [[ -f state/friend-link ]]; then
+    [[ "$(cat state/friend-link)" =~ ^[a-f0-9]{48}$ ]] || return 1
+    code=$("${probe[@]}" --cookie-jar "$jar" -o /dev/null -w '%{http_code}' "$origin/go/$(cat state/friend-link)") || return 1
+    [[ "$code" == 303 ]] || return 1
+  fi
+  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/") || return 1
+  [[ "$code" == 200 ]] || return 1
+  "${probe[@]}" --fail --cookie "$jar" "$origin/health" | jq -e '.ok == true' >/dev/null || return 1
+  registration_mode=$(compose exec -T db psql -X -v ON_ERROR_STOP=1 -U xiutu -d xiutu -At \
+    -c 'SELECT registration_mode FROM app_config WHERE id=true' </dev/null) || return 1
+  [[ "$registration_mode" == open || "$registration_mode" == invite ]] || return 1
+  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/public-config" |
+    jq -e --arg mode "$registration_mode" \
+      '.registrationMode == $mode and .capabilities.smsConfigured == true' >/dev/null || return 1
+  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/session" |
+    jq -e '.user == null and .spaces == []' >/dev/null || return 1
+  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/v1/projects") || return 1
+  [[ "$code" == 401 ]]
+}
+
+
+mode=auto
+if (( $# )); then
+  [[ $# == 2 && ( $1 == --stage || $1 == --verify ) && $2 =~ ^[0-9a-f]{40}$ ]] || {
+    echo 'Usage: follow-main.sh [--stage|--verify EXACT_MAIN_SHA]' >&2; exit 2;
+  }
+  mode=$1
+fi
+if [[ $mode == --verify ]]; then
+  export XIUTU_IMAGE_REF
+  XIUTU_IMAGE_REF=$(image_ref "$2")
+  jar=$(mktemp state/cookies.XXXXXXXX)
+  trap 'rm -f -- "$jar"' EXIT
+  smoke "$XIUTU_IMAGE_REF"
+  echo "Verified images, database, HTTPS and session boundaries for $2."
+  exit 0
+fi
+exec 9>state/deploy.lock
+if [[ $mode == --stage ]]; then flock -w 30 9 || exit 75; else flock -n 9 || exit 0; fi
+
+if [[ $mode == auto && -f state/upgrade-schema.pending ]]; then
+  echo 'A coordinated database upgrade is pending; the timer is leaving services with the migration operator.'
+  exit 0
+fi
 current=$(source_sha)
 [[ "$current" =~ ^[a-f0-9]{40}$ ]] || { echo 'Missing current release SHA.' >&2; exit 1; }
 export XIUTU_IMAGE_REF
 XIUTU_IMAGE_REF=$(image_ref "$current")
 head=$(main_sha)
-if [[ "$head" == "$current" ]]; then
+if [[ $mode == --stage && $head != "$2" ]]; then echo 'Expected main has moved.' >&2; exit 75; fi
+if [[ $mode == auto && "$head" == "$current" ]]; then
   echo "Main $head is already running."
   exit 0
 fi
-if [[ -f state/blocked-sha && "$(cat state/blocked-sha)" == "$head" ]]; then
+if [[ $mode == auto && -f state/blocked-sha && "$(cat state/blocked-sha)" == "$head" ]]; then
   echo "Main $head needs operator attention; keeping the previous release."
   exit 0
 fi
@@ -79,6 +141,7 @@ http=$(curl --silent --show-error --connect-timeout 12 --max-time 26 \
   -H 'Accept: application/vnd.github+json' "$api/releases/tags/cloud-$head")
 if [[ "$http" == 404 ]]; then
   echo "Main $head is waiting for a verified release."
+  [[ $mode == auto ]] || exit 75
   exit 0
 fi
 test "$http" = 200
@@ -95,55 +158,81 @@ for check in checks.yml frontend-system-redesign.yml assistant-checks.yml accoun
     jq -r --arg sha "$head" '[.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push")][0].conclusion // "pending"')
   if [[ "$result" != success ]]; then
     echo "$check: $result; keeping the previous release."
+    [[ $mode == auto ]] || exit 75
     exit 0
   fi
 done
-free_kib=$(df -Pk . | awk 'NR==2 {print $4}')
-if (( free_kib < 6291456 )); then
-  echo 'At least 6 GiB of free disk space is required to stage images.' >&2
-  exit 1
-fi
-
-mkdir -p state/downloads
-bundle="state/downloads/$head-${digest#sha256:}.part"
-# Keep one partial download and resume it across network interruptions or
-# restarts. It cannot reach Docker until the complete asset digest matches.
-find state/downloads -maxdepth 1 -type f -name '*.part' ! -name "${bundle##*/}" -delete
-touch "$bundle"
-already=$(stat -c '%s' "$bundle")
-if (( already > asset_size )); then
-  rm -f -- "$bundle"
-  echo 'Cached bundle exceeds the release manifest size.' >&2
-  exit 1
-fi
-if (( already < asset_size )); then
-  echo "Staging $head from byte $already of $asset_size."
-  curl --fail --silent --show-error --location --continue-at - \
-    --connect-timeout 18 --max-time 900 --speed-limit 4096 --speed-time 60 \
-    --proto '=https' --proto-redir '=https' \
-    --output "$bundle" "https://github.com/$repo/releases/download/cloud-$head/$asset" || {
-      echo "Download incomplete; retained $(stat -c '%s' "$bundle") staging bytes for the next attempt."
-      exit 0
-    }
-fi
-if [[ "$(stat -c '%s' "$bundle")" != "$asset_size" ]] ||
-   ! printf '%s  %s\n' "${digest#sha256:}" "$bundle" | sha256sum --check --status; then
-  rm -f -- "$bundle"
-  echo 'GitHub asset size or SHA-256 digest did not match.' >&2
-  exit 1
-fi
-docker image load --input "$bundle" --platform linux/amd64
-rm -f -- "$bundle"
-
 compose_hash=$(sed 's/\r$//' compose.yaml | sha256sum | cut -d ' ' -f 1)
-for target in server web; do
-  metadata=$(docker image inspect --format '{{.Os}}/{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}} {{index .Config.Labels "io.ai-xiutu.compose-sha256"}}' "xiutu-pilot-$target:$head")
-  if [[ "$metadata" != "linux/amd64 $head $compose_hash" ]]; then
-    echo "Main $head changes the Compose contract or has invalid image metadata; keeping the previous release." >&2
+images_match() {
+  local target labels
+  for target in server web; do
+    labels=$(docker image inspect --format '{{.Os}}/{{.Architecture}} {{index .Config.Labels "org.opencontainers.image.revision"}} {{index .Config.Labels "io.ai-xiutu.compose-sha256"}}' "xiutu-pilot-$target:$head" 2>/dev/null) || return 1
+    [[ "$labels" == "linux/amd64 $head $compose_hash" ]] || return 1
+  done
+}
+if ! images_match; then
+  mkdir -p state/downloads
+  bundle="state/downloads/$head-${digest#sha256:}.part"
+  # A standalone download for an older revision may still be active. Leave its
+  # stable lock inode in place and reclaim only our recognized, idle partials.
+  for item in state/downloads/*.part state/downloads/*.part.resume; do
+    old=${item%.resume}
+    [[ -e "$item" && "$old" != "$bundle" && "${old##*/}" =~ ^[a-f0-9]{40}-[a-f0-9]{64}\.part$ ]] || continue
+    (
+      flock -n 8 || exit 0
+      rm -f -- "$old" "$old.resume/payload" "$old.resume/ranges.json" "$old.resume/ranges.tmp"
+      if [[ -d "$old.resume" ]]; then rmdir -- "$old.resume" || true; fi
+    ) 8>>"$old.lock"
+  done
+  free_kib=$(df -Pk . | awk 'NR==2 {print $4}')
+  if (( free_kib < 6291456 )); then
+    echo 'At least 6 GiB of free disk space is required to stage images.' >&2
+    exit 1
+  fi
+  touch "$bundle"
+  already=$(stat -c '%s' "$bundle")
+  if (( already > asset_size )); then
+    rm -f -- "$bundle"
+    echo 'Cached bundle exceeds the release manifest size.' >&2
+    exit 1
+  fi
+  if (( already < asset_size )); then
+    echo "Staging $head from byte $already of $asset_size."
+    if [[ -f "$tool_dir/fetch-release.py" ]]; then
+      python3 "$tool_dir/fetch-release.py" --url "https://github.com/$repo/releases/download/cloud-$head/$asset" \
+        --sha256 "$digest" --size "$asset_size" --output "$bundle"
+    else
+      curl --fail --silent --show-error --location --continue-at - \
+      --connect-timeout 18 --max-time 900 --speed-limit 4096 --speed-time 60 \
+      --proto '=https' --proto-redir '=https' \
+      --output "$bundle" "https://github.com/$repo/releases/download/cloud-$head/$asset" || {
+        echo "Download incomplete; retained $(stat -c '%s' "$bundle") staging bytes for the next attempt."
+        [[ $mode == auto ]] || exit 75
+        exit 0
+      }
+    fi
+  fi
+  if [[ "$(stat -c '%s' "$bundle")" != "$asset_size" ]] ||
+     ! printf '%s  %s\n' "${digest#sha256:}" "$bundle" | sha256sum --check --status; then
+    rm -f -- "$bundle"
+    echo 'GitHub asset size or SHA-256 digest did not match.' >&2
+    exit 1
+  fi
+  docker image load --input "$bundle" --platform linux/amd64
+  rm -f -- "$bundle"
+
+  if ! images_match; then
+    echo "Staged image metadata or Compose contract did not match $head." >&2
     printf '%s\n' "$head" > state/blocked-sha
     exit 1
   fi
-done
+fi
+
+if [[ $mode == --stage ]]; then
+  [[ "$(main_sha)" == "$head" ]] || exit 75
+  echo "Staged both verified images for $head; serving containers were not changed."
+  exit 0
+fi
 
 required=$(docker run --rm --network none --memory 160m \
   --entrypoint node "xiutu-pilot-server:$head" --import tsx --input-type=module \
@@ -156,40 +245,6 @@ if [[ ! "$required" =~ ^[0-9]+(,[0-9]+)*$ || "$applied" != "$required" ]]; then
   exit 1
 fi
 
-smoke() {
-  local ref=$1 service target id expected actual origin hostname code registration_mode
-  local -a probe
-  for service in api worker web; do
-    target=server
-    [[ "$service" != web ]] || target=web
-    id=$(compose ps --quiet "$service") || return 1
-    expected=$(docker image inspect --format '{{.Id}}' "xiutu-pilot-$target:$ref") || return 1
-    actual=$(docker inspect --format '{{.State.Running}} {{.Image}}' "$id") || return 1
-    [[ "$actual" == "true $expected" ]] || return 1
-  done
-  origin=$(sed -n 's/^APP_ORIGIN=\(https:\/\/[A-Za-z0-9.-]*\)\r*$/\1/p' .env)
-  [[ -n "$origin" ]] || return 1
-  hostname=${origin#https://}
-  probe=(curl --silent --show-error --max-time 12 --resolve "$hostname:443:127.0.0.1")
-  if [[ -f state/friend-link ]]; then
-    [[ "$(cat state/friend-link)" =~ ^[a-f0-9]{48}$ ]] || return 1
-    code=$("${probe[@]}" --cookie-jar "$jar" -o /dev/null -w '%{http_code}' "$origin/go/$(cat state/friend-link)") || return 1
-    [[ "$code" == 303 ]] || return 1
-  fi
-  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/") || return 1
-  [[ "$code" == 200 ]] || return 1
-  "${probe[@]}" --fail --cookie "$jar" "$origin/health" | jq -e '.ok == true' >/dev/null || return 1
-  registration_mode=$(compose exec -T db psql -X -v ON_ERROR_STOP=1 -U xiutu -d xiutu -At \
-    -c 'SELECT registration_mode FROM app_config WHERE id=true' </dev/null) || return 1
-  [[ "$registration_mode" == open || "$registration_mode" == invite ]] || return 1
-  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/public-config" |
-    jq -e --arg mode "$registration_mode" \
-      '.registrationMode == $mode and .capabilities.smsConfigured == true' >/dev/null || return 1
-  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/session" |
-    jq -e '.user == null and .spaces == []' >/dev/null || return 1
-  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/v1/projects") || return 1
-  [[ "$code" == 401 ]]
-}
 
 jar=$(mktemp state/cookies.XXXXXXXX)
 # Check main again after the slow download and staging, before touching services.

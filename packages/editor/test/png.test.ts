@@ -33,3 +33,41 @@ test('straight RGBA PNG round-trips all channel bytes in compressed and stored s
     Object.defineProperty(globalThis, 'CompressionStream', native);
   }
 });
+
+test('explicit native raster budget encodes a cutout-sized frame above 4 MP', async () => {
+  const width = 2050,
+    height = 2050;
+  const data = new Uint8ClampedArray(width * height * 4);
+  data.set([118, 192, 46, 1], data.length - 4);
+  await assert.rejects(encodeRgbaPng({ width, height, data }), /budget/);
+  const blob = await encodeRgbaPng({ width, height, data }, 8_388_608);
+  const decoded = await sharp(Buffer.from(await blob.arrayBuffer()))
+    .ensureAlpha()
+    .raw()
+    .toBuffer();
+  assert.equal(Buffer.compare(decoded, Buffer.from(data)), 0);
+});
+
+test('stored PNG can split a panoramic scanline across DEFLATE blocks', async () => {
+  const width = 16_384,
+    height = 2;
+  const data = Uint8ClampedArray.from(
+    { length: width * height * 4 },
+    (_, index) => (index * 37) & 255,
+  );
+  const restore = Object.getOwnPropertyDescriptor(globalThis, 'CompressionStream')!;
+  try {
+    Object.defineProperty(globalThis, 'CompressionStream', {
+      configurable: true,
+      value: undefined,
+    });
+    const png = await encodeRgbaPng({ width, height, data });
+    const decoded = await sharp(Buffer.from(await png.arrayBuffer()))
+      .ensureAlpha()
+      .raw()
+      .toBuffer();
+    assert.equal(Buffer.compare(decoded, Buffer.from(data)), 0);
+  } finally {
+    Object.defineProperty(globalThis, 'CompressionStream', restore);
+  }
+});

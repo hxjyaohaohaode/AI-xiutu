@@ -19,7 +19,7 @@
     "@ai-xiutu/providers": "*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "https-proxy-agent": "9.1.0",
-    "js-tiktoken": "1.0.21",
+    "tiktoken": "1.0.22",
     "ws": "8.22.2"
   },
   "devDependencies": {

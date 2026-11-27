@@ -9,6 +9,7 @@ import {
   getEntitlements,
   adjustUnits,
   type Database,
+  type Queryable,
 } from '@ai-xiutu/db';
 import {
   HttpError,
@@ -19,7 +20,8 @@ import {
   normalizePhone,
   requireUser,
   requireOperator,
-  spaceRole,
+  lockOperatorSession,
+  lockUserSession,
   projectAccess,
   maskPhone,
   hash,
@@ -142,6 +144,14 @@ function settingsDto(row: Record<string, any>) {
     },
   };
 }
+async function lockWalletAccess(tx: Queryable, spaceId: string, userId: string) {
+  const membership = await tx.query(
+    'SELECT role FROM memberships WHERE space_id=$1 AND user_id=$2 FOR SHARE',
+    [spaceId, userId],
+  );
+  if (!membership.rowCount) throw new HttpError(403, 'SPACE_FORBIDDEN', '没有此空间的操作权限');
+}
+
 export function registerOperations(
   app: FastifyInstance,
   db: Database,
@@ -151,32 +161,35 @@ export function registerOperations(
 ): void {
   app.get('/v1/me/entitlements', async (req) => {
     const user = requireUser(req);
-    const p = z.object({ spaceId: id.optional() }).parse(req.query);
+    const { spaceId } = z.object({ spaceId: id.optional() }).parse(req.query);
     return transaction(db, async (tx) => {
+      await lockUserSession(tx, user.id, req.cookies.xiutu_session ?? '');
       const personal = await ensureMonthlyGrant(tx, user.id);
-      const target = p.spaceId ?? personal;
-      await spaceRole(tx, target, user.id);
+      const target = spaceId ?? personal;
+      await lockWalletAccess(tx, target, user.id);
       return getEntitlements(tx, target);
     });
   });
   app.get('/v1/me/usage', async (req) => {
     const user = requireUser(req);
-    const p = z.object({ spaceId: id.optional() }).parse(req.query);
-    let target = p.spaceId;
-    if (!target)
-      target = (
-        await db.query("SELECT id FROM spaces WHERE owner_id=$1 AND kind='personal'", [user.id])
-      ).rows[0]?.id;
-    if (!target) throw new HttpError(404, 'SPACE_NOT_FOUND', '空间不存在');
-    await spaceRole(db, target, user.id);
-    return {
-      entries: (
-        await db.query(
-          'SELECT id,lot_id AS "lotId",kind,units,reason,created_at AS "createdAt" FROM ledger_entries WHERE space_id=$1 ORDER BY id DESC LIMIT 100',
-          [target],
-        )
-      ).rows,
-    };
+    const { spaceId } = z.object({ spaceId: id.optional() }).parse(req.query);
+    return transaction(db, async (tx) => {
+      await lockUserSession(tx, user.id, req.cookies.xiutu_session ?? '');
+      const target =
+        spaceId ??
+        (await tx.query("SELECT id FROM spaces WHERE owner_id=$1 AND kind='personal'", [user.id]))
+          .rows[0]?.id;
+      if (!target) throw new HttpError(404, 'SPACE_NOT_FOUND', '空间不存在');
+      await lockWalletAccess(tx, target, user.id);
+      return {
+        entries: (
+          await tx.query(
+            'SELECT id,lot_id AS "lotId",kind,units,reason,created_at AS "createdAt" FROM ledger_entries WHERE space_id=$1 ORDER BY id DESC LIMIT 100',
+            [target],
+          )
+        ).rows,
+      };
+    });
   });
   app.get('/v1/ops/overview', async (req) => {
     requireOperator(req);
@@ -209,10 +222,11 @@ export function registerOperations(
       ? normalizePhone(compact)
       : null;
     const term = query.replace(/[\\%_]/g, '\\$&');
-    const canManageAccounts = !!(await db.query(
-      'SELECT 1 FROM operator_users WHERE user_id=$1 AND manages_accounts',
-      [actor.id],
-    )).rowCount;
+    const canManageAccounts = !!(
+      await db.query('SELECT 1 FROM operator_users WHERE user_id=$1 AND manages_accounts', [
+        actor.id,
+      ])
+    ).rowCount;
     const rows = (
       await db.query(
         "SELECT u.id,u.display_name,u.phone,u.status,u.created_at,o.user_id IS NOT NULL AS is_operator,COALESCE(o.manages_accounts,false) AS manages_accounts FROM users u LEFT JOIN operator_users o ON o.user_id=u.id WHERE CASE WHEN $2::text IS NOT NULL THEN u.phone=$2 ELSE u.display_name ILIKE $1 ESCAPE '\\' OR u.phone ILIKE $1 ESCAPE '\\' END ORDER BY u.created_at DESC LIMIT 100",
@@ -236,6 +250,7 @@ export function registerOperations(
     const actor = requireOperator(req);
     const p = z.object({ id }).parse(req.params);
     return transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const user = (
         await tx.query(
           'SELECT id,phone,display_name,status,phone_verified_at FROM users WHERE id=$1 FOR SHARE',
@@ -277,6 +292,7 @@ export function registerOperations(
     const actor = requireOperator(req);
     const p = z.object({ phone: phoneSchema, displayName: title, reason }).strict().parse(req.body);
     const user = await transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const row = (
         await tx.query(
           "INSERT INTO users(phone,display_name,status) VALUES($1,$2,'pending') RETURNING *",
@@ -304,6 +320,7 @@ export function registerOperations(
       .parse(req.body);
     if (actor.id === p.id) throw new HttpError(400, 'SELF_STATUS_CHANGE', '不能在此停用自己的账号');
     const user = await transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const old = (await tx.query('SELECT * FROM users WHERE id=$1 FOR UPDATE', [p.id])).rows[0];
       if (!old) throw new HttpError(404, 'USER_NOT_FOUND', '账号不存在');
       if (old.status === 'closed')
@@ -322,7 +339,10 @@ export function registerOperations(
           [p.id, nextStatus],
         )
       ).rows[0]!;
-      if (nextStatus !== 'active') await tx.query('DELETE FROM sessions WHERE user_id=$1', [p.id]);
+      if (nextStatus !== 'active') {
+        await tx.query('DELETE FROM sessions WHERE user_id=$1', [p.id]);
+        await tx.query('UPDATE invitations SET revoked_at=clock_timestamp() WHERE created_by=$1 AND revoked_at IS NULL', [p.id]);
+      }
       await audit(tx, actor.id, 'operator.user_status', 'user', p.id, {
         from: old.status,
         to: nextStatus,
@@ -340,8 +360,9 @@ export function registerOperations(
     return { user };
   });
   async function readOpsConfig() {
-    const row = (await db.query('SELECT *,updated_at::text AS revision FROM app_config WHERE id=true'))
-      .rows[0]!;
+    const row = (
+      await db.query('SELECT *,updated_at::text AS revision FROM app_config WHERE id=true')
+    ).rows[0]!;
     return { ...settingsDto(row), revision: row.revision as string };
   }
   app.get('/v1/ops/config', async (req) => {
@@ -367,8 +388,12 @@ export function registerOperations(
       .strict()
       .parse(req.body);
     return transaction(db, async (tx) => {
-      const current = (await tx.query('SELECT *,updated_at::text AS revision FROM app_config WHERE id=true FOR UPDATE'))
-        .rows[0]!;
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
+      const current = (
+        await tx.query(
+          'SELECT *,updated_at::text AS revision FROM app_config WHERE id=true FOR UPDATE',
+        )
+      ).rows[0]!;
       if (body.expectedRevision !== undefined && body.expectedRevision !== current.revision)
         throw new HttpError(409, 'SITE_CONFIG_CHANGED', '站点设置已更新，请刷新后重新编辑');
       if (body.brand?.logoAssetId && body.brand.logoAssetId !== current.brand?.logoAssetId) {
@@ -380,15 +405,17 @@ export function registerOperations(
         if (!asset) throw new HttpError(400, 'LOGO_NOT_FOUND', 'Logo图片不存在');
         await projectAccess(tx, asset.project_id, actor.id, 'admin');
       }
-      const saved = (await tx.query(
-        'UPDATE app_config SET brand=$1,registration_mode=$2,free_units=$3,quota_policy_version=quota_policy_version+$4,updated_at=clock_timestamp() WHERE id=true RETURNING *,updated_at::text AS revision',
-        [
-          JSON.stringify(body.brand ?? current.brand),
-          body.registrationMode ?? current.registration_mode,
-          body.quota?.freeUnits ?? current.free_units,
-          body.quota && body.quota.freeUnits !== current.free_units ? 1 : 0,
-        ],
-      )).rows[0]!;
+      const saved = (
+        await tx.query(
+          'UPDATE app_config SET brand=$1,registration_mode=$2,free_units=$3,quota_policy_version=quota_policy_version+$4,updated_at=clock_timestamp() WHERE id=true RETURNING *,updated_at::text AS revision',
+          [
+            JSON.stringify(body.brand ?? current.brand),
+            body.registrationMode ?? current.registration_mode,
+            body.quota?.freeUnits ?? current.free_units,
+            body.quota && body.quota.freeUnits !== current.free_units ? 1 : 0,
+          ],
+        )
+      ).rows[0]!;
       await audit(tx, actor.id, 'operator.config', 'config', 'main', {
         changed: Object.keys(body).filter((k) => k !== 'reason' && k !== 'expectedRevision'),
         reason: body.reason,
@@ -419,13 +446,24 @@ export function registerOperations(
     const actor = requireOperator(req);
     const p = planSchema.strict().parse(req.body);
     const plan = await transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const row = (await tx.query('INSERT INTO plans DEFAULT VALUES RETURNING id')).rows[0]!;
       const version = (
         await tx.query(
           `INSERT INTO plan_versions(plan_id,version,name,units,price_cents,expires_after_days,active,created_by,description,benefits,kind)
            VALUES($1,1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-          [row.id, p.name, p.units, p.priceCents, p.expiresAfterDays ?? null, p.active, actor.id,
-            p.description ?? '', p.benefits ?? [], p.kind ?? 'credits'],
+          [
+            row.id,
+            p.name,
+            p.units,
+            p.priceCents,
+            p.expiresAfterDays ?? null,
+            p.active,
+            actor.id,
+            p.description ?? '',
+            p.benefits ?? [],
+            p.kind ?? 'credits',
+          ],
         )
       ).rows[0]!;
       await audit(tx, actor.id, 'operator.plan_create', 'plan', row.id, {
@@ -444,15 +482,18 @@ export function registerOperations(
       .strict()
       .parse(req.body);
     const plan = await transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const current = (await tx.query('SELECT * FROM plans WHERE id=$1 FOR UPDATE', [params.id]))
         .rows[0];
       if (!current) throw new HttpError(404, 'PLAN_NOT_FOUND', '套餐不存在');
       if (p.expectedVersion !== undefined && current.current_version !== p.expectedVersion)
         throw new HttpError(409, 'PLAN_VERSION_CHANGED', '套餐已经更新，请重新读取');
-      const previous = (await tx.query(
-        'SELECT description,benefits,kind FROM plan_versions WHERE plan_id=$1 AND version=$2',
-        [params.id, current.current_version],
-      )).rows[0]!;
+      const previous = (
+        await tx.query(
+          'SELECT description,benefits,kind FROM plan_versions WHERE plan_id=$1 AND version=$2',
+          [params.id, current.current_version],
+        )
+      ).rows[0]!;
       const next = current.current_version + 1;
       const row = (
         await tx.query(
@@ -511,6 +552,7 @@ export function registerOperations(
       throw new HttpError(400, 'MODEL_PROFILE_MISMATCH', '模型 ID 与 OpenAI 接口用途不匹配');
     const { reason: why, expectedVersion, ...config } = body;
     const model = await transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const encoded = JSON.stringify(config);
       const result =
         expectedVersion === 0
@@ -556,6 +598,7 @@ export function registerOperations(
     if (p.idempotencyKey.startsWith('support:wechat:'))
       throw new HttpError(400, 'ADJUSTMENT_KEY_RESERVED', '请使用微信赞赏发放入口');
     return transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       if (!(await tx.query('SELECT id FROM spaces WHERE id=$1', [p.spaceId])).rowCount)
         throw new HttpError(404, 'SPACE_NOT_FOUND', '空间不存在');
       const adjustment = await adjustUnits(tx, {
@@ -574,11 +617,17 @@ export function registerOperations(
   });
   app.get('/v1/ops/audit', async (req) => {
     requireOperator(req);
-    const { before, limit } = z.object({
-      before: z.string().regex(/^[1-9][0-9]{0,18}$/)
-        .refine((value) => BigInt(value) <= 9_223_372_036_854_775_807n).optional(),
-      limit: z.coerce.number().int().min(1).max(50).default(10),
-    }).strict().parse(req.query);
+    const { before, limit } = z
+      .object({
+        before: z
+          .string()
+          .regex(/^[1-9][0-9]{0,18}$/)
+          .refine((value) => BigInt(value) <= 9_223_372_036_854_775_807n)
+          .optional(),
+        limit: z.coerce.number().int().min(1).max(50).default(10),
+      })
+      .strict()
+      .parse(req.query);
     const { rows } = await db.query(
       'SELECT id,actor_id AS "actorId",action,target_type AS "targetType",target_id AS "targetId",detail,created_at AS "createdAt" FROM audit_entries WHERE ($1::bigint IS NULL OR id<$1) ORDER BY id DESC LIMIT $2',
       [before ?? null, limit + 1],
@@ -598,6 +647,7 @@ export function registerOperations(
       .parse(req.body);
     const code = opaqueToken();
     const invitation = await transaction(db, async (tx) => {
+      await lockOperatorSession(tx, actor.id, req.cookies.xiutu_session ?? '');
       const row = (
         await tx.query(
           'INSERT INTO invitations(code_hash,kind,max_uses,expires_at,created_by) VALUES($1,\'registration\',$2,clock_timestamp()+($3::text||\' days\')::interval,$4) RETURNING id,expires_at AS "expiresAt",max_uses AS "maxUses"',

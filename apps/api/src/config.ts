@@ -11,6 +11,7 @@ export interface AppConfig {
   maxPixels: number;
   trustProxyHops?: number;
   supportQrFile?: string;
+  siteFiling?: string;
 }
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   if (!env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -42,5 +43,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     maxPixels: bounded('MAX_IMAGE_PIXELS', 64_000_000, 1, 64_000_000),
     trustProxyHops: bounded('TRUST_PROXY_HOPS', 0, 0, 1),
     supportQrFile: env.SUPPORT_QR_FILE?.trim() ? resolve(env.SUPPORT_QR_FILE.trim()) : undefined,
+    siteFiling: env.SITE_ICP_FILING?.trim().slice(0, 64) || undefined,
   };
 }

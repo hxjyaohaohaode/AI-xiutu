@@ -146,7 +146,16 @@ test(
               .rows[0]!.attempts,
             1,
           );
-          owner = await register('Owner fixture');
+          const payload = { phone, code: actual, password: 'A-secure-test-passphrase-2026', displayName: 'Owner fixture' };
+          const badInvite = await call('POST', '/v1/auth/register', { ...payload, inviteCode: randomUUID() });
+          assert.equal(badInvite.json().error.code, 'INVITE_INVALID');
+          assert.equal(badInvite.headers['set-cookie'], undefined);
+          const retries = await Promise.all([call('POST', '/v1/auth/register', payload), call('POST', '/v1/auth/register', payload)]);
+          assert.deepEqual(retries.map(r => r.statusCode).sort(), [201, 400]);
+          const accepted = retries.find(r => r.statusCode === 201)!;
+          const registration = accepted.json();
+          owner = { phone, cookie: String(accepted.headers['set-cookie']).split(';')[0]!,
+            userId: registration.user.id, spaceId: registration.spaces.find((space: {kind: string}) => space.kind === 'personal').id };
           viewer = await register('Viewer fixture');
           operator = await register('Operator fixture');
           await db.query('INSERT INTO operator_users(user_id) VALUES($1)', [operator.userId]);
@@ -872,6 +881,19 @@ test(
           assert.equal(returned.available, 20);
           assert.equal(returned.held, 0);
           assert.equal(returned.usage.expired, 220);
+          await db.query(
+            "INSERT INTO quota_lots(space_id,kind,source_key,total_units,available) VALUES($1,'purchased',$2,30,30)",
+            [account.spaceId, 'paid-fixture:' + randomUUID()],
+          );
+          const paid = await transaction(db, tx => reserveUnits(tx, { spaceId: account.spaceId, userId: account.userId,
+            idempotencyKey: randomUUID(), requestHash: hash('partial-delivery'), units: 45 }));
+          await transaction(db, tx => settleHold(tx, paid.id, 27));
+          await transaction(db, tx => settleHold(tx, paid.id, 27));
+          await assert.rejects(transaction(db, tx => settleHold(tx, paid.id, 45)), /已入账/);
+          const charged = await transaction(db, tx => getEntitlements(tx, account.spaceId));
+          assert.equal(charged.purchasedAvailable, 23);
+          assert.equal(charged.held, 0);
+          assert.equal(charged.usage.spent, 27);
           for (const lot of returned.lots)
             assert.equal(
               lot.totalUnits,

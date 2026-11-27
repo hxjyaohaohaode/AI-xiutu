@@ -27,6 +27,7 @@ import { Busy, IconButton, InlineError, Modal } from './Ui';
 import { ChoiceSelect } from './ChoiceSelect';
 import { StatusMark } from './StatusMark';
 import { ImagePreview } from './ImagePreview';
+import { TeamInvitations } from './TeamInvitations';
 import { TeamActivity } from '../resources/TeamActivity';
 import { useConfirmation } from './ConfirmationDialog';
 import { confirmStableScope } from '../lib/confirmation-scope';
@@ -514,7 +515,9 @@ export function TeamDialog({
 }) {
   const [members, setMembers] = useState<Member[]>([]);
   const [role, setRole] = useState('editor');
-  const [code, setCode] = useState('');
+  const [issued, setIssued] = useState<{ id: string; code: string } | null>(null);
+  const [inviteRefresh, setInviteRefresh] = useState(0);
+  const code = issued?.code;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [policy, setPolicy] = useState<SharingPolicy | null>(null);
@@ -586,7 +589,10 @@ export function TeamDialog({
     setLoading(true);
     setMembers([]);
     setPolicy(null);
-    setCode('');
+    setIssued(null);
+    setRole('editor');
+    locked.current = false;
+    setBusy(false);
     setMessage('');
     setError(null);
     load()
@@ -603,21 +609,22 @@ export function TeamDialog({
   }, [identity]);
   async function invite() {
     if (locked.current || !canManage || space.kind !== 'team') return;
+    const generation = scope.current.generation;
+    const current = () => mounted.current && generation === scope.current.generation;
     locked.current = true;
     setBusy(true);
     setError(null);
     setMessage('');
     try {
-      const result = await api<{ invitation: { code: string } }>(
+      const result = await api<{ invitation: { id: string; code: string } }>(
         `/spaces/${space.id}/invitations`,
         jsonRequest('POST', { role, maxUses: 1, expiresInDays: 7 }),
       );
-      setCode(result.invitation.code);
+      if (current()) { setIssued(result.invitation); setInviteRefresh((n) => n + 1); }
     } catch (e) {
-      setError(errorMessage(e));
+      if (current()) setError(errorMessage(e));
     } finally {
-      locked.current = false;
-      setBusy(false);
+      if (current()) { locked.current = false; setBusy(false); }
     }
   }
   async function changeMember(member: Member, next: string) {
@@ -929,9 +936,11 @@ export function TeamDialog({
                     </IconButton>
                   </div>
                 )}
-                <p className="fine-print">
-                  {t('邀请码有效 7 天，可使用一次。请只发送给你希望邀请的成员。')}
-                </p>
+                <TeamInvitations key={identity} spaceId={space.id} refresh={inviteRefresh}
+                  onRevoke={(id) => {
+                    setIssued((prior) => prior?.id === id ? null : prior);
+                    setMessage(t('已撤销团队邀请'));
+                  }} />
               </div>
             )}
           </>

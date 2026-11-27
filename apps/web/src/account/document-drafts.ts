@@ -1,3 +1,4 @@
+import { documentFormatSchema, formatMatchesBody, sameDocumentFormat, type DocumentFormat } from '@ai-xiutu/contracts';
 import type { ProjectDocument } from '../lib/types';
 
 export type DocumentDraftInput = Readonly<{
@@ -7,6 +8,7 @@ export type DocumentDraftInput = Readonly<{
   base: Readonly<ProjectDocument> | null;
   title: string;
   body: string;
+  formatting?: DocumentFormat | null;
 }>;
 
 export type DocumentDraft = DocumentDraftInput &
@@ -34,12 +36,16 @@ export function isProjectDocument(value: unknown): value is ProjectDocument {
     base.title.length <= 120 &&
     typeof base.body === 'string' &&
     base.body.length <= 100000 &&
+    validFormatting(base.body, base.formatting) &&
     Number.isSafeInteger(base.version) &&
     base.version > 0 &&
     typeof base.updatedAt === 'string' &&
     base.updatedAt.length <= 64 &&
     Number.isFinite(Date.parse(base.updatedAt))
   );
+}
+function validFormatting(body: string, format?: DocumentFormat | null) {
+  return format == null || (documentFormatSchema.safeParse(format).success && formatMatchesBody(body, format));
 }
 const validBase = (base: Readonly<ProjectDocument> | null) =>
   base === null || isProjectDocument(base);
@@ -65,6 +71,7 @@ export function isDocumentSaveReceipt(
   return (
     saved.title === expected.title.trim() &&
     saved.body === expected.body &&
+    sameDocumentFormat(saved.formatting, expected.formatting) &&
     saved.version === (expected.base ? expected.base.version + 1 : 1) &&
     (!expected.base || saved.id === expected.base.id) &&
     Number.isFinite(Date.parse(saved.updatedAt))
@@ -166,6 +173,7 @@ export class DocumentDraftStore {
       input.title.length > 120 ||
       typeof input.body !== 'string' ||
       input.body.length > 100000 ||
+      !validFormatting(input.body, input.formatting) ||
       !validBase(input.base)
     )
       return { ok: false, reason: 'invalid' };
@@ -283,7 +291,8 @@ export class DocumentDraftStore {
       current.base?.version !== expected.base?.version
     )
       return 'stale';
-    const clean = current.title.trim() === saved.title && current.body === saved.body;
+    const clean = current.title.trim() === saved.title && current.body === saved.body &&
+      sameDocumentFormat(current.formatting, saved.formatting);
     if (clean) {
       this.remove(current.actorId, current.projectId, current.revision);
     } else
@@ -318,6 +327,7 @@ export function serializeDocumentDraft(draft: DocumentDraft): string {
         saveState: draft.saveState,
         title: draft.title,
         body: draft.body,
+        ...(draft.formatting ? { formatting: draft.formatting } : {}),
         capturedAt: new Date(draft.capturedAt).toISOString(),
       },
       null,

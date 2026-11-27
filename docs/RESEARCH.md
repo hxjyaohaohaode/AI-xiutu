@@ -15,7 +15,7 @@
 | [OPPO AI 影像](https://www.oppo.com/cn/discover/technology/oppo-ai/)：对话修图、参考风格、补光、消除、反光/拖影、最佳表情 | Agent 实际读取候选渲染图后比较和选择，权限/预算/CAS/租约下自动提交 | 当前512px代理观察不是原生画质证明；去反光、去拖影、解剖补光、表情配准没有独立质量验收 |
 | [Snapseed RAW 编辑](https://support.google.com/snapseed/answer/6312515)：源数据上的曝光与色彩调整 | 保留原件、16位母版、ICC事实与现有 Linux 原生验证 | 浏览器RGBA8配方尚未贯通16位/HDR全链路；200MP导入不等于200MP全功能编辑 |
 
-开源参考聊天中的主要要求是上下文工程、长期记忆、实时流和动态交互。当前复用一个服务端执行器，增加 token 预算、带来源的归档回查、分范围记忆/CAS/过期/删除/历史、需要用户确认的偏好建议、持久序号 SSE、严格组件白名单。未为了框架名称同时引入多套 Agent 运行时；语义摘要和跨任务召回质量仍待评测。新引入的 js-tiktoken 为文本估算工具，不能把它的计数视为供应商最终账单。
+开源参考聊天中的主要要求是上下文工程、长期记忆、实时流和动态交互。当前复用一个服务端执行器，增加 token 预算、带来源的归档回查、分范围记忆/CAS/过期/删除/历史、需要用户确认的偏好建议、持久序号 SSE、严格组件白名单。未为了框架名称同时引入多套 Agent 运行时；语义摘要和跨任务召回质量仍待评测。服务端通过 tiktoken 的 WebAssembly 实现按 o200k_base 估算文本预算；实际用量依据供应商回执。
 
 算法参照：[样本修复研究](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2003-84.pdf)、[导向滤波](https://people.csail.mit.edu/kaiming/publications/eccv10guidedfilter.pdf)、[连续速度场变形](https://pmc.ncbi.nlm.nih.gov/articles/PMC5889303/)。实现与论文有明确差异，记录在编辑器契约中。神经模型代码许可、预训练权重许可、训练数据说明和实际运行预算需分别确认；LaMa/CodeFormer 等名称不能直接充当质量或可商用证明。
 

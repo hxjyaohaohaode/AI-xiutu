@@ -189,7 +189,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Build and check with the application native runtime
         run: |
-          docker build --target server-media --tag xiutu-native-check -f infra/Dockerfile .
+          docker build --target server-media-test --tag xiutu-native-check -f infra/Dockerfile .
           docker run --rm --network host --user root \
             --env TEST_DATABASE_URL --env REQUIRE_DB_TESTS --env REQUIRE_NATIVE_OCR \
             --env DB_POOL_MAX --env NODE_ENV=test xiutu-native-check bash -euc '
@@ -244,10 +244,20 @@ jobs:
           docker compose config --quiet
           docker compose -f compose.yaml -f compose.media.yaml config --quiet
           docker compose build
+      - name: Check the production server dependencies
+        run: |
+          docker compose run --rm --no-deps -T api node --import tsx --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          await Promise.all(['./apps/api/src/app.ts', '@ai-xiutu/assistant', 'sharp'].map(name => import(name)));
+          for (const name of ['react', 'react-dom', '@phosphor-icons/react', 'vite', 'playwright']) {
+            assert.throws(() => import.meta.resolve(name), {code: 'ERR_MODULE_NOT_FOUND'});
+          }
+          JS
       - name: Build optional native media runtime and verify its actual libraries
         run: |
-          docker build --target server-media --tag xiutu-media-ci -f infra/Dockerfile .
-          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON,ultraHdrLibrary:process.env.MEDIA_UHDR_LIBRARY,heicDecoder:process.env.MEDIA_HEIC_DECODER}); if(!c.available||!c.nativeReady||!c.ultraHdrJpeg.available||!c.heicPq.available||!c.heicHlg.available)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
+          docker build --target server-media --tag xiutu-media-runtime-ci -f infra/Dockerfile .
+          docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-runtime-ci node --import tsx --input-type=module -e 'import {getMediaCapabilities} from "@ai-xiutu/media"; const c=await getMediaCapabilities({pythonExecutable:process.env.MEDIA_PYTHON,ultraHdrLibrary:process.env.MEDIA_UHDR_LIBRARY,heicDecoder:process.env.MEDIA_HEIC_DECODER}); if(!c.available||!c.nativeReady||!c.ultraHdrJpeg.available||!c.heicPq.available||!c.heicHlg.available)process.exit(1); console.log(JSON.stringify({isolation:c.isolation,nativeVersions:c.nativeVersions}));'
+          docker build --target server-media-test --tag xiutu-media-ci -f infra/Dockerfile .
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges xiutu-media-ci node --import tsx --test packages/media/test/media.test.ts
           docker run --rm --memory 4g --pids-limit 192 --cap-drop ALL --security-opt no-new-privileges --env MEDIA_QA_PYTHON=/opt/media/bin/python xiutu-media-ci node --import tsx --test packages/media/test/precision.test.ts
       - name: Start PostgreSQL, migration, API, worker and web

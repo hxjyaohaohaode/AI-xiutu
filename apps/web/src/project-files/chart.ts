@@ -1,6 +1,7 @@
+import type { DocumentLayout } from '@ai-xiutu/contracts';
 import { chartSeries, xml, type DataTable } from './content';
 
-export function chartSvg(title: string, tables: DataTable[]) {
+export function chartSvg(title: string, tables: DataTable[], chart: DocumentLayout['chart'] = 'bar') {
   const plots = tables.flatMap((table) => chartSeries(table).map((series) => ({ table, series })));
   if (!plots.length) throw new Error('图表需要首列为类别、其后至少一列为完整数值的数据。');
   const entries = plots.reduce((sum, plot) => sum + plot.table.rows.length, 0);
@@ -26,6 +27,22 @@ export function chartSvg(title: string, tables: DataTable[]) {
       `<text x="36" y="${top}" font-size="19" font-weight="600"><title>${xml(series.name)}</title>${xml(compact(series.name, 46))}</text>`,
     );
     top += 34;
+    if (chart === 'line') {
+      const pointX = (i: number) => 100 + (table.rows.length === 1 ? 410 : i * 800 / (table.rows.length - 1));
+      const pointY = (value: number) => top + 150 - 142 * (value - min) / span;
+      const points = series.values.map((value, i) => `${pointX(i)},${pointY(value)}`);
+      marks.push(`<line x1="100" x2="900" y1="${pointY(0)}" y2="${pointY(0)}" stroke="#829594"/><polyline points="${points.join(' ')}" fill="none" stroke="#267A77" stroke-width="2.5"/>`);
+      const stride = Math.max(1, Math.ceil(table.rows.length / 8));
+      const format = (v: number) => series.percent ? Number((v * 100).toPrecision(4)) + '%' : String(Number(v.toPrecision(4)));
+      marks.push(`<text x="90" y="${pointY(max) + 5}" text-anchor="end">${xml(format(max))}</text>`);
+      if (max !== min) marks.push(`<text x="90" y="${pointY(min) + 5}" text-anchor="end">${xml(format(min))}</text>`);
+      table.rows.forEach((row, i) => {
+        marks.push(`<circle cx="${pointX(i)}" cy="${pointY(series.values[i])}" r="4" fill="#267A77"><title>${xml(row[0])} · ${xml(row[series.column])}</title></circle>`);
+        if (i % stride === 0) marks.push(`<text x="${pointX(i)}" y="${top + 175}" text-anchor="middle">${xml(compact(row[0], 6))}</text>`);
+      });
+      top += 220;
+      continue;
+    }
     table.rows.forEach((row, index) => {
       const end = x(series.values[index]);
       const label = row[series.column];

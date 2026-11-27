@@ -36,6 +36,10 @@ const icon = {
   'tone-review': Scan,
   'composition-review': Images,
   'delivery-review': CheckCircle,
+  'editing-lead': TreeStructure,
+  colorist: PencilSimple,
+  retoucher: PencilSimple,
+  'image-designer': Images,
 };
 export function ResearchGraph({
   turnId,
@@ -57,6 +61,7 @@ export function ResearchGraph({
           server: 'Workspace operation',
           waiting: 'Dependency not yet received',
           detail: 'Task details',
+          parent: 'Assigned by',
         }
       : locale === 'zh-TW'
         ? {
@@ -65,6 +70,7 @@ export function ResearchGraph({
             server: '工作區操作',
             waiting: '依據尚未同步',
             detail: '任務詳情',
+          parent: '分派自',
           }
         : {
             complete: '项已完成',
@@ -72,6 +78,7 @@ export function ResearchGraph({
             server: '工作区操作',
             waiting: '依据尚未同步',
             detail: '任务详情',
+          parent: '分派自',
           };
   const [data, setData] = useState<{ turnId: string; running: boolean; branches: Branch[] } | null>(
     null,
@@ -163,6 +170,7 @@ export function ResearchGraph({
         <ul aria-label={t('任务分支')}>
           {children.map((branch, index) => {
             const Icon = icon[branch.kind];
+            const parent = branch.parentId !== root.id && branches.find((entry) => entry.id === branch.parentId);
             const dependencies = branch.dependsOn.flatMap((id) => {
               const dependency = branches.find((entry) => entry.id === id);
               const position = children.findIndex((entry) => entry.id === id);
@@ -198,6 +206,7 @@ export function ResearchGraph({
                   </summary>
                   <div className="research-task-detail">
                     <p>{branch.finding || (branch.execution === 'provider' ? copy.provider : copy.server)}</p>
+                    {parent && !branch.dependsOn.includes(parent.id) && <p>{copy.parent} {t(name[parent.kind])}</p>}
                     {dependencies.length > 0 && (
                       <p>
                         {t('依据 {v0}', { v0: dependencies.join(locale === 'en' ? ', ' : '、') })}

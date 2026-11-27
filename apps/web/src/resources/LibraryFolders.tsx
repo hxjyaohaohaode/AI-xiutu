@@ -2,6 +2,7 @@ import { CalendarBlank, FolderSimple, CaretDown } from '@phosphor-icons/react';
 import { t } from '../i18n';
 import BranchedMenu from '../components/react-bits/BranchedMenu';
 
+export { dateFolderRange } from './library-search';
 export type FolderGroup = 'date' | 'project' | 'source' | 'type';
 export type FolderCount = { key: string; count: number };
 export type LibraryFolder = { key: string; label: string; count: number; children?: LibraryFolder[] };
@@ -27,17 +28,6 @@ export function libraryFolders(groups: FolderCount[], label: (key: string) => st
     monthFolder.children!.push({ key, count, label: label(key) });
   }
   return [...years.values()];
-}
-
-export function dateFolderRange(key: string) {
-  const [year, month, day] = key.split('-').map(Number);
-  if (!year || !/^\d{4}(-\d{2}){0,2}$/.test(key)) return null;
-  const start = new Date(year, (month ?? 1) - 1, day ?? 1);
-  const end = new Date(start);
-  if (day !== undefined) end.setDate(end.getDate() + 1);
-  else if (month !== undefined) end.setMonth(end.getMonth() + 1);
-  else end.setFullYear(end.getFullYear() + 1);
-  return { start, end };
 }
 
 export function LibraryFolders({ folders, selected, onSelect, by, compact }: {

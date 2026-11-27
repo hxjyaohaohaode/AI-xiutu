@@ -301,3 +301,19 @@ They extend this API without removing existing save, sharing, entitlements or qu
 adjustment endpoints. Active collaboration leases also guard those existing writes.
 Storage responses include `reservedMediaBytes`; retained originals and explicit
 authorized copies add logical bytes. Matching proxy hashes never grant original access.
+
+### Document typography and editable project worksheets
+
+Schema 31 adds a nullable `formatting` JSONB field on both `documents` and `document_versions`. The project's ordinary create and update endpoints accept the same optional field. Existing plain documents and clients continue to use the `body` string. Format-only changes use the same edit permission, transaction, expected version, event and immutable version record as text edits. A new request may pass `formatting: null` to clear all styling. The shared [format schema](../../packages/contracts/src/document-format.ts) rejects unknown fields, overlapping spans, invalid fonts and point sizes. An offset outside its own line or inside a surrogate pair returns HTTP 400. The server checks edit permission and expected version before applying a change. Copies include the source document's current formatting in their own first version.
+
+A format has `version: 1` and up to 2,048 ordered formatted paragraphs. Each paragraph stores a zero-based line index, optional `align` and `after` (points), and ordered `runs` with exclusive UTF-16 end offsets, optional bold, italic, underline, font and point size. The bounds are 2,048 runs per paragraph and 4,096 per document. Formatting uses whitelisted values. The body carries all text, tabs and blank lines and remains the versioned AI input. An existing plain-text client or an accepted AI replacement can send a changed body without styling. The server retains formatting on identical leading and trailing paragraphs and removes uncertain ranges from replaced paragraphs. A title-only change keeps all formatting.
+
+A saved, imported `sheet-tsv` region opens as a cell grid in the existing document editor. Editing a cell revises the project document. The grid keeps the original workbook filename, SHA-256 and source range alongside the edited snapshot. Original formula caches represent ordinary imported values. The same values drive the chart preview, the version selected for AI, and native Excel/chart exports. The source view allows editing or copying the underlying text. External workbooks remain local. Opening, changing cells or viewing the preview sends no model requests.
+
+### Current sessions and outstanding team invitations
+
+`GET /v1/auth/sessions` returns the current session's creation and expiry timestamps and the number of other valid sessions. `POST /v1/auth/logout-others` accepts `{expectedUserId}` and returns `{revoked}`. It verifies the current identity and retains the presenting session. The account security page exposes both operations. No endpoint returns a session secret or hash.
+
+`GET /v1/spaces/:id/invitations?cursor=<invitation-id>` lists up to 20 currently usable invitations and returns `nextCursor`. Owners see all grantable roles. Administrators see the roles they can manage. Invitation codes are available only when issued. Repeating a revocation is safe. A former member who previously redeemed a code needs a new invitation to join again. A no-op role update preserves invitations.
+
+A business rejection after a correct OTP rolls back the business write and the OTP consumption in the same transaction. When the server returns `details.otpConsumed=false`, the client retains the entered code. Incorrect OTP attempts still count towards the challenge limit.

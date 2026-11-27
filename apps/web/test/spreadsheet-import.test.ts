@@ -61,3 +61,22 @@ test('a shared-string Excel workbook preserves rich text, cached results and sou
   assert.deepEqual(source.preview, [['名称', '件数', '显示编号'], ['读书', '3', '00001'], ['报表', '-4', '00421']]);
   assert.equal(source.formulas, 1);
 });
+
+test('worksheet edits preserve selected workbook provenance, cached text types and literal punctuation', async () => {
+  const {readProjectSheet,editProjectCell,columnName}=await import('../src/project-files/project-sheet');
+  const source=selectSpreadsheetRange(imported,file,'A1:C3').body;
+  const sheet=readProjectSheet(source)!;
+  assert.equal(sheet.range,file.name+'!A1:C3');
+  assert.equal(columnName(26),'AA');
+  assert.equal(editProjectCell(sheet,0,1,''),null);
+  const changed=editProjectCell(sheet,1,1,'-')!;
+  const step=editProjectCell(readProjectSheet(changed)!,1,1,'-3.25')!;
+  const parsed=readProjectSheet(step)!;
+  assert.equal(parsed.source,sheet.source);
+  assert.equal(parsed.table.textCells?.has(4),false);
+  assert.equal(parsed.table.rows[0]![1],'-3.25');
+  const altered=editProjectCell(parsed,1,0,'00123\t"note"\n信息');
+  assert.equal(readProjectSheet(altered!)!.table.rows[0]![0],'00123\t"note"\n信息');
+  const txt=editProjectCell(parsed,1,0,'00123')!;
+  assert.ok(readProjectSheet(txt)!.table.textCells?.has(3));
+});

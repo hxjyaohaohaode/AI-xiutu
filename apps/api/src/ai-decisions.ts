@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
 import {
   aiResultDecisionSchema,
+  rebaseDocumentFormat,
   type AiResultDecision,
   type AiResultDecisionRequest,
 } from '@ai-xiutu/contracts';
@@ -50,6 +51,7 @@ const documentDto = (row: Record<string, any>) => ({
   projectId: row.project_id,
   title: row.title,
   body: row.body,
+  ...(row.formatting ? { formatting: row.formatting } : {}),
   version: row.version,
   authorId: row.author_id,
   createdAt: row.created_at,
@@ -335,8 +337,8 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
           assertVersion(current.version, body.expectedDocumentVersion!);
           document = (
             await tx.query(
-              'UPDATE documents SET title=$2,body=$3,version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *',
-              [current.id, content.title, content.body],
+              'UPDATE documents SET title=$2,body=$3,formatting=$4,version=version+1,updated_at=clock_timestamp() WHERE id=$1 RETURNING *',
+              [current.id, content.title, content.body, rebaseDocumentFormat(current.body, content.body, current.formatting)],
             )
           ).rows[0]!;
         } else {
@@ -348,8 +350,8 @@ export function registerAiDecisions(app: FastifyInstance, db: Database): void {
           ).rows[0]!;
         }
         await tx.query(
-          'INSERT INTO document_versions(document_id,version,title,body,author_id) VALUES($1,$2,$3,$4,$5)',
-          [document.id, document.version, content.title, content.body, user.id],
+          'INSERT INTO document_versions(document_id,version,title,body,author_id,formatting) VALUES($1,$2,$3,$4,$5,$6)',
+          [document.id, document.version, content.title, content.body, user.id, document.formatting],
         );
         documentId = document.id;
         documentVersion = document.version;

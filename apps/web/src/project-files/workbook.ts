@@ -1,3 +1,4 @@
+import { type DocumentLayout } from '@ai-xiutu/contracts';
 import { strToU8, zipSync } from 'fflate';
 import { chartSeries, numericCell, xml, type DataTable } from './content';
 
@@ -21,7 +22,7 @@ function columnName(index: number) {
   return name;
 }
 
-function chartXml(table: DataTable, series: ReturnType<typeof chartSeries>[number], sheet: string) {
+function chartXml(table: DataTable, series: ReturnType<typeof chartSeries>[number], sheet: string, chart: DocumentLayout['chart']) {
   const col = columnName(series.column);
   const range = (letter: string) => `${sheet}!$${letter}$2:$${letter}$${table.rows.length + 1}`;
   const cached = (values: string[]) =>
@@ -29,19 +30,22 @@ function chartXml(table: DataTable, series: ReturnType<typeof chartSeries>[numbe
       .map((v, i) => `<c:pt idx="${i}"><c:v>${xml(v)}</c:v></c:pt>`)
       .join('')}`;
   const title = `<c:title><c:tx><c:rich><a:bodyPr/><a:lstStyle/><a:p><a:r><a:t>${xml(series.name)}</a:t></a:r></a:p></c:rich></c:tx><c:overlay val="0"/></c:title>`;
+  const tag = chart === 'line' ? 'lineChart' : 'barChart';
+  const settings = chart === 'line' ? '<c:grouping val="standard"/>' : '<c:barDir val="col"/><c:grouping val="clustered"/>';
+  const paint = chart === 'line' ? '<a:ln w="25400"><a:solidFill><a:srgbClr val="267A77"/></a:solidFill></a:ln>' : '<a:solidFill><a:srgbClr val="267A77"/></a:solidFill>';
   return `<c:chartSpace xmlns:c="${drawing}/chart" xmlns:a="${drawing}/main"><c:chart>${title}<c:plotArea><c:layout/>
-    <c:barChart><c:barDir val="col"/><c:grouping val="clustered"/><c:ser><c:idx val="0"/><c:order val="0"/>
+    <c:${tag}>${settings}<c:ser><c:idx val="0"/><c:order val="0"/>
     <c:tx><c:strRef><c:f>${sheet}!$${col}$1</c:f><c:strCache>${cached([series.name])}</c:strCache></c:strRef></c:tx>
-    <c:spPr><a:solidFill><a:srgbClr val="267A77"/></a:solidFill></c:spPr>
+    <c:spPr>${paint}</c:spPr>
     <c:cat><c:strRef><c:f>${range('A')}</c:f><c:strCache>${cached(table.rows.map((r) => r[0]))}</c:strCache></c:strRef></c:cat>
     <c:val><c:numRef><c:f>${range(col)}</c:f><c:numCache><c:formatCode>${series.percent ? '0.##%' : 'General'}</c:formatCode>${cached(series.values.map(String))}</c:numCache></c:numRef></c:val>
-    </c:ser><c:axId val="1"/><c:axId val="2"/></c:barChart>
+    </c:ser><c:axId val="1"/><c:axId val="2"/></c:${tag}>
     <c:catAx><c:axId val="1"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="b"/><c:crossAx val="2"/><c:crosses val="autoZero"/></c:catAx>
     <c:valAx><c:axId val="2"/><c:scaling><c:orientation val="minMax"/></c:scaling><c:axPos val="l"/><c:majorGridlines/><c:numFmt formatCode="${series.percent ? '0.##%' : 'General'}" sourceLinked="0"/><c:crossAx val="1"/><c:crosses val="autoZero"/></c:valAx>
     </c:plotArea><c:plotVisOnly val="1"/></c:chart></c:chartSpace>`;
 }
 
-export function workbook(tables: DataTable[]) {
+export function workbook(tables: DataTable[], chart: DocumentLayout['chart'] = 'bar') {
   if (!tables.length) throw new Error('请提供含表头的 Markdown、CSV 或制表符数据。');
   const cellCount = tables.reduce((total, table) => total + table.headers.length * (table.rows.length + 1), 0);
   if (tables.length > 64 || cellCount > 40000)
@@ -102,7 +106,7 @@ export function workbook(tables: DataTable[]) {
     const refs: [string, string][] = [];
     const anchors = series.map((value, i) => {
       chartId++;
-      add(`xl/charts/chart${chartId}.xml`, chartXml(table, value, name), 'drawingml.chart+xml');
+      add(`xl/charts/chart${chartId}.xml`, chartXml(table, value, name, chart), 'drawingml.chart+xml');
       refs.push(['chart', `../charts/chart${chartId}.xml`]);
       return `<xdr:oneCellAnchor><xdr:from><xdr:col>${table.headers.length + 1}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${i * 18}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:ext cx="5300000" cy="2950000"/>
       <xdr:graphicFrame macro=""><xdr:nvGraphicFramePr><xdr:cNvPr id="${i + 1}" name="Chart ${i + 1}"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr><xdr:xfrm><a:off x="0" y="0"/><a:ext cx="0" cy="0"/></xdr:xfrm><a:graphic><a:graphicData uri="${drawing}/chart"><c:chart xmlns:c="${drawing}/chart" r:id="rId${i + 1}"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:oneCellAnchor>`;

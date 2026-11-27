@@ -161,7 +161,22 @@ async function finishHold(
   await walletLock(tx, found.rows[0].space_id);
   const { rows } = await tx.query('SELECT * FROM quota_holds WHERE id=$1 FOR UPDATE', [holdId]);
   const hold = rows[0]!;
-  if (hold.state === target) return;
+  if (hold.state === target) {
+    if (target === 'settled' && actualUnits !== undefined) {
+      const receipt = await tx.query(
+        `SELECT COALESCE(sum((e.movement->>'consumed')::int),0)::int AS charged,
+                count(*) FILTER (WHERE e.movement->>'consumed' IS NULL)::int AS legacy
+           FROM hold_allocations a JOIN ledger_entries e
+             ON e.event_key='settled:' || a.hold_id::text || ':' || a.lot_id::text
+          WHERE a.hold_id=$1`, [holdId],
+      );
+      // Historic full-settlement entries can precede per-lot movement details.
+      const row = receipt.rows[0]!;
+      const charged = row.legacy > 0 ? Number(hold.units) : Number(row.charged);
+      if (actualUnits !== charged) throw new QuotaError('HOLD_RECEIPT_CONFLICT', '结算金额与已入账的权益记录不一致');
+    }
+    return;
+  }
   if (!['held', 'unknown'].includes(hold.state))
     throw new QuotaError('HOLD_TERMINAL', '预占已按另一结果结束');
   const charged = target === 'settled' ? actualUnits ?? Number(hold.units) : 0;

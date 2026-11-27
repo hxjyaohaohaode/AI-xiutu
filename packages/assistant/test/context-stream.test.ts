@@ -1,9 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planHistory, historyContent, ContextBudgetError } from '../src/context-budget.js';
+import { planHistory, historyContent, ContextBudgetError, textTokens } from '../src/context-budget.js';
 import { streamResponse } from '../src/stream.js';
 import { validateAssistantWorkspace } from '@ai-xiutu/contracts';
 import { ASSISTANT_TOOLS } from '../src/agent.js';
+
+test('o200k counts preserve ordinary text and bound a full Chinese tool page', () => {
+  const examples: [string, number][] = [
+    ['', 0],
+    [' \t\n\r\n  ', 3],
+    ['上海🍑 文本 2.50% \n\n', 11],
+    ['日本語 العربية café', 4],
+    ['e\u0301 Å', 3],
+    ['<|endoftext|> test <|endofprompt|>', 15],
+    ['\ud800 a', 2],
+    ['a \udc00', 2],
+  ];
+  for (const [value, expected] of examples) assert.equal(textTokens(value), expected);
+  const started = performance.now();
+  assert.equal(textTokens('修复'.repeat(2600)), 5200);
+  assert.ok(performance.now() - started < 5000, 'a valid tool page stalled the server');
+});
 
 test('token compaction preserves every original user constraint and a source for archived responses', () => {
   const history = Array.from({ length: 20 }, (_, i) => [

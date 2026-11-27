@@ -231,10 +231,10 @@ function compilePointColor(recipe: RecipeV2) {
 
 function compileExtension(
   recipe: RecipeV2,
-  original: RGBAImage,
+  dimensions: Dimensions,
+  original?: RGBAImage,
   point = compilePointColor(recipe),
 ): LinearRegionExtension {
-  const dimensions: Dimensions = original;
   const extendedDetail = recipe.detail.texture !== 0 || recipe.detail.clarity !== 0;
   const activeRegions = recipe.regions
     .filter(
@@ -245,7 +245,10 @@ function compileExtension(
     )
     .map((region) => ({
       region,
-      mask: compileSelectionMask(region.mask, dimensions, original),
+      mask:
+        !original && region.mask.type === 'color-range'
+          ? null
+          : compileSelectionMask(region.mask, dimensions, original),
       tone: tone(region.adjustments),
       detail: region.adjustments.sharpness > 0 || region.adjustments.soften > 0,
     }));
@@ -359,6 +362,9 @@ function compileExtension(
       }
       for (const compiled of activeRegions) {
         const region = compiled.region;
+        const mask =
+          compiled.mask ??
+          compileSelectionMask(region.mask, dimensions, image, { x: originX, y: originY });
         for (let y = 0; y < image.height; y += 1) {
           if ((y & 31) === 0) check(options);
           for (let x = 0; x < image.width; x += 1) {
@@ -387,7 +393,7 @@ function compileExtension(
               at = pixel * 3;
             if (image.data[pixel * 4 + 3] === 0) continue;
             const weight =
-              compiled.mask((x + originX + 0.5) / fullWidth, (y + originY + 0.5) / fullHeight) *
+              mask((x + originX + 0.5) / fullWidth, (y + originY + 0.5) / fullHeight) *
               region.opacity;
             if (weight === 0) continue;
             if (compiled.detail) detailPoint(scratch, image, x, y, region.adjustments, detail);
@@ -448,6 +454,26 @@ function compileExtension(
       return working;
     },
   };
+}
+
+/** Render a halo-padded, unmodified tile in oriented original coordinates.
+ * Geometry is applied by the caller when stitching the output pixels. */
+export function createPhotoTileRenderer(recipe: RecipeV2, dimensions: Dimensions) {
+  const base = recipeV1Stage(recipe);
+  const session = createRenderSession({
+    ...base,
+    geometry: { crop: null, rotation: 0, flipX: false, flipY: false },
+  });
+  const extension = compileExtension(recipe, dimensions);
+  return (image: RGBAImage, originX: number, originY: number) =>
+    renderValidatedRegion(
+      image,
+      session,
+      {},
+      { ...dimensions, originX, originY },
+      undefined,
+      extension,
+    );
 }
 
 /** Conservative exact dependency radius: v1(2) + extended detail(≤2) + ordered regional detail(≤8). */
@@ -561,7 +587,7 @@ export function renderRecipeV2(
     options,
     undefined,
     undefined,
-    compileExtension(recipe, image, point),
+    compileExtension(recipe, image, image, point),
   );
 }
 
@@ -572,7 +598,7 @@ export function renderRecipeV2Tiled(
 ): RGBAImage {
   validateTiledImage(image, options);
   const recipe = parseRecipeV2(input),
-    extension = compileExtension(recipe, image);
+    extension = compileExtension(recipe, image, image);
   if (!extension.active) return renderRecipeTiled(image, recipeV1Stage(recipe), options);
   const session = createRenderSession(recipeV1Stage(recipe)),
     geometry = recipe.geometry;

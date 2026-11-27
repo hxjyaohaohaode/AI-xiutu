@@ -13,6 +13,9 @@ import {
   requireUser,
   spaceRole,
   projectAccess,
+  lockProjectMutation,
+  lockActiveUser,
+  lockActiveSession,
   projectDto,
   maskPhone,
   hash,
@@ -41,6 +44,9 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
     const p = z.object({ id }).parse(req.params);
     const policy = sharingPolicy.parse(req.body);
     await transaction(db, async (tx) => {
+      await lockActiveUser(tx, user.id);
+      await lockActiveSession(tx, user.id, hash(req.cookies.xiutu_session ?? ''));
+      await tx.query('SELECT id FROM spaces WHERE id=$1 FOR UPDATE', [p.id]);
       await spaceRole(tx, p.id, user.id, ['owner', 'admin']);
       await tx.query('UPDATE spaces SET sharing_policy=$2 WHERE id=$1', [
         p.id,
@@ -107,6 +113,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
           project.space_id,
         ])
       ).rows[0]!;
+      await lockProjectMutation(tx, p.id, user.id, hash(req.cookies.xiutu_session ?? ''), 'admin');
       const policy = sharingPolicy.parse(space.sharing_policy);
       if (
         (body.mode === 'reference' && !policy.allowReference) ||
@@ -141,7 +148,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
     const user = requireUser(req);
     const p = z.object({ id, grantId: id }).parse(req.params);
     await transaction(db, async (tx) => {
-      const project = await projectAccess(tx, p.id, user.id, 'admin');
+      const project = await lockProjectMutation(tx, p.id, user.id, hash(req.cookies.xiutu_session ?? ''), 'admin');
       const result = await tx.query(
         'UPDATE share_grants SET revoked_at=clock_timestamp() WHERE id=$1 AND project_id=$2 AND revoked_at IS NULL RETURNING id',
         [p.grantId, p.id],
@@ -316,13 +323,13 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       for (const d of docs) {
         const doc = (
           await tx.query(
-            'INSERT INTO documents(project_id,title,body,author_id) VALUES($1,$2,$3,$4) RETURNING id',
-            [row.id, d.title, d.body, user.id],
+            'INSERT INTO documents(project_id,title,body,author_id,formatting) VALUES($1,$2,$3,$4,$5) RETURNING id',
+            [row.id, d.title, d.body, user.id, d.formatting],
           )
         ).rows[0]!;
         await tx.query(
-          'INSERT INTO document_versions(document_id,version,title,body,author_id) VALUES($1,1,$2,$3,$4)',
-          [doc.id, d.title, d.body, user.id],
+          'INSERT INTO document_versions(document_id,version,title,body,author_id,formatting) VALUES($1,1,$2,$3,$4,$5)',
+          [doc.id, d.title, d.body, user.id, d.formatting],
         );
       }
       if (grant)

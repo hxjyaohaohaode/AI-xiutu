@@ -25,7 +25,7 @@ export const MEDIA_MAX_PREVIEW_EDGE = 2048;
 export class MediaProcessingError extends Error {
   constructor(
     message: string,
-    readonly code: 'unsupported' | 'limit' | 'aborted' | 'timeout' | 'processing',
+    readonly code: 'unsupported' | 'memory' | 'limit' | 'aborted' | 'timeout' | 'processing',
   ) {
     super(message);
     this.name = 'MediaProcessingError';
@@ -41,6 +41,8 @@ export interface MediaProcessingOptions {
   timeoutMs?: number;
   /** Linux address-space limit. Native decoders run only in the isolated subprocess. */
   memoryBytes?: number;
+  /** Optional resident working-set ceiling, additionally clamped to current system headroom. */
+  residentBudgetBytes?: number;
   /** Optional trusted interpreter with the pinned native requirements installed. */
   pythonExecutable?: string;
   /** Optional trusted reference Ultra HDR codec library. */
@@ -184,7 +186,7 @@ export interface ExportMediaRequest {
   /** Ultra HDR JPEG output crop in orientation-normalized source pixels. */
   crop?: MediaPrecisionWindow;
   signal?: AbortSignal;
-  options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes' | 'pythonExecutable'> & {
+  options?: Pick<MediaProcessingOptions, 'timeoutMs' | 'memoryBytes' | 'residentBudgetBytes' | 'pythonExecutable'> & {
     quality?: number;
   };
 }
