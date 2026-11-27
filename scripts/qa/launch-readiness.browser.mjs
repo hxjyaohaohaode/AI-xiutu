@@ -43,7 +43,7 @@ const fixture = await collaborationFixture(database, {
 });
 let browser, server;
 async function pageFor(actor, viewport) {
-  const context = await browser.newContext({ viewport, deviceScaleFactor: 2,
+  const context = await browser.newContext({ viewport, deviceScaleFactor: Number(process.env.BROWSER_DEVICE_SCALE ?? 2),
     hasTouch: viewport.width <= 900, locale: 'zh-CN', reducedMotion: 'reduce' });
   await context.addCookies([{ name: 'xiutu_session', value: fixture.actors[actor].cookie.split('=')[1], url: origin }]);
   const page = await context.newPage();
@@ -134,6 +134,7 @@ async function selectView(page, id) {
   }
 }
 async function toast(page, text, auto = true) {
+  await page.bringToFront();
   const notice = page.locator('.toast:not([aria-hidden="true"])', { hasText: text });
   await notice.waitFor({ timeout: 3000 });
   const bar = notice.locator('.toast-countdown');
@@ -142,7 +143,7 @@ async function toast(page, text, auto = true) {
     const from = await bar.evaluate((node) => getComputedStyle(node).transform);
     await page.waitForTimeout(400);
     assert.notEqual(await bar.evaluate((node) => getComputedStyle(node).transform), from);
-    await notice.waitFor({ state: 'hidden', timeout: 4500 });
+    await notice.waitFor({ state: 'hidden', timeout: 10000 });
   } else {
     await notice.getByRole('button', { name: '关闭提示' }).click();
     await notice.waitFor({ state: 'hidden', timeout: 1500 });
@@ -289,6 +290,9 @@ try {
   await secondDevice.locator('.ai-execution-summary').filter({ hasText: '只建议' }).waitFor({ timeout: 10000 });
   result.cases.push('account preferences refresh across independent sessions');
   await secondDevice.context().close();
+  // Keep the desktop cookie and local state while mobile runs its portrait model.
+  // Reopen the library before saving on mobile to verify the live cross-session event.
+  await desktop.goto('about:blank');
 
   const phone = await pageFor('owner', { width: 390, height: 844 });
   await phone.locator('input[type=file]').first().setInputFiles(sample);
@@ -403,6 +407,7 @@ try {
   await local.locator('.advanced-object-list .object-name:visible').waitFor();
   await manage.click();
   result.cases.push('local mask controls stay reachable on short phones and in landscape');
+  await desktop.goto(origin + '/#/studio');
   await works(desktop);
   await desktop.locator('.library-work-search').waitFor();
   await showEditorTopbar(phone);

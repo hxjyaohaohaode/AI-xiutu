@@ -904,8 +904,23 @@
   }
 }
 @media (max-width: 439px) {
+  /* The expanded header pairs navigation and photo actions above the utility row. */
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .workspace > .floating-topbar {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-rows: 44px;
+    height: auto;
+    gap: 0;
+  }
   .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar
-    :is(.workspace-home-link, .top-save, [data-action='exit-photo'], [data-action='download-photo']) {
-    display: none;
+    > :is(.workspace-identity, .workspace-view-navigation) {
+    grid-column: span 2;
+  }
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar > .workspace-top-actions {
+    display: contents;
+  }
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar .photo-session-actions {
+    grid-column: span 3;
+    justify-self: end;
   }
 }
