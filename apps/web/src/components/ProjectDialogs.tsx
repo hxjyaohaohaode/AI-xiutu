@@ -6,6 +6,7 @@ import {
   Copy,
   DownloadSimple,
   LinkSimple,
+  ShareNetwork,
   Plus,
   ShieldCheck,
   Trash,
@@ -110,7 +111,7 @@ export function NameDialog({
   );
 }
 
-type PreparedImageExport = { url: string; name: string; bytes: number };
+type PreparedImageExport = { url: string; name: string; bytes: number; blob: Blob };
 export type ImageExportCheckpoint<Recipe> = SourceLoadCheckpoint<Recipe> & {
   live: boolean;
   sourcePending: boolean;
@@ -138,7 +139,7 @@ export async function prepareBoundImageExport<Recipe>(
   }
   // Do not even allocate an object URL for a result whose owner has changed.
   if (!current()) return null;
-  return { url: createUrl(blob), name, bytes: blob.size };
+  return { url: createUrl(blob), name, bytes: blob.size, blob };
 }
 
 export function ExportDialog({
@@ -187,8 +188,32 @@ export function ExportDialog({
     releasePrepared();
     setPrepared(null);
   }, [format, quality, editor.file, editor.recipe]);
-  async function save() {
+  const offersFileShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function' &&
+    navigator.canShare?.({ files: [new File([], exportName, { type: 'image/' + format })] });
+  async function sharePrepared(result: PreparedImageExport) {
+    if (!preparedOwner.current?.isCurrent() || current.current.sourcePending || current.current.editor.isLoading()) return;
+    const file = new File([result.blob], result.name, { type: result.blob.type });
+    if (!navigator.canShare?.({ files: [file] })) {
+      setError(t('当前设备无法分享此文件，可直接下载。'));
+      return;
+    }
+    try {
+      await navigator.share({ files: [file] });
+    } catch (failure) {
+      if (!live.current || (failure instanceof Error && failure.name === 'AbortError')) return;
+      setError(t('可再次点击分享，或直接下载图片。'));
+    }
+  }
+  async function save(intent: 'download' | 'share') {
     if (locked.current || sourcePending || editor.loading || !editor.file) return;
+    if (intent === 'share' && preparedRef.current && preparedOwner.current?.isCurrent()) {
+      locked.current = true;
+      setBusy(true);
+      setError(null);
+      try { await sharePrepared(preparedRef.current); }
+      finally { locked.current = false; if (live.current) setBusy(false); }
+      return;
+    }
     locked.current = true;
     const request = ++generation.current;
     const read = () => ({
@@ -226,6 +251,12 @@ export function ExportDialog({
           current.current.quality === quality,
       };
       setPrepared(result);
+      if (intent === 'share') {
+        // Some devices require a fresh gesture when image encoding outlasts activation.
+        if (navigator.userActivation?.isActive === false) onSuccess(t('文件已就绪，点击分享图片。'));
+        else await sharePrepared(result);
+        return;
+      }
       // The explicit download action starts delivery after encoding. The same
       // prepared file remains available if the browser requires another gesture.
       const link = document.createElement('a');
@@ -350,7 +381,7 @@ export function ExportDialog({
       <button
         className={`button ${ready ? 'button-quiet' : 'button-primary'} button-full`}
         disabled={actionsDisabled}
-        onClick={save}
+        onClick={() => void save('download')}
       >
         {busy ? (
           <Busy label={t('正在计算与导出')} />
@@ -362,6 +393,10 @@ export function ExportDialog({
         )}
       </button>
       <div className="export-recipe-actions">
+        {offersFileShare && <button type="button" className="text-button" disabled={actionsDisabled}
+          onClick={() => void save('share')}>
+          <ShareNetwork size={16} />{t('分享图片')}
+        </button>}
         <button type="button" className="text-button" disabled={actionsDisabled} onClick={editor.exportRecipe}>
           <DownloadSimple size={16} />{t('保存编辑配方')}
         </button>
@@ -1010,6 +1045,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const [phone, setPhone] = useState('');
   const [mode, setMode] = useState<'reference' | 'copy'>('reference');
   const [days, setDays] = useState(7);
+  const [policy, setPolicy] = useState<SharingPolicy | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -1020,6 +1056,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const currentProject = useRef(project.id);
   currentProject.current = project.id;
   const canManage = project.role === 'owner' || project.role === 'admin';
+  const modeAllowed = mode === 'reference' ? policy?.allowReference : policy?.allowCopy;
   const load = async () => {
     if (!mounted.current || currentProject.current !== project.id) return;
     const request = ++readRequest.current;
@@ -1034,11 +1071,13 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
     setGrantsLoading(true);
     setReadError(null);
     try {
-      const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`, {
+      const result = await api<{ grants: Grant[]; policy: SharingPolicy }>(`/projects/${project.id}/grants`, {
         signal: controller.signal,
       });
       if (isCurrent()) {
         setGrants(result.grants);
+        setPolicy(result.policy);
+        setMode((old) => old === 'copy' && result.policy.allowCopy || !result.policy.allowReference ? 'copy' : 'reference');
         setGrantsReady(true);
       }
     } catch (failure) {
@@ -1051,19 +1090,24 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   useEffect(() => {
     mounted.current = true;
     setGrants([]);
+    setPhone('');
+    setMode('reference');
+    setDays(7);
+    setPolicy(null);
     setGrantsReady(false);
     setMessage('');
     setError(null);
-    void load();
+    if (canManage) void load();
+    else setGrantsLoading(false);
     return () => {
       mounted.current = false;
       readRequest.current++;
       readController.current?.abort();
     };
-  }, [project.id]);
+  }, [project.id, canManage]);
   async function share(event: FormEvent) {
     event.preventDefault();
-    if (locked.current || !canManage || !phone.trim()) return;
+    if (locked.current || !canManage || !modeAllowed || !phone.trim()) return;
     locked.current = true;
     setBusy(true);
     setError(null);
@@ -1113,7 +1157,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
       {!canManage && (
         <p className="form-hint">{t('只有项目所属空间的所有者或管理员可以管理外部授权。')}</p>
       )}
-      <form className="stack-form" onSubmit={share} aria-busy={busy}>
+      {canManage && <form className="stack-form" onSubmit={share} aria-busy={busy}>
         <label>
           {t('接收者手机号')}
           <input
@@ -1128,7 +1172,10 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             required
           />
         </label>
-        <div className="field-grid">
+        {policy && !policy.allowReference && !policy.allowCopy && <p role="status">{t('空间策略尚未允许此分享方式')}</p>}
+        {modeAllowed && <details key={project.id} className="share-options">
+          <summary>{t(mode === 'copy' ? '允许复制' : '参考共享')} · {t('{days} 天', { days })}</summary>
+          <div className="field-grid">
           <label>
             {t('共享方式')}
             <ChoiceSelect
@@ -1137,8 +1184,8 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
               value={mode}
               onValueChange={setMode}
               options={[
-                { value: 'reference', label: t('参考'), description: t('允许浏览与评论') },
-                { value: 'copy', label: t('允许复制'), description: t('可复制为独立项目') },
+                ...(policy?.allowReference ? [{ value: 'reference' as const, label: t('参考'), description: t('允许浏览与评论') }] : []),
+                ...(policy?.allowCopy ? [{ value: 'copy' as const, label: t('允许复制'), description: t('可复制为独立项目') }] : []),
               ]}
             />
           </label>
@@ -1161,6 +1208,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             ? t('对方可以明确复制到有编辑权限的空间。已经完成的独立副本不会因撤销共享而消失。')
             : t('撤销授权后，对方将无法继续访问源项目；已经下载的资料无法远程收回。')}
         </p>
+        </details>}
         <InlineError message={error} />
         {message && (
           <p className="success-note" role="status">
@@ -1170,7 +1218,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         <button
           type="submit"
           className="button button-primary"
-          disabled={busy || !canManage || !phone.trim()}
+          disabled={busy || !modeAllowed || !phone.trim()}
         >
           {busy ? (
             <Busy />
@@ -1181,8 +1229,8 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             </>
           )}
         </button>
-      </form>
-      <div className="grants-list" aria-busy={grantsLoading}>
+      </form>}
+      {canManage && <div className="grants-list" aria-busy={grantsLoading}>
         <h3>{t('项目授权')}</h3>
         {grantsLoading && <Busy label={t('正在读取')} />}
         <InlineError message={readError} />
@@ -1228,7 +1276,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
           !grants.filter((g) => !g.revokedAt).length && (
             <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
           )}
-      </div>
+      </div>}
     </Modal>
   );
 }

@@ -108,7 +108,7 @@ import {
   subscribeDocumentDrafts,
 } from './account/document-drafts';
 import { modalMotionRoleForDialog } from './components/modal-profiles';
-import type { AIOperation } from './components/AIPanel';
+import type { AIOperation, SourceDocumentRequest } from './components/AIPanel';
 import { AIPanelFeature } from './components/AIPanelFeature';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './ai/AIVisibility';
 import type { CollageResultActions } from './ai/AIThread';
@@ -432,6 +432,7 @@ export function App({
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [voiceEntry, setVoiceEntry] = useState(0);
+  const [sourceDocumentRequest, setSourceDocumentRequest] = useState<SourceDocumentRequest | null>(null);
   const aiOpenRef = useRef(aiOpen);
   aiOpenRef.current = aiOpen;
   const [inspectorVisited, setInspectorVisited] = useState(false);
@@ -1623,6 +1624,37 @@ export function App({
     return true;
   }
 
+  const downloadInProgress = useRef(false);
+  const [downloading, setDownloading] = useState(false);
+  async function downloadCurrentPhoto() {
+    if (!editor.file || editor.isLoading() || opening || downloadInProgress.current) return;
+    downloadInProgress.current = true;
+    setDownloading(true);
+    const owner = sessionFence.snapshot();
+    const name = filenameBase(editor.file.name) + '-编辑.png';
+    const guard = createSourceLoadGuard(() => ({
+      context: projectRequest.current,
+      source: editor.getSourceIdentity(),
+      recipe: editor.getRecipe(),
+    }));
+    try {
+      const pixels = await editor.exportImage('png');
+      if (!sessionFence.isCurrent(owner) || !activeRef.current) return;
+      if (!guard.isCurrent() || editor.isLoading()) {
+        notify(t('当前画面已变化，请重新生成导出文件。'));
+        return;
+      }
+      downloadBlob(pixels, name);
+      notify(t('下载已发起，可在浏览器下载记录中查看。'), 'success');
+    } catch (error) {
+      if (sessionFence.isCurrent(owner) && activeRef.current && guard.isCurrent())
+        notify(errorMessage(error), 'error');
+    } finally {
+      downloadInProgress.current = false;
+      setDownloading(false);
+    }
+  }
+
   async function flattenLayers() {
     if (!editor.file) return;
     const name = filenameBase(editor.file.name);
@@ -2721,6 +2753,12 @@ export function App({
         <ArrowLeft size={17} aria-hidden />
         <span>{t('退出编辑')}</span>
       </button>
+      <button type="button" data-action="download-photo" aria-label={t('下载 {format}', { format: 'PNG' })}
+        title={t('下载 {format}', { format: 'PNG' })} disabled={downloading || !editor.file || opening || editor.loading}
+        onClick={() => void downloadCurrentPhoto()}>
+        {downloading ? <Busy label="" /> : <DownloadSimple size={17} aria-hidden />}
+        <span>{t('下载 {format}', { format: 'PNG' })}</span>
+      </button>
       {canRemovePhoto && <button type="button" data-action="trash-photo"
         aria-label={t(deletePhotoLabel)} title={t(deletePhotoLabel)}
         disabled={removingPhoto || saving || opening || editor.loading}
@@ -3536,6 +3574,15 @@ export function App({
                             project={project}
                             refreshToken={refreshToken}
                             onDirtyChange={setDocumentDirty}
+                            captureCover={editor.file && artwork?.projectId === project.id ? async () => (await captureCanvasImage()).imageDataUrl : undefined}
+                            onUseDocument={async (doc) => {
+                              const actor = sessionFence.snapshot();
+                              const projectScope = projectRequest.current;
+                              if (!actor.actor || !await openAI() || !sessionFence.isCurrent(actor) ||
+                                  projectRequest.current !== projectScope) return;
+                              setSourceDocumentRequest({ actorId: actor.actor, projectId: project.id,
+                                id: doc.id, version: doc.version, title: doc.title });
+                            }}
                           />
                         ) : (
                           requireProject
@@ -3783,6 +3830,9 @@ export function App({
                           visible={activePanelId === 'ai'}
                           mobilePage={phoneEditor}
                           generationRequest={collageReturn?.request}
+                          sourceDocumentRequest={sourceDocumentRequest?.actorId === session.user?.id &&
+                            sourceDocumentRequest?.projectId === aiProject?.id ? sourceDocumentRequest : null}
+                          onSourceDocumentUsed={() => setSourceDocumentRequest(null)}
                           returnLabel={collageReturn ? t('返回拼图') : undefined}
                           collageActions={
                             project && ['owner', 'admin', 'editor'].includes(project.role)

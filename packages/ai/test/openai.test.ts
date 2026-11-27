@@ -400,7 +400,10 @@ test(
         async () => {
           const f = await fixture(db, png, transparent);
           try {
-            const body = { ...f.body(), imageOptions: { quality: 'high', n: 2 } };
+            const quoteBody = { ...f.body(), imageOptions: { quality: 'high', n: 2 } };
+            await assert.rejects(f.submit({ ...quoteBody, expectedUnits: 1 }), { code: 'IMAGE_QUOTE_CHANGED' });
+            assert.equal((await f.entitlements()).held, 0);
+            const body = { ...quoteBody, expectedUnits: 14 };
             const [first, second] = await Promise.all([f.submit(body), f.submit(body)]);
             assert.equal(first.job.id, second.job.id);
             assert.equal(first.job.reservedUnits, 14);
@@ -423,6 +426,17 @@ test(
             const amount = await f.entitlements();
             assert.equal(amount.held, 0);
             assert.equal(amount.usage.spent, 14);
+            await db.query(`INSERT INTO ai_jobs(project_id,actor_id,model_id,input_hash,state)
+              SELECT $1,$2,$3,'receipt-pagination','cancelled' FROM generate_series(1,101)`,
+              [f.projectId, f.actorId, model]);
+            const args = { projectId: f.projectId, actorId: f.actorId };
+            const recent = await f.service.list(args);
+            assert.equal(recent.jobs.length, 100);
+            assert.ok(!recent.jobs.some((item) => item.id === first.job.id));
+            const exact = await f.service.list({ ...args, requestKey: body.idempotencyKey });
+            assert.deepEqual(exact.jobs.map((item) => item.id), [first.job.id]);
+            assert.deepEqual((await f.service.list({ ...args, requestKey: randomUUID() })).jobs, []);
+
             assert.equal(await f.service.runOnce(), false);
           } finally {
             await f.cleanup();
@@ -490,6 +504,8 @@ test(
             assert.equal(parent.state, 'completed');
             assert.equal(f.calls.imageReview, 3);
             assert.ok(f.requests[0]!.mask);
+            assert.equal(parent.input.manifest.maskComposite, 'source-alpha-v1');
+            assert.equal(parent.output.maskComposite, 'source-alpha-v1');
             assert.ok(parent.input.manifest.providerPayloadHash);
             const selected = parent.output.images[0].assetId;
             const second = await f.submit({

@@ -66,12 +66,13 @@ export const assistantResearchPlan = z
       nodes.filter((node) => node.kind === 'canvas').length <= 1,
   );
 export type AssistantResearchBranch = z.infer<typeof assistantResearchBranch>;
-export type AssistantDispatchPurpose = 'conversation' | 'web-search' | 'research-merge';
+export type AssistantDispatchPurpose = 'conversation' | 'web-search' | 'research-merge' | 'specialist-review';
 export interface AssistantBranchEvent {
   id: string;
   parentId: string | null;
   dependsOn: string[];
-  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination';
+  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination'
+    | 'tone-review' | 'composition-review' | 'delivery-review';
   state: 'running' | 'completed' | 'failed';
   execution: 'provider' | 'server';
   resultCount?: number;

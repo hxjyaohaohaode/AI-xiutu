@@ -33,6 +33,9 @@ const icon = {
   candidate: PencilSimple,
   'pixel-review': Scan,
   nomination: CheckCircle,
+  'tone-review': Scan,
+  'composition-review': Images,
+  'delivery-review': CheckCircle,
 };
 export function ResearchGraph({
   turnId,

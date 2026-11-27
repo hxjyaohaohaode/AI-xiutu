@@ -1353,3 +1353,13 @@
     padding-top: 10px;
   }
 }
+
+.share-dialog .share-options > summary {
+  width: fit-content;
+  padding-block: .5rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+.share-dialog .share-options[open] .field-grid {
+  margin-block: .5rem;
+}

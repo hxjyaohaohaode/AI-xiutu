@@ -233,6 +233,9 @@
   white-space: nowrap;
   font-size: 12px;
 }
+@media (pointer: coarse) {
+  .studio-workspace .photo-session-actions > button { min-height: 44px; min-width: 44px; }
+}
 .studio-workspace .photo-session-actions > button:hover:not(:disabled) { background: var(--surface-secondary); }
 .studio-workspace .photo-session-actions > button:disabled { opacity: .5; cursor: wait; }
 .studio-workspace .photo-session-actions > button[data-action='trash-photo']:hover:not(:disabled) { color: var(--danger); }

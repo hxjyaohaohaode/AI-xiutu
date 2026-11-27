@@ -7,7 +7,8 @@ import { createConnection } from 'node:net';
 import WebSocket, { WebSocketServer } from 'ws';
 import { transaction, adjustUnits } from '@ai-xiutu/db';
 import { assistantModelConfigSchema } from '@ai-xiutu/assistant';
-import { publicPricingSnapshot } from '@ai-xiutu/contracts';
+import { selectAssistantMemories } from '../src/assistant/memory-context.js';
+import { publicPricingSnapshot, type AssistantMemory } from '@ai-xiutu/contracts';
 import { collaborationFixture } from './collaboration-fixture.js';
 import type { AssistantDependencies } from '../src/assistant/index.js';
 import { createAssistantService } from '../src/assistant/service.js';
@@ -45,6 +46,49 @@ const outputText = (text: string) => ({
   type: 'message',
   role: 'assistant',
   content: [{ type: 'output_text', text }],
+});
+
+test('recall keeps confirmed constraints and avoids sending unrelated optional private material', () => {
+  const base: AssistantMemory = {
+    id: 'constraint',
+    title: '保留原图',
+    content: '保留原始图层',
+    category: 'constraint',
+    scope: 'user',
+    ownerId: 'owner',
+    projectId: null,
+    artworkId: null,
+    sourceTurnId: null,
+    expiresAt: null,
+    updatedAt: '',
+    version: 1,
+    canEdit: true,
+  };
+  const memories: AssistantMemory[] = [
+    base,
+    {
+      ...base,
+      id: 'unrelated',
+      title: '发票地址',
+      content: 'private office address',
+      category: 'preference',
+    },
+    {
+      ...base,
+      id: 'matching',
+      title: 'Excel透视表',
+      content: '使用完整表头',
+      category: 'workflow',
+    },
+  ];
+  assert.deepEqual(
+    selectAssistantMemories(memories, 'prepare my Excel workbook').map((item) => item.id),
+    ['constraint', 'matching'],
+  );
+  assert.deepEqual(
+    selectAssistantMemories(memories, '提高曝光').map((item) => item.id),
+    ['constraint'],
+  );
 });
 
 test('Responses estimates separate GPT-6 cache writes and leave older unpriced receipts incomplete', () => {
@@ -385,6 +429,248 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
 }
 
 test(
+  'text-only moderation runs text and parameter turns while all visual ingress closes before reservation',
+  { skip: !databaseUrl },
+  async () => {
+    let unavailableImageCalls = 0;
+    const sent: Record<string, any>[] = [];
+    const f = await fixture({
+      imageModerator: {
+        configured: false,
+        async check() {
+          unavailableImageCalls++;
+          throw new Error('unconfigured image moderation must never run');
+        },
+      },
+      fetcher: async (_url, opts) => {
+        sent.push(JSON.parse(String(opts?.body)));
+        return response([outputText('仅依据文字与已保存参数。')]);
+      },
+    });
+    try {
+      const path = '/v1/projects/' + f.projectId + '/assistant-turns';
+      const catalog = (await f.call('GET', '/v1/assistant/models')).json();
+      assert.equal(catalog.ready, true);
+      assert.equal(catalog.imageReady, false);
+      assert.equal(catalog.voiceReady, false);
+      assert.match(catalog.voiceReason, /图像审核/);
+      const selected = catalog.models.find((item: any) => item.id === f.modelId);
+      assert.equal(selected.imageInput, false);
+      assert.equal(selected.webImageSearch, false);
+      const discovery = (await f.call('GET', '/v1/modules')).json();
+      const caps = discovery.modules.flatMap((module: any) => module.capabilities);
+      assert.equal(caps.find((cap: any) => cap.id === 'assistant.turns').runtime, 'available');
+      assert.equal(caps.find((cap: any) => cap.id === 'assistant.voice').runtime, 'unconfigured');
+
+      // A previously admitted visual conversation survives a server restart with
+      // reduced capabilities. Its authorized text is available without old pixels.
+      const png = await sharp({
+        create: { width: 64, height: 64, channels: 3, background: '#40627b' },
+      })
+        .png()
+        .toBuffer();
+      const visual = 'data:image/png;base64,' + png.toString('base64');
+      const original = {
+        ...f.turn('记录这张参考的颜色'),
+        context: { ...f.context, imageDataUrl: visual },
+      };
+      let oldImageRequests = 0;
+      const full = createAssistantService(
+        f.db,
+        f.storage,
+        {
+          env,
+          textModerator,
+          imageModerator,
+          fetcher: async (_url, opts) => {
+            assert.match(String(opts?.body), /"input_image"/);
+            oldImageRequests++;
+            return response([outputText('之前共享的画面带蓝色。')]);
+          },
+        },
+        join(f.directory, 'assistant'),
+      );
+      const parent = await full.turn(
+        f.actors.owner.id,
+        f.projectId,
+        original,
+        f.actors.owner.tokenHash,
+      );
+      await full.waitForIdle();
+      assert.equal((await f.readTurn(parent.id)).state, 'completed');
+      assert.equal((await f.call('POST', path, original)).json().id, parent.id);
+      assert.equal(oldImageRequests, 1);
+      const initialHolds = () =>
+        f.db
+          .query('SELECT count(*)::int AS n FROM quota_holds WHERE user_id=$1', [f.actors.owner.id])
+          .then((r) => r.rows[0]!.n);
+      const before = await initialHolds();
+      for (const fields of [
+        { context: { ...f.context, imageDataUrl: visual } },
+        { visualAttachment: { kind: 'photo', imageDataUrl: visual } },
+        { scope: { ...f.scope, referenceAssetIds: [f.assetId] } },
+        { research: [{ kind: 'canvas' }] },
+        {
+          scope: {
+            ...f.scope,
+            allowWebSearch: true,
+            publicSearch: { kind: 'images', query: 'blue' },
+          },
+        },
+        { research: [{ kind: 'web', resultKind: 'images', query: 'blue' }] },
+      ]) {
+        const denied = await f.call('POST', path, { ...f.turn(), ...fields });
+        assert.equal(denied.statusCode, 503, denied.body);
+        assert.equal(denied.json().error.code, 'ASSISTANT_IMAGE_REVIEW_UNAVAILABLE');
+      }
+      assert.equal((await f.prepare()).statusCode, 503);
+      assert.equal(await initialHolds(), before);
+      const request = {
+        ...f.turn('请回顾刚才的颜色并解释已保存的曝光参数'),
+        parentTurnId: parent.id,
+      };
+      const child = await f.call('POST', path, request);
+      assert.equal(child.statusCode, 202, child.body);
+      const done = await until(
+        () => f.readTurn(child.json().id),
+        (item) => item.state !== 'running',
+      );
+      assert.equal(done.state, 'completed', JSON.stringify(done));
+      assert.equal(sent.length, 1);
+      const wire = JSON.stringify(sent[0]!.input);
+      assert.match(wire, /之前共享的画面带蓝色/);
+      assert.match(wire, /adjustments.exposure/);
+      assert.doesNotMatch(wire, /data:image|input_image/);
+      assert.equal(
+        sent[0]!.tools.some((item: any) => item.name === 'inspect_candidate'),
+        false,
+      );
+      const blocked = await f.call('POST', path, f.turn('审核拦截测试'));
+      const failed = await until(
+        () => f.readTurn(blocked.json().id),
+        (item) => item.state !== 'running',
+      );
+      assert.equal(failed.state, 'failed');
+      assert.equal(sent.length, 1);
+      assert.equal(unavailableImageCalls, 0);
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'parallel specialists persist independent outcomes and never redispatch a replay',
+  { skip: !databaseUrl },
+  async () => {
+    let scenario: 'complete' | 'reject' | 'uncertain' = 'complete';
+    let sends = 0;
+    const f = await fixture({
+      fetcher: async (_url, options) => {
+        const body = JSON.parse(String(options?.body));
+        sends++;
+        if (body.tools) {
+          const includesReviews = body.input.some(
+            (item: any) => item.type === 'function_call_output',
+          );
+          return response(
+            includesReviews
+              ? [outputText('两位复核者已提交结果。')]
+              : [
+                  {
+                    type: 'function_call',
+                    call_id: 'review',
+                    name: 'consult_specialists',
+                    arguments: JSON.stringify({ roles: ['tone-review', 'composition-review'] }),
+                  },
+                ],
+          );
+        }
+        if (scenario === 'uncertain' && body.instructions.includes('framing'))
+          throw new Error('lost fixture response');
+        if (scenario !== 'complete')
+          return new Response(JSON.stringify({ error: { code: 'invalid_request_error' } }), {
+            status: 400,
+            headers: { 'content-type': 'application/json', 'x-request-id': 'local-declined' },
+          });
+        return response([outputText('复核意见')]);
+      },
+    });
+    try {
+      for (const value of ['complete', 'reject', 'uncertain'] as const) {
+        scenario = value;
+        sends = 0;
+        const request = f.turn('请两位专家独立复核');
+        const path = '/v1/projects/' + f.projectId + '/assistant-turns';
+        const started = await f.call('POST', path, request);
+        assert.equal(started.statusCode, 202, started.body);
+        const id = started.json().id;
+        const done = await until(
+          () => f.readTurn(id),
+          (item) => item.state !== 'running',
+        );
+        assert.equal(
+          done.state,
+          value === 'complete' ? 'completed' : value === 'reject' ? 'failed' : 'unknown',
+          JSON.stringify(done),
+        );
+        if (value === 'uncertain') assert.equal(done.errorCode, 'PROVIDER_NETWORK_UNKNOWN');
+        const stages = (
+          await f.db.query(
+            'SELECT branch_key,completed_at IS NOT NULL AS received,rejected_at IS NOT NULL AS rejected FROM assistant_dispatches WHERE turn_id=$1 AND purpose=$2 ORDER BY branch_key',
+            [id, 'specialist-review'],
+          )
+        ).rows;
+        assert.deepEqual(
+          stages.map((item) => item.branch_key),
+          ['composition-review', 'tone-review'],
+        );
+        assert.equal(stages.filter((item) => item.received).length, value === 'complete' ? 2 : 0);
+        assert.equal(
+          stages.filter((item) => item.rejected).length,
+          value === 'reject' ? 2 : value === 'uncertain' ? 1 : 0,
+        );
+        const details = (await f.call('GET', '/v1/usage/jobs/' + id)).json();
+        assert.equal(
+          details.stages.filter((item: any) => item.purpose === 'specialist-review').length,
+          2,
+        );
+        assert.equal(
+          details.stages.filter((item: any) => item.status === 'rejected' && item.receivedAt)
+            .length,
+          value === 'reject' ? 2 : value === 'uncertain' ? 1 : 0,
+        );
+        const hold = (
+          await f.db.query(
+            'SELECT h.state FROM quota_holds h JOIN assistant_turns t ON t.hold_id=h.id WHERE t.id=$1',
+            [id],
+          )
+        ).rows[0]!;
+        assert.equal(hold.state, value === 'uncertain' ? 'unknown' : 'settled');
+        assert.equal((await f.call('POST', path, request)).json().id, id);
+        assert.equal(sends, value === 'complete' ? 4 : 3);
+        const offline = createAssistantService(
+          f.db,
+          f.storage,
+          { env: { NODE_ENV: 'test' }, textModerator, imageModerator },
+          join(f.directory, 'assistant'),
+        );
+        const replay = await offline.turn(
+          f.actors.owner.id,
+          f.projectId,
+          request,
+          f.actors.owner.tokenHash,
+        );
+        assert.equal(replay.id, id);
+        assert.equal(replay.state, done.state);
+      }
+    } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
   'an explicit visual attachment is moderated, frozen and delivered without storing its pixels',
   {
     skip: !databaseUrl,
@@ -432,6 +718,11 @@ test(
       ]);
       const unsupported = await f.call('POST', path, { ...body, modelId: textOnly });
       assert.equal(unsupported.statusCode, 400);
+      const incompatibleCanvas = await f.call('POST', path, {
+        ...f.turn(), modelId: textOnly,
+        context: { ...f.context, imageDataUrl: body.visualAttachment.imageDataUrl },
+      });
+      assert.equal(incompatibleCanvas.json().error.code, 'ASSISTANT_IMAGE_UNAVAILABLE');
       await f.db.query('DELETE FROM assistant_model_configs WHERE id=$1', [textOnly]);
       assert.deepEqual(moderated, []);
 
@@ -2372,6 +2663,14 @@ test(
             modelId: 'gpt-live-1',
           });
           assert.equal(accepted.statusCode, 200, accepted.body);
+          const receiptPath = '/v1/me/voice-receipts/' + request.idempotencyKey;
+          const receipt = await f.call('GET', receiptPath);
+          assert.deepEqual(receipt.json(), {
+            id: accepted.json().id, actorId: f.actors.owner.id, idempotencyKey: request.idempotencyKey,
+            projectId: f.projectId, teamArtworkId: null, state: 'prepared', holdState: 'held',
+          });
+          assert.equal((await f.call('GET', receiptPath, undefined, 'editor')).statusCode, 404);
+          assert.equal((await f.call('GET', receiptPath, undefined, 'operator')).statusCode, 404);
           assert.equal(
             (
               await f.db.query('SELECT config FROM voice_sessions WHERE id=$1', [
@@ -2445,6 +2744,135 @@ test(
         'released',
       );
     } finally {
+      await f.close();
+    }
+  },
+);
+
+test(
+  'recovery after a confirmed dispatch settles once and replays a terminal run event',
+  { skip: !databaseUrl },
+  async () => {
+    const reviewed = deferred<void>(),
+      resume = deferred<void>();
+    const finalText = '等待最终输出审核';
+    let sends = 0;
+    const f = await fixture({
+      textModerator: {
+        configured: true,
+        async check(value) {
+          if (value === finalText) {
+            reviewed.resolve();
+            await resume.promise;
+          }
+          return textModerator.check(value);
+        },
+      },
+      fetcher: async () => {
+        sends++;
+        return response([outputText(finalText)]);
+      },
+    });
+    const recovery = createAssistantService(
+      f.db,
+      f.storage,
+      { env, textModerator, imageModerator },
+      join(f.directory, 'assistant'),
+    );
+    try {
+      const request = f.turn();
+      const path = '/v1/projects/' + f.projectId + '/assistant-turns';
+      const started = await f.call('POST', path, request);
+      const id = started.json().id;
+      await reviewed.promise;
+      await f.db.query(
+        "UPDATE assistant_turns SET updated_at=clock_timestamp()-interval '6 minutes' WHERE id=$1",
+        [id],
+      );
+      await recovery.recoverStale();
+      await recovery.recoverStale();
+      resume.resolve();
+      const done = await f.readTurn(id);
+      assert.equal(done.state, 'failed');
+      assert.equal(done.errorCode, 'PROCESS_INTERRUPTED');
+      const events = await f.call('GET', '/v1/assistant-turns/' + id + '/events');
+      assert.equal(events.body.match(/"type":"run.failed"/g)?.length, 1);
+      const hold = (
+        await f.db.query(
+          'SELECT h.state FROM quota_holds h JOIN assistant_turns t ON t.hold_id=h.id WHERE t.id=$1',
+          [id],
+        )
+      ).rows[0]!;
+      assert.equal(hold.state, 'settled');
+      assert.equal((await f.call('POST', path, request)).json().id, id);
+      assert.equal(sends, 1);
+    } finally {
+      resume.resolve();
+      await f.close();
+    }
+  },
+);
+
+test(
+  'a late confirmed receipt closes an interrupted unknown hold without another dispatch',
+  { skip: !databaseUrl },
+  async () => {
+    const inFlight = deferred<void>(),
+      resume = deferred<void>();
+    let sends = 0;
+    const f = await fixture({
+      fetcher: async () => {
+        sends++;
+        inFlight.resolve();
+        await resume.promise;
+        return response([outputText('稍迟到达的结算回执')]);
+      },
+    });
+    const recovery = createAssistantService(
+      f.db,
+      f.storage,
+      { env, textModerator, imageModerator },
+      join(f.directory, 'assistant'),
+    );
+    try {
+      const started = await f.call(
+        'POST',
+        '/v1/projects/' + f.projectId + '/assistant-turns',
+        f.turn(),
+      );
+      const id = started.json().id;
+      await inFlight.promise;
+      await f.db.query(
+        "UPDATE assistant_turns SET updated_at=clock_timestamp()-interval '6 minutes' WHERE id=$1",
+        [id],
+      );
+      await recovery.recoverStale();
+      assert.equal((await f.readTurn(id)).state, 'unknown');
+      resume.resolve();
+      await until(
+        () =>
+          f.db.query(
+            'SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 AND completed_at IS NOT NULL',
+            [id],
+          ),
+        (result) => result.rowCount === 1,
+      );
+      await recovery.recoverStale();
+      await recovery.recoverStale();
+      assert.equal((await f.readTurn(id)).state, 'failed');
+      const hold = (
+        await f.db.query(
+          'SELECT h.state FROM quota_holds h JOIN assistant_turns t ON t.hold_id=h.id WHERE t.id=$1',
+          [id],
+        )
+      ).rows[0]!;
+      assert.equal(hold.state, 'settled');
+      assert.equal(sends, 1);
+      const events = await f.call('GET', '/v1/assistant-turns/' + id + '/events');
+      assert.equal(events.body.match(/"type":"run.unknown"/g)?.length, 1);
+      assert.equal(events.body.match(/"type":"run.failed"/g)?.length, 1);
+    } finally {
+      resume.resolve();
       await f.close();
     }
   },

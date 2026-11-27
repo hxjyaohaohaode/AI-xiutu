@@ -12,6 +12,9 @@ export const branchNames = {
   candidate: '准备编辑候选',
   'pixel-review': '复核候选像素',
   nomination: '推荐候选',
+  'tone-review': '色调复核',
+  'composition-review': '构图复核',
+  'delivery-review': '交付复核',
 } as const;
 export const branchStates = {
   running: '进行中',

@@ -873,8 +873,8 @@
   backdrop-filter: none;
 }
 .studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions > button {
-  min-inline-size: 34px;
-  min-block-size: 38px;
+  min-inline-size: 44px;
+  min-block-size: 44px;
   padding: 0;
 }
 .studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions > button > span { display: none; }

@@ -19,6 +19,7 @@ export async function collaborationFixture(
     assistant?: AssistantDependencies;
     origin?: string;
     aiJobHistory?: boolean;
+    createJobService?: (db: ReturnType<typeof createDatabase>, config: ReturnType<typeof loadConfig>) => ReturnType<typeof createAiService>;
     supportQr?: Uint8Array;
   } = {},
 ) {
@@ -35,12 +36,13 @@ export async function collaborationFixture(
     NODE_ENV: 'test',
     SUPPORT_QR_FILE: supportQrFile,
   });
+  const jobService = options.createJobService?.(db, config);
   const app = await buildApp({
     db,
     config,
     assistant: options.assistant,
-    aiService: options.aiJobHistory
-      ? { ...createAiService(db, {}), resolve: undefined }
+    aiService: jobService || options.aiJobHistory
+      ? { ...(jobService ?? createAiService(db, {})), resolve: undefined }
       : undefined,
     sms: {
       configured: false,
@@ -180,6 +182,7 @@ export async function collaborationFixture(
   return {
     db,
     app,
+    jobService,
     call,
     close,
     config,

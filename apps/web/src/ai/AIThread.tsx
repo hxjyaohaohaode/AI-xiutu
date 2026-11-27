@@ -1,3 +1,4 @@
+import { ExportContent } from '../project-files/ExportContent';
 import { t } from '../i18n';
 import { useContext, useEffect, useState } from 'react';
 import {
@@ -28,11 +29,13 @@ function TextResult({
   controller,
   documents,
   canEdit,
+  captureCover,
 }: {
   output: Extract<JobOutput, { kind: 'text' }>;
   controller: ResultDecisionController;
   documents: { id: string; title: string; version: number }[];
   canEdit: boolean;
+  captureCover?: () => Promise<string>;
 }) {
   const visible = useContext(AIVisibilityContext);
   const [title, setTitle] = useState(output.title),
@@ -115,6 +118,7 @@ function TextResult({
           <Copy size={16} />
           {t('复制')}
         </button>
+        <ExportContent title={title} body={body} captureCover={captureCover} />
         <SpeakButton text={body} active={visible} />
         <button
           className="text-button"
@@ -421,6 +425,7 @@ function PendingImagePreview({ job }: { job: AIJob }) {
   );
 }
 type ThreadResultProps = {
+  captureCover?: () => Promise<string>;
   job: AIJob;
   project: Project;
   artwork: Artwork | null;
@@ -449,6 +454,7 @@ function CompletedResult({
   userId,
   isDirty,
   documents,
+  captureCover,
   onOpen,
   onPreview,
   onContinue,
@@ -547,6 +553,7 @@ function CompletedResult({
             controller={controller}
             documents={documents}
             canEdit={canEdit}
+            captureCover={captureCover}
           />
           <button className="text-button continue-copy" onClick={() => onContinue(job)}>
             <ArrowBendDownRight size={16} />
@@ -652,6 +659,7 @@ export function AIThread({
   userId,
   isDirty = true,
   documents = [],
+  captureCover,
   onOpen,
   onPreview,
   onContinue,
@@ -668,6 +676,7 @@ export function AIThread({
   userId?: string | null;
   isDirty?: boolean;
   documents?: { id: string; title: string; version: number }[];
+  captureCover?: () => Promise<string>;
   onDecisionApplied?: OnResultApplied;
   collageActions?: CollageResultActions;
   onBeforeArtworkWrite?: () => void | Promise<void>;
@@ -780,6 +789,7 @@ export function AIThread({
                     userId,
                     isDirty,
                     documents,
+                    captureCover,
                     onOpen,
                     onPreview,
                     onContinue,

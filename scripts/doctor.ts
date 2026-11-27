@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { createDatabase, getSchemaReadiness, transaction, type Database } from '@ai-xiutu/db';
 import { createAiService } from '@ai-xiutu/ai';
+import { OPENAI_SPECIALIST_OPERATIONS, openAIShutdownDate } from '@ai-xiutu/contracts';
 import { createSms, createTextModerator, createImageModerator } from '@ai-xiutu/providers';
 import { createPrivateStorage } from '@ai-xiutu/storage';
 import { getMediaCapabilities } from '@ai-xiutu/media';
@@ -87,14 +88,19 @@ try {
     detail: 'Private-directory create/write/fsync/remove succeeded; no user asset was changed.',
   });
   const ai = createAiService(db);
+  const runnable = new Set<string>();
   const catalog = await catalogSummary(db, 'model_configs', (model) => {
     const description = ai.describeModel(
       model.id,
       model.config as Parameters<typeof ai.describeModel>[1],
     );
+    const enabled = (model.config as { enabled?: boolean })?.enabled === true;
+    if (enabled)
+      for (const operation of description.runtimeOperations) runnable.add(operation);
     return {
       valid: true,
       value: {
+        enabled,
         id: model.id.slice(0, 160),
         idTruncated: model.id.length > 160,
         runtimeAvailable: description.runtimeAvailable,
@@ -103,15 +109,24 @@ try {
       },
     };
   });
+  const missingOperations = [
+    ['AI_PLAN_ENABLED', 'edit-plan'], ['AI_IMAGE_ENABLED', 'generate-image'],
+    ['AI_TEXT_ENABLED', 'generate-text'], ['AI_SPEECH_ENABLED', 'transcribe'],
+  ].filter(([flag, operation]) => process.env[flag!] === 'true' && !runnable.has(operation!))
+    .map(([, operation]) => operation);
+  if (process.env.OPENAI_SPECIALIST_ENABLED === 'true' &&
+      !OPENAI_SPECIALIST_OPERATIONS.some((op) => runnable.has(op))) missingOperations.push('openai-specialist');
   results.push({
     check: 'adapters',
-    ok: true,
+    ok: missingOperations.length === 0,
     detail: JSON.stringify({
       smsProvider: process.env.SMS_PROVIDER?.trim() || 'tencent',
       smsConfigured: createSms().configured,
       textModerationConfigured: createTextModerator().configured,
       imageModerationConfigured: createImageModerator().configured,
       availableOperations: ai.availableOperations,
+      runnableOperations: [...runnable].sort(),
+      missingOperations,
       ...catalog,
     }),
   });
@@ -122,9 +137,12 @@ try {
     join(process.env.AI_JOURNAL_DIR ?? config.storageDir, 'assistant'),
   );
   await assistant.assertJournal();
+  const assistantOperations = new Set<string>();
   const assistantModels = await catalogSummary(db, 'assistant_model_configs', (row) => {
     const parsed = assistantModelConfigSchema.safeParse(row.config);
     const profileError = parsed.success ? (modelProfileError(row.id, parsed.data) ?? null) : null;
+    if (parsed.success && parsed.data.enabled && !profileError && !openAIShutdownDate(row.id))
+      for (const operation of parsed.data.operations) assistantOperations.add(operation);
     return {
       valid: parsed.success && (!parsed.data.enabled || !profileError),
       value: {
@@ -138,15 +156,20 @@ try {
       },
     };
   });
+  const textReady = assistant.ready && assistantOperations.has('assistant-turn');
+  const voiceReady = textReady && assistant.voiceReady && assistantOperations.has('realtime-voice');
   results.push({
     check: 'assistant-and-dispatch-journal',
     ok:
       assistantModels.invalidModelCount === 0 &&
-      (process.env.AI_ASSISTANT_ENABLED !== 'true' || assistant.ready) &&
-      (process.env.AI_VOICE_ENABLED !== 'true' || assistant.voiceReady),
+      (process.env.AI_ASSISTANT_ENABLED !== 'true' || textReady) &&
+      (process.env.AI_VOICE_ENABLED !== 'true' || voiceReady),
     detail: JSON.stringify({
-      ready: assistant.ready,
-      voiceReady: assistant.voiceReady,
+      ready: textReady,
+      imageReady: textReady && assistant.imageReady,
+      voiceReady,
+      voiceReason: assistant.voiceReason,
+      enabledOperations: [...assistantOperations].sort(),
       reason: assistant.reason,
       ...assistantModels,
       journalConsistent: true,

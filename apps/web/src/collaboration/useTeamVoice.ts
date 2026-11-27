@@ -22,7 +22,8 @@ import {
   TeamVoiceAdmissionObserver,
   type TeamVoiceSubmission,
 } from '../ai/teamVoiceSubmission';
-import { readVoiceSubmission, type VoiceSubmission } from '../ai/voiceSubmission';
+import { isSettledVoiceReceipt, type VoiceReceipt } from '../ai/voiceReceipt';
+import { clearVoiceSubmission, readVoiceSubmission, type VoiceSubmission } from '../ai/voiceSubmission';
 import { VOICE_SUBMISSION_CHANGED } from '../ai/voiceSubmissionStorage';
 
 class TeamVoiceTransport {
@@ -354,6 +355,39 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
       window.removeEventListener('storage', changed);
     };
   }, [actorId]);
+  // Both voice entry points share this actor-scoped observer. A lost WebSocket
+  // close or POST receipt can be reconciled without opening a second connection.
+  const pendingVoice = pendingIndividualVoice ?? pendingInvitation;
+  useEffect(() => {
+    if (!actorId || !pendingVoice || pendingVoice.actorId !== actorId) return;
+    const controller = new AbortController();
+    let reading = false;
+    async function check() {
+      if (reading || document.hidden || !pendingVoice || controller.signal.aborted) return;
+      reading = true;
+      try {
+        const receipt = await withRequestDeadline(controller.signal, 8_000, (signal) =>
+          api<VoiceReceipt>('/me/voice-receipts/' + pendingVoice.idempotencyKey, { signal, cache: 'no-store' }));
+        if (controller.signal.aborted || !isSettledVoiceReceipt(pendingVoice, receipt)) return;
+        if (pendingVoice.schema === 'voice-session-v1') clearVoiceSubmission(localStorage, pendingVoice);
+        else clearTeamVoiceSubmission(localStorage, pendingVoice);
+      } catch {
+        // A missing record, offline browser or interrupted response is not settlement.
+      } finally {
+        reading = false;
+      }
+    }
+    void check();
+    const interval = window.setInterval(check, 30_000);
+    window.addEventListener('online', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+      window.removeEventListener('online', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [actorId, pendingVoice]);
   useEffect(() => {
     stop();
     setMessage('');
@@ -520,8 +554,6 @@ export function useTeamVoice(artworkId: string | undefined, actorId: string | un
     if (inviting.current) throw new Error('正在核对本次邀请，请稍候。');
     const agent = rosterRef.current.agent;
     if (agent.state !== 'off') throw new Error('当前团队通话已有 AI 会话。');
-    if (agent.lastOutcome === 'unknown')
-      throw new Error('上一轮团队 AI 费用待核验，暂不能重新邀请。');
     if (readTeamVoiceSubmission(localStorage, actorId))
       throw new Error('原团队 AI 邀请仍待确认，请先核对用量并联系平台运营。');
     const frozen = freezeTeamVoiceSubmission({ actorId, artworkId, body });

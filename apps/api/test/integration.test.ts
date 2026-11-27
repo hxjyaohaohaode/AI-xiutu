@@ -510,12 +510,16 @@ test(
           const copied = await call('POST', `/v1/projects/${projectId}/copy`, {}, viewer.cookie);
           assert.equal(copied.statusCode, 201, copied.body);
           const copyId = copied.json().project.id;
-          await call(
-            'DELETE',
-            `/v1/projects/${projectId}/grants/${grant.json().grant.id}`,
-            undefined,
-            owner.cookie,
-          );
+          const grantList = await call('GET', `/v1/projects/${projectId}/grants`, undefined, owner.cookie);
+          assert.deepEqual(grantList.json().policy, policy);
+          const revokePath = `/v1/projects/${projectId}/grants/${grant.json().grant.id}`;
+          assert.equal((await call('DELETE', revokePath, undefined, owner.cookie)).statusCode, 200);
+          assert.equal((await call('DELETE', revokePath, undefined, owner.cookie)).statusCode, 200);
+          assert.equal((await db.query(
+            "SELECT count(*)::int AS n FROM audit_entries WHERE target_id=$1 AND action='sharing.revoke'",
+            [grant.json().grant.id],
+          )).rows[0]!.n, 1);
+          assert.equal((await call('DELETE', `/v1/projects/${projectId}/grants/${randomUUID()}`, undefined, owner.cookie)).statusCode, 404);
           assert.equal(
             (await call('GET', `/v1/projects/${projectId}`, undefined, viewer.cookie)).statusCode,
             404,

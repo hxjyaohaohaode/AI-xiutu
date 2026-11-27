@@ -44,7 +44,7 @@ export function WorkspaceCards({
   grant,
   disabled,
   canExecute,
-  onDecision,
+  onDecision, generationOfferLabel,
   onPrompt,
   previewCandidateId,
   confirmedCandidateIds,
@@ -60,7 +60,8 @@ export function WorkspaceCards({
   confirmedCandidateIds?: ReadonlySet<string>;
   onConfirmPreview?: () => void;
   onCancelPreview?: () => void;
-  onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected') => void;
+  onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected', direct?: boolean) => void;
+  generationOfferLabel?: (references: number) => string | undefined;
   onPrompt: (text: string) => void;
 }) {
   const locale = useLocale();
@@ -169,7 +170,7 @@ export function WorkspaceCards({
                     canExecute={canExecute}
                     previewing={previewCandidateId === candidate.id}
                     confirmed={confirmedCandidateIds?.has(candidate.id)}
-                    onDecision={onDecision}
+                    onDecision={onDecision} generationOfferLabel={generationOfferLabel}
                     onConfirm={onConfirmPreview}
                     onCancel={onCancelPreview}
                   />

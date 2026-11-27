@@ -42,7 +42,7 @@ export interface ProviderStage {
   modelId: string;
   dispatchedAt: string | null;
   receivedAt: string | null;
-  status: 'pending' | 'unknown' | 'received' | 'no-receipt';
+  status: 'pending' | 'unknown' | 'received' | 'rejected' | 'no-receipt';
   pricing: PricingSnapshot | null;
   totals: { input: number | null; output: number | null; total: number | null };
   meters: BilledMeter[];

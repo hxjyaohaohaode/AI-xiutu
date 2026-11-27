@@ -1,3 +1,4 @@
+import { ExportContent } from '../project-files/ExportContent';
 import { getLocale, t } from '../i18n';
 import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react';
 import {
@@ -1096,11 +1097,15 @@ export function DocumentsView({
   project,
   refreshToken,
   onDirtyChange,
+  onUseDocument,
+  captureCover,
 }: {
   actorId: string | null;
   project: Project;
   refreshToken: number;
   onDirtyChange: (dirty: boolean) => void;
+  onUseDocument?: (doc: ProjectDocument) => void;
+  captureCover?: () => Promise<string>;
 }) {
   const canEdit = !!actorId && workspacePermissions(project.role).edit;
   const ownerKey = JSON.stringify([actorId, project.id]);
@@ -1773,6 +1778,11 @@ export function DocumentsView({
                 {body.length.toLocaleString(getLocale())} {t('字')}
               </span>
               <div className="document-draft-editor-actions">
+                {onUseDocument && selected && canEdit && !dirty && (
+                  <button type="button" className="text-button" disabled={busy || pendingSave}
+                    onClick={() => onUseDocument(selected)}>{t('用此文档与 AI 创作')}</button>
+                )}
+                <ExportContent key={selected?.id ?? ownerKey} title={title} body={body} captureCover={captureCover} />
                 {dirty && retainedDraft && (
                   <button type="button" className="button button-secondary" onClick={exportDraft}>
                     <DownloadSimple size={16} aria-hidden />

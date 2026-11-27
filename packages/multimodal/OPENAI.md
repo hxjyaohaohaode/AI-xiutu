@@ -21,7 +21,7 @@
 
 - 供应商支持1…10张；应用默认最多4张，运营 `maxOutputs` 和服务器预算可以进一步收紧。提高服务器上限也不能绕过整批像素/字节限制。
 - 输出请求接纳PNG/JPEG/WebP；压缩仅限JPEG/WebP且范围0…100；透明背景不能配JPEG。显式透明要求检查实际解码alpha，不能把供应商描述或棋盘格当成透明。
-- 首张参考图是蒙版/标注作用对象；所有参考图与引导图必须在本项目内、仍可访问，经过完整规范化与图片审核。引导层须与首图同尺寸、PNG且存在透明像素。蒙版是模型引导，不能保证区域外像素完全不变。
+- 首张参考图是蒙版/标注作用对象；所有参考图与引导图必须在本项目内、仍可访问，经过完整规范化与图片审核。引导层须与首图同尺寸、PNG且存在透明像素。服务端在输出为显式同尺寸 PNG 且未请求部分图时，将模型结果按蒙版透明度与首张规范化源图逐像素合成。不透明处保留原始 RGBA，半透明处按 alpha 混合。自动尺寸、不同画幅、其他格式和部分图路径仍使用供应商蒙版引导。
 - `input_fidelity` 仅编辑可选，`gpt-image-1.5` 支持 `low/high`，`gpt-image-1-mini` 支持 `low`。`moderation` 接受 `auto/low`，两者均经过应用审核。`safety_identifier` 使用内部用户 ID 的稳定 SHA-256。
 - 档案内型号接受单张光栅 `stream`。`OPENAI_IMAGE_PARTIALS_ENABLED=true` 时可请求 `partial_images`（0–3）。Worker 逐条解析 SSE，暂存已审核中间图供任务发起人查看，独立校验最终图。中间图最多保留五分钟，终态移除。预留按申请的数量，扣点按收到的部分图数，差额释放。
 - 2.6 Flare/Sunburst 的 SVG 生成由 `OPENAI_IMAGE_SVG_ENABLED` 开放，单张、无参考图、无流、无压缩。可通过 `OPENAI_IMAGE_SVG_AUTHORS` 提供允许的作者模型。只有通过 XML 元素和属性验证的矢量可交付。界面显示审核后的光栅图，下载提供可编辑 SVG。
@@ -59,3 +59,14 @@ OpenAI使用版本2冻结清单，保存原始用户请求、规范化参数、�
 ## 验证
 
 `test/openai.test.ts`验证真实协议构造、固定端点/凭据门禁、参数依赖、PNG/JPEG/WebP真实解码、透明alpha、蒙版/标注和批次异常。`packages/ai/test/openai.test.ts`验证SQL报价冻结、并发幂等、审核拒绝不外呼、整批失败不发布、引用撤销、真实父子关联和输入篡改拒绝。运行结果只能证明这些测试范围；真实账户授权、网络可达性、效果和账单需要独立受控验收。
+
+### Editor acceptance with a local model fixture
+
+After building the web workspace, run the browser case against a disposable PostgreSQL test database. It opens the editor, submits an assistant prompt, reads the offered price, clicks the candidate, runs the worker, checks settlement and decodes the downloaded PNG. It also captures the action at four viewport sizes. The assistant and image endpoints are local test doubles.
+
+```sh
+npm run build --workspace @ai-xiutu/web
+CI=true TEST_DATABASE_URL=postgres://localhost/xiutu_test TSX_TSCONFIG_PATH=apps/web/tsconfig.json node --import tsx scripts/qa/agent-image.browser.mjs
+```
+
+Install a Playwright Chromium browser before running. Set `BROWSER_CHANNEL` when deliberately selecting a locally installed Chromium channel. The default output directory is `artifacts/browser-agent-image`.

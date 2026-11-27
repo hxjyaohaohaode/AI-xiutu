@@ -1,7 +1,7 @@
 
 import assert from 'node:assert/strict';
 import { randomUUID, createHash } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
@@ -53,6 +53,53 @@ async function pageFor(actor, viewport) {
   return page;
 }
 async function take(page, filename) { await page.screenshot({ path: resolve(out, filename + '.png') }); }
+async function checkGuestExport(viewport, portrait) {
+  const context = await browser.newContext({ viewport, locale: 'zh-CN', reducedMotion: 'reduce',
+    hasTouch: viewport.width < 1000 });
+  try {
+    // Observe the OS handoff boundary without sending the guest's file to another app.
+    await context.addInitScript(() => {
+      navigator.canShare = ({ files }) => files?.length === 1;
+      navigator.share = async ({ files: [file] }) => {
+        const hash = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+        window.guestSharedImage = { name: file.name, type: file.type,
+          digest: Array.from(new Uint8Array(hash), (v) => v.toString(16).padStart(2, '0')).join('') };
+      };
+    });
+    const page = await context.newPage();
+    page.on('pageerror', (error) => result.errors.push(String(error)));
+    const session = page.waitForResponse((response) => new URL(response.url()).pathname === '/v1/session');
+    await page.goto(origin + '/#/studio');
+    assert.equal((await (await session).json()).user, null);
+    await page.getByLabel('选择照片', { exact: true }).setInputFiles({
+      name: 'portrait.png', mimeType: 'image/png', buffer: portrait,
+    });
+    await page.locator('.canvas-stage[aria-busy="false"]').waitFor();
+    const downloadButton = page.locator('[data-action="download-photo"]:visible').first();
+    await take(page, 'guest-export-' + viewport.width);
+    const [download] = await Promise.all([page.waitForEvent('download'), downloadButton.click()]);
+    const buffer = await readFile(await download.path());
+    const { format, width, height } = await sharp(buffer).metadata();
+    assert.deepEqual([format, width, height], ['png', 480, 336]);
+    assert.equal(download.suggestedFilename(), 'portrait-编辑.png');
+    assert.equal(await page.locator('dialog:visible').count(), 0);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await showEditorTopbar(page);
+    await page.getByRole('button', { name: '导出', exact: true }).click();
+    const share = page.locator('dialog.export-dialog[open]').getByRole('button', { name: '分享图片', exact: true });
+    await share.click();
+    await page.waitForFunction(() => window.guestSharedImage ||
+      [...document.querySelectorAll('.toast')].some((toast) => toast.textContent.includes('文件已就绪，点击分享图片')));
+    if (!await page.evaluate(() => !!window.guestSharedImage)) await share.click();
+    await page.waitForFunction(() => !!window.guestSharedImage);
+    const digest = hash(buffer);
+    assert.deepEqual(await page.evaluate(() => window.guestSharedImage),
+      { name: download.suggestedFilename(), type: 'image/png', digest });
+    return { viewport, width, height, bytes: buffer.length, digest };
+  } finally {
+    await context.close();
+  }
+}
 async function works(page) {
   await showEditorTopbar(page);
   const desktop = page.locator('button[data-view="works"]:visible');
@@ -99,6 +146,13 @@ try {
   server = await preview({ configFile: resolve('apps/web/vite.config.ts'), preview: { host: '127.0.0.1', port, strictPort: true } });
   browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
   result.browser = browser.version();
+  const guestPortrait = await sharp(sample.buffer).resize(480, 336, { fit: 'cover' }).png().toBuffer();
+  const guestExports = [];
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 768, height: 1024 },
+    { width: 390, height: 844 }, { width: 320, height: 568 }, { width: 844, height: 390 }]) {
+    guestExports.push(await checkGuestExport(viewport, guestPortrait));
+  }
+  result.cases.push({ name: 'guest downloads and shares the same PNG without login', guestExports });
   const desktop = await pageFor('owner', { width: 1440, height: 960 });
   await desktop.locator('[data-dock-tool="ai"]:visible').click();
   await desktop.getByLabel('向智能体描述修改需求').waitFor();

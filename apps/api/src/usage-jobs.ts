@@ -45,7 +45,7 @@ export function registerUsageJobs(app: FastifyInstance, db: Database) {
           ? Promise.resolve([])
           : db
               .query(
-                `SELECT id,branch_key,purpose,pricing,usage,tool_calls,service_tier,created_at,completed_at FROM assistant_dispatches
+                `SELECT id,branch_key,purpose,pricing,usage,tool_calls,service_tier,created_at,completed_at,rejected_at FROM assistant_dispatches
          WHERE ${row.kind === 'voice' ? 'voice_id' : 'turn_id'}=$1 ORDER BY sequence LIMIT 101`,
                 [jobId],
               )
@@ -79,8 +79,8 @@ export function registerUsageJobs(app: FastifyInstance, db: Database) {
               dispatch.purpose ?? (row.kind === 'voice' ? 'voice-delegation' : 'conversation'),
             modelId,
             dispatchedAt: iso(dispatch.created_at),
-            receivedAt: iso(dispatch.completed_at),
-            status: status(dispatch.usage),
+            receivedAt: iso(dispatch.completed_at ?? dispatch.rejected_at),
+            status: dispatch.rejected_at ? 'rejected' : status(dispatch.usage),
             pricing:
               dispatch.service_tier === 'default' &&
               (!modelId.startsWith('gpt-6') ||

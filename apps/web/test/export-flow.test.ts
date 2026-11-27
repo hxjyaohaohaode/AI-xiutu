@@ -46,7 +46,7 @@ test('unchanged image export prepares the encoded bytes with the captured source
   assert.equal(allocated.length, 0, 'no URL before encoding completes');
   const blob = new Blob(['pixels-from-A'], { type: 'image/png' });
   encoding.resolve(blob);
-  assert.deepEqual(await pending, { url: 'blob:A', name: '照片A-编辑.png', bytes: blob.size });
+  assert.deepEqual(await pending, { url: 'blob:A', name: '照片A-编辑.png', bytes: blob.size, blob });
   assert.deepEqual(allocated, [blob]);
 });
 
@@ -115,11 +115,14 @@ test('a slower superseded export cannot replace the newer source result', async 
   );
   const pixelsB = new Blob(['new pixels']);
   second.resolve(pixelsB);
-  assert.deepEqual(await newResult, {
+  const exported = await newResult;
+  assert.deepEqual(exported, {
     url: 'blob:B',
     name: '照片B-编辑.png',
     bytes: pixelsB.size,
+    blob: pixelsB,
   });
+  assert.equal(await exported?.blob.text(), 'new pixels');
   first.resolve(new Blob(['old pixels']));
   assert.equal(await oldResult, null);
   assert.deepEqual(allocated, ['B']);

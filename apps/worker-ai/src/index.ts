@@ -1,35 +1,32 @@
 import 'dotenv/config';
 import { createDatabase } from '@ai-xiutu/db';
 import { createAiService } from '@ai-xiutu/ai';
-import { setTimeout } from 'node:timers/promises';
+import { setTimeout as delay } from 'node:timers/promises';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required.');
 const db = createDatabase(process.env.DATABASE_URL);
 const service = createAiService(db);
-let stopped = false;
-process.on('SIGINT', () => {
-  stopped = true;
-});
-process.on('SIGTERM', () => {
-  stopped = true;
-});
+const shutdown = new AbortController();
+process.once('SIGINT', () => shutdown.abort());
+process.once('SIGTERM', () => shutdown.abort());
 console.log(
   service.configured
     ? 'AI worker dispatch enabled; lifecycle recovery is active.'
     : 'AI worker dispatch disabled; lifecycle recovery remains active.',
 );
 try {
-  while (!stopped) {
-    try {
-      // Disabled providers stop new dispatch, never lease recovery/hold safety.
-      await service.runOnce();
-    } catch {
-      console.error(
-        'AI worker paused: database/journal consistency check failed. Inspect recovery evidence before restart.',
-      );
-      break;
+  while (!shutdown.signal.aborted) {
+    // Each iteration rechecks leases and durable dispatch evidence before claiming.
+    // Drain queued work immediately. An idle worker sleeps until the next poll.
+    if (!(await service.runOnce()) && !shutdown.signal.aborted) {
+      await delay(2000, undefined, { signal: shutdown.signal });
     }
-    await setTimeout(2000);
+  }
+} catch (error) {
+  if (!(shutdown.signal.aborted && error instanceof Error && error.name === 'AbortError')) {
+    console.error('AI worker stopped: database or dispatch consistency check failed.');
+    // Supervisors using restart: on-failure must distinguish this from SIGTERM.
+    process.exitCode = 1;
   }
 } finally {
   await db.end();

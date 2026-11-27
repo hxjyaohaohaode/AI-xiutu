@@ -88,13 +88,13 @@ test('the legacy job request freezes references, generation options, grant, mode
   );
 });
 
-test('job recovery uses the existing project list after admission and never invents a per-job GET', () => {
+test('job recovery looks up the actor’s original receipt without relying on the latest 100 jobs', () => {
   const frozen = freezeJobSubmission({ ...base(), body: body() });
   const queued = acceptJobSubmission(frozen, job());
   const uncertain = acceptJobSubmission(queued, job('unknown'));
   for (const saved of [queued, uncertain]) {
     assert.deepEqual(jobSubmissionRequest(saved), {
-      path: `/projects/${projectId}/ai-jobs`,
+      path: `/projects/${projectId}/ai-jobs?requestKey=${key}`,
       init: { method: 'GET' },
     });
     assert.equal(jobSubmissionResolved(saved.state), false);
@@ -162,7 +162,9 @@ test('audio stays in page memory; after refresh its identity stays locked withou
   const afterRefresh = readJobSubmission(checkpoint, 'actor-a', new Map())!;
   assert.equal(afterRefresh.idempotencyKey, key);
   assert.equal(afterRefresh.requestBody, null);
-  assert.throws(() => jobSubmissionRequest(afterRefresh), /原始录音只保留在页面内存/);
+  assert.deepEqual(jobSubmissionRequest(afterRefresh), {
+    path: `/projects/${projectId}/ai-jobs?requestKey=${afterRefresh.idempotencyKey}`, init: { method: 'GET' },
+  });
   assert.throws(
     () =>
       saveJobSubmission(

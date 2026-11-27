@@ -41,7 +41,7 @@ for (const flag of [
   process.env[flag] = 'false';
 process.env.NODE_ENV = 'test';
 const { collaborationFixture } = await import('../../apps/api/test/collaboration-fixture.ts');
-const { createServer } = await import('vite');
+const { createServer, preview } = await import('vite');
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const artifacts = resolve(root, process.env.BROWSER_ARTIFACT_DIR ?? 'artifacts/browser-assistant');
 await mkdir(artifacts, { recursive: true });
@@ -431,14 +431,16 @@ try {
   );
   await fixture.app.listen({ host: '127.0.0.1', port: 0 });
   process.env.PORT = String(fixture.app.server.address().port);
-  vite = await createServer({
-    cacheDir: resolve(artifacts, 'vite-cache'),
-    configFile: resolve(root, 'apps/web/vite.config.ts'),
-    server: { host: '127.0.0.1', port, strictPort: true },
-  });
-  await vite.listen();
+  const configFile = resolve(root, 'apps/web/vite.config.ts');
+  const listen = { host: '127.0.0.1', port, strictPort: true };
+  if (process.env.ASSISTANT_QA_BUILT === '1') {
+    vite = await preview({ configFile, preview: listen });
+  } else {
+    vite = await createServer({ configFile, cacheDir: resolve(artifacts, 'vite-cache'), server: listen });
+    await vite.listen();
+  }
   const channel = process.env.BROWSER_CHANNEL;
-  assert.ok(!channel || ['chrome', 'msedge'].includes(channel));
+  assert.ok(!channel || ['chromium', 'chrome', 'msedge'].includes(channel));
   browser = await chromium.launch({ headless: true, ...(channel ? { channel } : {}) });
   report.browser = browser.version();
   const context = await browser.newContext({

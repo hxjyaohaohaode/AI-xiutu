@@ -90,6 +90,11 @@ test(
       assert.equal(catalog.models.length, 40);
       assert.equal(catalog.modelsOmitted, count - 40);
 
+      const requestedImages = await run({ AI_IMAGE_ENABLED: 'true', ARK_API_KEY: '', OPENAI_IMAGE_ENABLED: 'false' });
+      assert.equal(requestedImages.code, 1);
+      const imageCheck = requestedImages.checks.find((item) => item.check === 'adapters')!;
+      assert.ok(!imageCheck.ok && JSON.parse(imageCheck.detail).missingOperations.includes('generate-image'));
+
       const voiceWithoutCredentials = await run({
         AI_ASSISTANT_ENABLED: 'true',
         AI_VOICE_ENABLED: 'true',

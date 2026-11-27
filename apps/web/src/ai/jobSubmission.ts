@@ -72,6 +72,7 @@ function validateJobRequest(raw: unknown): Record<string, unknown> & {
       'markupAssetId',
       'parentJobId',
       'executionGrantId',
+      'expectedUnits',
     ],
     'generate-text': ['prompt', 'contextDocumentId', 'expectedDocumentVersion', 'parentJobId'],
     transcribe: ['audioBase64', 'transcriptionOptions'],
@@ -261,10 +262,8 @@ export const jobSubmissionResolved = (state: string) =>
 
 export function jobSubmissionRequest(value: JobSubmission): { path: string; init: RequestInit } {
   const path = `/projects/${encodeURIComponent(value.projectId)}/ai-jobs`;
-  // The existing API has a project list, not a GET /ai-jobs/:id route.
-  if (value.jobId) return { path, init: { method: 'GET' } };
-  if (value.requestBody === null)
-    throw new Error('原始录音只保留在页面内存中，刷新后无法重放。请先核对项目任务和用量记录。');
+  if (value.jobId || value.requestBody === null)
+    return { path: path + '?requestKey=' + encodeURIComponent(value.idempotencyKey), init: { method: 'GET' } };
   return { path, init: { method: 'POST', body: value.requestBody } };
 }
 

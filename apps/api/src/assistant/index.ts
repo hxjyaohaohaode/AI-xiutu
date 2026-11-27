@@ -157,7 +157,9 @@ export function registerAssistant(
     const rows = (await db.query('SELECT id,config FROM assistant_model_configs ORDER BY id')).rows;
     return {
       ready: service.ready,
+      imageReady: service.imageReady,
       voiceReady: service.voiceReady,
+      voiceReason: service.voiceReason,
       reason: service.reason,
       models: rows.flatMap((row) => {
         const parsed = assistantModelConfigSchema.safeParse(row.config);
@@ -182,9 +184,9 @@ export function registerAssistant(
             maxSeconds: model.maxSeconds,
             maxDelegations: model.maxDelegations,
             maxOutputTokens: model.maxOutputTokens,
-            imageInput: model.imageInput,
+            imageInput: service.imageReady && model.imageInput,
             webSearch: model.webSearch,
-            webImageSearch: model.webSearch && model.webImageSearch === true,
+            webImageSearch: service.imageReady && model.webSearch && model.webImageSearch === true,
             voice: VOICE_MODELS.find((voice) => voice.id === row.id) ?? null,
             voiceDefaults: {
               live: model.live && { acknowledgementDelayMs: model.live.acknowledgementDelayMs },
@@ -397,6 +399,23 @@ export function registerAssistant(
       })),
     };
   });
+  // A billing receipt belongs to its actor, including after they leave a shared
+  // project. Return only bindings and settlement, never room content or a ticket.
+  app.get('/v1/me/voice-receipts/:key', async (req, reply) => {
+    const actor = requireUser(req);
+    const key = id.parse((req.params as { key: string }).key);
+    const receipt = (await db.query(
+      `SELECT v.id, v.actor_id AS "actorId", v.idempotency_key AS "idempotencyKey",
+              v.project_id AS "projectId", v.config->>'teamArtworkId' AS "teamArtworkId",
+              v.state, h.state AS "holdState"
+         FROM voice_sessions v JOIN quota_holds h ON h.id=v.hold_id AND h.user_id=v.actor_id
+        WHERE v.actor_id=$1 AND v.idempotency_key=$2`,
+      [actor.id, key],
+    )).rows[0];
+    reply.header('Cache-Control', 'private, no-store');
+    if (!receipt) throw new HttpError(404, 'VOICE_RECEIPT_NOT_FOUND', '尚未查到这次通话的回执');
+    return receipt;
+  });
   app.post('/v1/projects/:projectId/voice-sessions', { bodyLimit: 4_000_000 }, async (req) => {
     const user = requireUser(req),
       projectId = id.parse((req.params as any).projectId);
@@ -583,7 +602,9 @@ export function registerAssistant(
       profiles: VOICE_MODELS,
       responsesProfiles: RESPONSES_MODELS,
       ready: service.ready,
+      imageReady: service.imageReady,
       voiceReady: service.voiceReady,
+      voiceReason: service.voiceReason,
       responsesVerifiedAt: RESPONSES_VERIFIED_AT,
       sources: [...VOICE_DOCS, ...RESPONSES_SOURCES],
       transcriptionModels: CALL_TRANSCRIPTION_MODELS,

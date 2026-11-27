@@ -63,7 +63,12 @@ jobs:
         run: node --import tsx scripts/qa/workspace-v4.browser.mjs
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
         if: matrix.round == 1
+        env:
+          ASSISTANT_QA_BUILT: '1'
         run: node --import tsx scripts/qa/assistant.browser.mjs
+      - name: Generate and settle an assistant image from its editor candidate
+        if: matrix.round == 1
+        run: node --import tsx scripts/qa/agent-image.browser.mjs
       - name: Verify launch workflows on the built application
         if: matrix.round == 1
         env:
@@ -138,6 +143,13 @@ jobs:
         with:
           name: launch-browser-${{ github.sha }}
           path: artifacts/launch-browser
+          retention-days: 14
+      - name: Preserve assistant image and settlement evidence
+        if: always() && matrix.round == 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: browser-agent-image-${{ github.sha }}
+          path: artifacts/browser-agent-image
           retention-days: 14
   baseline:
     runs-on: ubuntu-latest

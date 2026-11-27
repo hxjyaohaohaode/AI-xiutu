@@ -1,3 +1,4 @@
+import { quickImageOffer } from '../src/components/generationDraft.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
@@ -213,4 +214,26 @@ test('capability refresh removes unsupported choices and keeps transparency vali
   assert.equal(result.outputFormat, 'png');
   assert.equal(result.n, 2);
   assert.equal(imageOptionsError(m, result), null);
+});
+
+test('single-click image offer respects runtime, reference count, size, selected model and exact price', () => {
+  const preferred = model();
+  preferred.runtimeOperations = ['generate-image'];
+  preferred.runtimeAvailable = true;
+  const cheap = { ...preferred, id: 'cheap', pricing: { ...preferred.pricing!, defaultPerImage: 10 } };
+  const catalog = [{ ...preferred, enabled: false, id: 'disabled' }, { ...preferred, runtimeAvailable: false }, preferred, cheap];
+  assert.deepEqual(quickImageOffer(catalog, 2, preferred.id), {
+    model: preferred, width: 1024, height: 1024, units: 40, options: { quality: 'auto', background: 'auto', outputFormat: 'png', n: 1 },
+  });
+  assert.equal(quickImageOffer(catalog, 0)?.model.id, 'cheap');
+  const ark = { ...cheap, provider: 'ark' as const, parameterCapabilities: undefined, supportsReference: true };
+  assert.ok(quickImageOffer([ark], 1));
+  assert.equal(quickImageOffer([ark], 2), undefined);
+  assert.equal(quickImageOffer([{ ...ark, supportsReference: false }], 1), undefined);
+  const retiring = { ...cheap, id: 'retiring', shutdownDate: '2099-01-01' };
+  assert.equal(quickImageOffer([preferred, retiring], 0, retiring.id)?.model.id, preferred.id);
+  assert.equal(quickImageOffer([retiring], 0)?.model.id, retiring.id);
+  assert.equal(quickImageOffer([{ ...retiring, runtimeAvailable: false }], 0), undefined);
+  assert.equal(quickImageOffer(catalog, 4), undefined);
+  assert.equal(quickImageOffer([{ ...preferred, maxPixels: 10 }], 0), undefined);
 });

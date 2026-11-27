@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createRecipeV4 } from '@ai-xiutu/editor';
+import { isSettledVoiceReceipt, type VoiceReceipt } from '../src/ai/voiceReceipt.ts';
+import { freezeTeamVoiceSubmission } from '../src/ai/teamVoiceSubmission.ts';
 import { ApiError } from '../src/lib/api.ts';
 import {
   acceptVoiceSubmission,
@@ -180,7 +182,7 @@ test('unknown close survives reopening and blocks another project, while a defin
   assert.equal(readVoiceSubmission(checkpoint, 'actor-a')?.idempotencyKey, nextRequestId);
 });
 
-test('a late preparation acknowledgement is retained without a ticket or media and never invents a GET endpoint', () => {
+test('a late preparation acknowledgement is retained without a ticket or media and cannot reissue a connection ticket', () => {
   const checkpoint = storage();
   const payloads = new Map<string, string>();
   const pending = freezeVoiceSubmission(input());
@@ -282,4 +284,22 @@ test('missing private payload and corrupted storage preserve the identity instea
     /恢复记录无法读取/,
   );
   assert.equal(checkpoint.getItem(key), '{damaged');
+});
+
+test('receipt recovery binds the original owner, request, project or room and a terminal ledger movement', () => {
+  const individual = acceptVoiceSubmission(freezeVoiceSubmission(input()), receipt());
+  const team = freezeTeamVoiceSubmission({ actorId: individual.actorId, artworkId,
+    body: { confirmed: true, idempotencyKey: requestId, modelId: 'gpt-live-1', backendModelId: 'backend', voice: 'marin' } });
+  const settled: VoiceReceipt = { id: sessionId, actorId: individual.actorId, idempotencyKey: requestId,
+    projectId, teamArtworkId: null, state: 'closed', holdState: 'settled' };
+  assert.ok(isSettledVoiceReceipt(individual, settled));
+  assert.ok(isSettledVoiceReceipt(freezeVoiceSubmission(input()), settled));
+  assert.ok(isSettledVoiceReceipt(individual, { ...settled, state: 'failed', holdState: 'released' }));
+  for (const changed of [{ state: 'active' }, { state: 'unknown' }, { holdState: 'held' },
+    { holdState: 'unknown' }, { projectId: nextRequestId }, { actorId: 'other' },
+    { id: nextRequestId }, { idempotencyKey: nextRequestId }, { teamArtworkId: artworkId }] as const)
+    assert.equal(isSettledVoiceReceipt(individual, { ...settled, ...changed }), false);
+  assert.ok(isSettledVoiceReceipt(team, { ...settled, teamArtworkId: artworkId }));
+  assert.equal(isSettledVoiceReceipt(team, settled), false);
+  assert.equal(isSettledVoiceReceipt(team, { ...settled, teamArtworkId: assetId }), false);
 });

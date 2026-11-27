@@ -33,6 +33,7 @@ export const stagePurposeLabels: Record<string, string> = {
   conversation: '编辑对话',
   'web-search': '公开检索',
   'research-merge': '合并研究证据',
+  'specialist-review': '独立专业复核',
   'edit-plan': '参数建议',
   'generate-image': '图像生成',
   'live-duration': '实时通话时长',
@@ -46,6 +47,7 @@ export const stageStatusLabels: Record<ProviderStage['status'], string> = {
   unknown: '待核验',
   received: '已收到回执',
   'no-receipt': '未记录回执',
+  rejected: '请求已拒绝',
 };
 export const holdStatusLabels: Record<string, string> = {
   held: '预占中',

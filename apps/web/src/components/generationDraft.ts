@@ -1,6 +1,32 @@
 import { t } from '../i18n';
 import type { AssetCopyRecord } from '@ai-xiutu/contracts';
 import type { Asset } from '../lib/types';
+import type { AIModel } from '../ai/types';
+import { allowedImageSizes, defaultImageOptions, imageOptionsError, imagePointQuote, imageBatchError, requestImageOptions } from '../ai/capabilities';
+
+export function quickImageOffer(models: AIModel[], referenceCount: number, preferredId?: string) {
+  const offers = models.flatMap((model) => {
+    if (!model.enabled || !model.runtimeAvailable ||
+        !model.runtimeOperations?.includes('generate-image')) return [];
+    const refs = model.parameterCapabilities?.references;
+    const referenceLimit = model.provider === 'ark'
+      ? Number(model.supportsReference === true)
+      : refs?.supported ? refs.maxCount : 0;
+    if (referenceCount > referenceLimit) return [];
+    const options = defaultImageOptions(model);
+    const size = allowedImageSizes(model, options)[0];
+    const units = imagePointQuote(model, options);
+    if (!size || units === null || imageOptionsError(model, options) ||
+        imageBatchError(model, size.width, size.height, options)) return [];
+    return [{ model, units, ...size, options: requestImageOptions(model, options) }];
+  });
+  // The runtime enforces shutdown dates. Prefer current models, but keep a still-live
+  // model with an announced end date if it is the only one supporting this draft.
+  const current = offers.filter((offer) => !offer.model.shutdownDate);
+  const eligible = current.length ? current : offers;
+  return eligible.find((offer) => offer.model.id === preferredId) ??
+    eligible.sort((a, b) => a.units - b.units || a.model.id.localeCompare(b.model.id))[0];
+}
 
 export interface GenerationDraftInput {
   executionGrantId?: string;
@@ -21,7 +47,7 @@ export interface ReferenceCopyAttempt {
 
 export type ReferenceCopyJournal = Map<string, ReferenceCopyAttempt>;
 
-interface PreparationOptions {
+interface PreparationOptions<Result> {
   actorScope: string;
   projectId: string;
   journal: ReferenceCopyJournal;
@@ -34,7 +60,7 @@ interface PreparationOptions {
   confirmCopy: (count: number) => boolean | Promise<boolean>;
   assertCurrent: () => void;
   onAssetReady: (asset: Asset) => void;
-  commit: (draft: PreparedGenerationDraft) => void;
+  commit: (draft: PreparedGenerationDraft) => Result;
 }
 
 /**
@@ -42,10 +68,10 @@ interface PreparationOptions {
  * the composer. The caller records the candidate decision first, then invokes
  * the returned commit. Failed/unknown copies retain their original request key.
  */
-export async function prepareGenerationDraft(
+export async function prepareGenerationDraft<Result>(
   input: GenerationDraftInput,
-  options: PreparationOptions,
-): Promise<(() => void) | null> {
+  options: PreparationOptions<Result>,
+): Promise<(() => Result | undefined) | null> {
   const draft = { ...input, referenceAssetIds: [...input.referenceAssetIds] };
   options.assertCurrent();
   const projectAssets = draft.referenceAssetIds.length ? await options.loadProjectAssets() : [];
@@ -127,7 +153,7 @@ export async function prepareGenerationDraft(
   return () => {
     if (committed) return;
     options.assertCurrent();
-    options.commit(prepared);
     committed = true;
+    return options.commit(prepared);
   };
 }

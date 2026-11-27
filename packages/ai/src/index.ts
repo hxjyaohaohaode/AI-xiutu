@@ -397,12 +397,13 @@ function createEditPlanService(
         return { job: jobDto({ ...inserted.rows[0], units: hold.units } as JobRow, true) };
       });
     },
-    async list(args: { actorId: string; projectId: string }) {
+    async list(args: { actorId: string; projectId: string; requestKey?: string }) {
       const permission = await requireAiMember(db, args.actorId, args.projectId, false);
       const rows = await db.query(
         `SELECT j.*,h.units FROM ai_jobs j LEFT JOIN quota_holds h ON h.id=j.hold_id
-        WHERE j.project_id=$1 ORDER BY j.created_at DESC LIMIT 100`,
-        [args.projectId],
+        WHERE j.project_id=$1 AND ($2::text IS NULL OR (j.idempotency_key=$2 AND j.actor_id=$3))
+        ORDER BY j.created_at DESC LIMIT 100`,
+        [args.projectId, args.requestKey ?? null, args.actorId],
       );
       return {
         jobs: rows.rows.map((row) =>
