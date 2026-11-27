@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, audit, emit, type Database } from '@ai-xiutu/db';
-import { assetSources } from '@ai-xiutu/contracts';
+import { assetOrientations, assetSources } from '@ai-xiutu/contracts';
 import {
   id,
   hash,
@@ -10,6 +10,8 @@ import {
   spaceRole,
   assetDto,
   assetSourceSql,
+  assetOrientationSql,
+  lockProjectMutation,
   assertVersion,
   HttpError,
 } from './core.js';
@@ -54,6 +56,7 @@ const filters = z
       .optional(),
     source: z.enum(assetSources).optional(),
     mime: z.string().max(80).regex(/^image\/[a-z0-9.+-]+$/).optional(),
+    orientation: z.enum(assetOrientations).optional(),
     groupBy: z.enum(['date', 'project', 'source', 'type']).optional(),
     timeZone: z.string().max(80).refine((zone) => {
       try { new Intl.DateTimeFormat('en', { timeZone: zone }); return true; }
@@ -82,13 +85,21 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
     const params = z.object({ id }).parse(req.params);
     const body = annotationsPatch.parse(req.body);
     const asset = await transaction(db, async (tx) => {
+      const hint = (await tx.query(
+        'SELECT project_id FROM assets WHERE id=$1 AND deleted_at IS NULL',
+        [params.id],
+      )).rows[0];
+      if (!hint) throw new HttpError(404, 'ASSET_NOT_FOUND', '素材不存在');
+      const project = await lockProjectMutation(
+        tx, hint.project_id, actor.id, hash(req.cookies.xiutu_session ?? ''),
+      );
       const old = (
         await tx.query('SELECT * FROM assets WHERE id=$1 AND deleted_at IS NULL FOR UPDATE', [
           params.id,
         ])
       ).rows[0];
-      if (!old) throw new HttpError(404, 'ASSET_NOT_FOUND', '素材不存在');
-      const project = await projectAccess(tx, old.project_id, actor.id, 'edit');
+      if (!old || old.project_id !== hint.project_id)
+        throw new HttpError(404, 'ASSET_NOT_FOUND', '素材不存在');
       assertVersion(old.annotation_version, body.expectedVersion);
       const { expectedVersion: _version, ...patch } = body;
       const annotations = { ...old.annotations, ...patch };
@@ -130,6 +141,7 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
           query: query.query ?? '',
           source: query.source ?? null,
           ...(query.mime ? { mime: query.mime } : {}),
+          ...(query.orientation ? { orientation: query.orientation } : {}),
           createdFrom: query.createdFrom ?? null,
           createdTo: query.createdTo ?? null,
         }),
@@ -155,7 +167,8 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
           OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($4))>0))
          AND ($5::text IS NULL OR (${assetSourceSql})=$5)
          AND ($6::timestamptz IS NULL OR a.created_at >= $6) AND ($7::timestamptz IS NULL OR a.created_at < $7)
-         AND ($8::text IS NULL OR a.mime=$8)`;
+         AND ($8::text IS NULL OR a.mime=$8)
+         AND ($9::text IS NULL OR (${assetOrientationSql})=$9)`;
       const values = [
             actor.id,
             projectId,
@@ -165,10 +178,11 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
             query.createdFrom ?? null,
             query.createdTo ?? null,
             query.mime ?? null,
+            query.orientation ?? null,
       ];
       if (query.groupBy) {
         const groupKey = {
-          date: "to_char(a.created_at AT TIME ZONE $9::text,'YYYY-MM-DD')",
+          date: "to_char(a.created_at AT TIME ZONE $10::text,'YYYY-MM-DD')",
           project: 'a.project_id::text',
           source: assetSourceSql,
           type: 'a.mime',
@@ -184,8 +198,8 @@ export function registerAssetAnnotations(app: FastifyInstance, db: Database): vo
       const rows = (
         await db.query(
           `SELECT a.*,to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
-           ${assetScope} AND ($9::timestamptz IS NULL OR (a.created_at,a.id)<($9::timestamptz,$10::uuid))
-           ORDER BY a.created_at DESC,a.id DESC LIMIT $11`,
+           ${assetScope} AND ($10::timestamptz IS NULL OR (a.created_at,a.id)<($10::timestamptz,$11::uuid))
+           ORDER BY a.created_at DESC,a.id DESC LIMIT $12`,
           [
             ...values,
             cursor?.at ?? null,

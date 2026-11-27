@@ -172,6 +172,19 @@ try {
           reference.height,
         );
       }
+      await page.locator('[data-dock-tool="light"]').click();
+      const balance = page.locator('.editor-light-suggestion:visible');
+      await balance.locator('summary').click();
+      await balance.getByLabel('光线方向').selectOption('open-shadows');
+      await balance.getByRole('button', { name: '分析当前画面' }).click();
+      const apply = balance.getByRole('button', { name: '应用光线建议' });
+      await apply.waitFor();
+      assert.match(await balance.getByRole('list', { name: '建议参数' }).innerText(), /→/);
+      await page.screenshot({ path: join(out, 'light-' + viewport.width + '.png') });
+      await apply.click();
+      await apply.waitFor({ state: 'hidden' });
+      await canvas.waitFor();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       console.log('Comparison, keyboard, 241 ms hold and viewport overflow passed', viewport);
     } finally {
       await browser.close();

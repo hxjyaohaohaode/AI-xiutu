@@ -456,6 +456,52 @@ async function fixture(extra: Partial<AssistantDependencies> = {}) {
   };
 }
 
+test('assistant document context is project-scoped, version-pinned and recorded without its body', {
+  skip: !databaseUrl,
+}, async (t) => {
+  const observed: string[] = [];
+  const f = await fixture({
+    fetcher: async (_url, init) => {
+      observed.push(String(init?.body));
+      return response([outputText('已检查选定文档。')]);
+    },
+  });
+  t.after(() => f.close());
+  const path = '/v1/projects/' + f.projectId + '/assistant-turns';
+  const create = await f.call('POST', '/v1/projects/' + f.projectId + '/documents',
+    { title: 'Brief', body: 'source-note-for-this-turn' });
+  assert.equal(create.statusCode, 201);
+  const documentId = create.json().document.id;
+  const request = { ...f.turn('Check the approved brief'), projectDocument: { documentId, expectedVersion: 1 } };
+  const result = await f.call('POST', path, request);
+  assert.equal(result.statusCode, 202, result.body);
+  const turnId = result.json().id;
+  const complete = await until(() => f.readTurn(turnId), turn => turn.state !== 'running');
+  assert.equal(complete.state, 'completed');
+  assert.equal(observed.length, 1);
+  assert.match(observed[0]!, /selected-project-document.+source-note-for-this-turn/);
+  const manifest = await f.call('GET', '/v1/assistant-turns/' + turnId + '/context');
+  assert.equal(manifest.statusCode, 200, manifest.body);
+  assert.match(manifest.body, /projectDocument.+sha256/);
+  assert.doesNotMatch(manifest.body, /source-note-for-this-turn/);
+
+  await f.call('PATCH', '/v1/documents/' + documentId, { body: 'changed', expectedVersion: 1 });
+  const replay = await f.call('POST', path, request);
+  assert.equal(replay.json().id, turnId);
+  const stale = await f.call('POST', path, { ...request, idempotencyKey: randomUUID() });
+  assert.equal(stale.statusCode, 409, stale.body);
+  assert.equal(stale.json().error.code, 'ASSISTANT_DOCUMENT_CHANGED');
+  const otherProject = await f.call('POST', '/v1/projects/' + f.privateProjectId + '/documents',
+    { title: 'Other brief', body: 'other-project-private' });
+  assert.equal(otherProject.statusCode, 201, otherProject.body);
+  const crossProject = await f.call('POST', path, {
+    ...request, idempotencyKey: randomUUID(),
+    projectDocument: { documentId: otherProject.json().document.id, expectedVersion: 1 },
+  });
+  assert.equal(crossProject.statusCode, 404);
+  assert.equal(observed.length, 1);
+});
+
 test(
   'text-only moderation runs text and parameter turns while all visual ingress closes before reservation',
   { skip: !databaseUrl },

@@ -50,7 +50,7 @@ export { encodeRgbaPng } from './png.js';
 export { radialMaskFrameV3 } from './v3-radial.js';
 export { WarpPreviewCache } from './warp-preview.js';
 export { pointPreviewMode, preparePointPreview } from './point-preview.js';
-export { measureSceneTone } from './scene-tone.js';
+export { measureSceneTone, sceneBalanceChanges, sceneBalanceStrategies, type SceneBalanceStrategy } from './scene-tone.js';
 export type { ImageHeader, HeaderLimits } from './headers.js';
 export {
   DEFAULT_RECIPE_V2,

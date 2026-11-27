@@ -13,11 +13,13 @@ export function ExportContent({
   body,
   formatting,
   captureCover,
+  formats,
 }: {
   title: string;
   body: string;
   formatting?: DocumentFormat | null;
   captureCover?: CaptureProjectCover;
+  formats?: readonly FileFormat[];
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -82,7 +84,8 @@ export function ExportContent({
             : []),
           { value: 'xlsx', label: 'Excel (.xlsx)' },
           { value: 'svg', label: t('矢量图表 (.svg)') },
-        ]}
+        ].filter(option => !formats || formats.some(format => format === option.value) ||
+          (option.value === 'pptx-cover' && formats.includes('pptx'))) as { value: ExportOption; label: string }[]}
       />
       {error && (
         <span role="alert" className="control-note">

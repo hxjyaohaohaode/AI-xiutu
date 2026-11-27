@@ -2,15 +2,15 @@ import { delimited, type DataTable } from './content';
 
 export type ProjectSheet = { source: string; filename: string; range: string; table: DataTable };
 
-/** The importer owns this envelope. A hand-written document containing a table stays a document. */
+/** An imported provenance header or a standalone typed sheet is editable as a grid.
+ * A prose document containing a Markdown table stays a document. */
 export function readProjectSheet(body: string): ProjectSheet | null {
-  if (!body.startsWith('> "') || !body.includes('sheet-tsv\n')) return null;
+  if (!body.includes('sheet-tsv\n')) return null;
   const header =
     /^> ("(?:[^"\\]|\\.)*") · ("(?:[^"\\]|\\.)*")!([A-Z]+[1-9]\d*:[A-Z]+[1-9]\d*)\n> SHA-256 [a-f0-9]{64}\n(?:> [0-9]+ cached formula value\(s\)\n)?\n/.exec(
       body,
     );
-  if (!header) return null;
-  const rest = body.slice(header[0].length);
+  const rest = header ? body.slice(header[0].length) : body;
   const open = /^(`{3,})sheet-tsv\n/.exec(rest);
   if (!open || !rest.endsWith('\n' + open[1])) return null;
   const literals = new Set<number>();
@@ -18,9 +18,9 @@ export function readProjectSheet(body: string): ProjectSheet | null {
   if (!rows) return null;
   try {
     return {
-      filename: JSON.parse(header[1]!),
-      range: JSON.parse(header[2]!) + '!' + header[3],
-      source: header[0],
+      filename: header ? JSON.parse(header[1]!) : '',
+      range: header ? JSON.parse(header[2]!) + '!' + header[3] : '',
+      source: header?.[0] ?? '',
       table: {
         kind: 'table',
         line: 0,

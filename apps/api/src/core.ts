@@ -260,6 +260,8 @@ export const assetSourceSql = `CASE a.provenance->>'kind'
   WHEN 'uploaded' THEN CASE WHEN a.provenance->>'declaredSource'='sketch' THEN 'sketch' ELSE 'upload' END
   WHEN 'media-import' THEN CASE WHEN a.provenance->>'declaredSource'='sketch' THEN 'sketch' ELSE 'upload' END
   ELSE 'unknown' END`;
+export const assetOrientationSql = `CASE
+  WHEN a.width<a.height THEN 'portrait' WHEN a.width>a.height THEN 'landscape' ELSE 'square' END`;
 export const assetDto = (a: Record<string, any>) => ({
   id: a.id,
   projectId: a.project_id,

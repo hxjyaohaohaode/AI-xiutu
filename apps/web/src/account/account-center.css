@@ -414,6 +414,30 @@
   font-size: 14px;
 }
 
+.account-password-form {
+  display: grid;
+  max-width: 24rem;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.account-password-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.875rem;
+}
+
+.account-password-form input {
+  width: 100%;
+  min-height: 44px;
+}
+
+.account-password-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .account-reset-row {
   padding-bottom: 22px;
   animation-duration: 200ms;

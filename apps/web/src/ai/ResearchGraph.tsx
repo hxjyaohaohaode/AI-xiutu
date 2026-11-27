@@ -4,6 +4,7 @@ import {
   CaretDown,
   CheckCircle,
   GitMerge,
+  FileText,
   Globe,
   Images,
   PencilSimple,
@@ -40,6 +41,7 @@ const icon = {
   colorist: PencilSimple,
   retoucher: PencilSimple,
   'image-designer': Images,
+  'office-writer': FileText,
 };
 export function ResearchGraph({
   turnId,

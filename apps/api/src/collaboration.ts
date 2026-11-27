@@ -5,8 +5,10 @@ import { documentFormatSchema, formatMatchesBody, rebaseDocumentFormat } from '@
 import { transaction, emit, type Database, type Queryable } from '@ai-xiutu/db';
 import {
   HttpError,
+  hash,
   id,
   title,
+  lockProjectMutation,
   requireUser,
   projectAccess,
   assertVersion,
@@ -275,6 +277,49 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       return { documents: result.rows.map(documentDto) };
     });
   });
+  app.get('/v1/documents/:id/versions', async (req, reply) => {
+    const user = requireUser(req);
+    const p = z.object({ id }).parse(req.params);
+    const query = z.object({
+      beforeVersion: z.coerce.number().int().positive().max(2147483647).optional(),
+      limit: z.coerce.number().int().min(1).max(50).default(20),
+    }).strict().parse(req.query);
+    reply.header('Cache-Control', 'private, no-store');
+    return transaction(db, async (tx) => {
+      await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const doc = (await tx.query('SELECT project_id FROM documents WHERE id=$1', [p.id])).rows[0];
+      if (!doc) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', '文档不存在');
+      await projectAccess(tx, doc.project_id, user.id, 'edit');
+      const { rows } = await tx.query(
+        `SELECT v.version,v.title,v.created_at AS "createdAt",u.display_name AS "authorName"
+         FROM document_versions v JOIN users u ON u.id=v.author_id
+         WHERE v.document_id=$1 AND ($2::integer IS NULL OR v.version<$2)
+         ORDER BY v.version DESC LIMIT $3`,
+        [p.id, query.beforeVersion ?? null, query.limit + 1],
+      );
+      const versions = rows.slice(0, query.limit);
+      return { versions, nextBeforeVersion: rows.length > query.limit ? versions.at(-1)!.version : null };
+    });
+  });
+  app.get('/v1/documents/:id/versions/:version', async (req, reply) => {
+    const user = requireUser(req);
+    const p = z.object({ id, version: z.coerce.number().int().positive().max(2147483647) }).parse(req.params);
+    reply.header('Cache-Control', 'private, no-store');
+    return transaction(db, async (tx) => {
+      await tx.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');
+      const doc = (await tx.query('SELECT project_id FROM documents WHERE id=$1', [p.id])).rows[0];
+      if (!doc) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', '文档不存在');
+      await projectAccess(tx, doc.project_id, user.id, 'edit');
+      const version = (await tx.query(
+        'SELECT version,title,body,formatting,author_id,created_at FROM document_versions WHERE document_id=$1 AND version=$2',
+        [p.id, p.version],
+      )).rows[0];
+      if (!version) throw new HttpError(404, 'DOCUMENT_VERSION_NOT_FOUND', '文档版本不存在');
+      return { document: documentDto({
+        ...version, id: p.id, project_id: doc.project_id, updated_at: version.created_at,
+      }) };
+    });
+  });
   app.post('/v1/projects/:id/documents', async (req, reply) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
@@ -283,7 +328,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       .strict()
       .parse(req.body);
     const document = await transaction(db, async (tx) => {
-      const project = await projectAccess(tx, p.id, user.id, 'edit');
+      const project = await lockProjectMutation(tx, p.id, user.id, hash(req.cookies.xiutu_session ?? ''));
       if (body.formatting && !formatMatchesBody(body.body, body.formatting))
         throw new HttpError(400, 'DOCUMENT_FORMAT_MISMATCH', '文字排版与正文不匹配');
       const row = (
@@ -314,10 +359,15 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       .strict()
       .parse(req.body);
     const document = await transaction(db, async (tx) => {
+      const hint = (await tx.query('SELECT project_id FROM documents WHERE id=$1', [p.id])).rows[0];
+      if (!hint) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', '文档不存在');
+      const project = await lockProjectMutation(
+        tx, hint.project_id, user.id, hash(req.cookies.xiutu_session ?? ''),
+      );
       const old = (await tx.query('SELECT * FROM documents WHERE id=$1 FOR UPDATE', [p.id]))
         .rows[0];
-      if (!old) throw new HttpError(404, 'DOCUMENT_NOT_FOUND', '文档不存在');
-      const project = await projectAccess(tx, old.project_id, user.id, 'edit');
+      if (!old || old.project_id !== hint.project_id)
+        throw new HttpError(404, 'DOCUMENT_NOT_FOUND', '文档不存在');
       assertVersion(old.version, body.expectedVersion);
       const text = body.body ?? old.body;
       const formatting = body.formatting === undefined ? rebaseDocumentFormat(old.body, text, old.formatting) : body.formatting;
@@ -340,6 +390,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
   });
   app.get('/v1/events', async (req, reply) => {
     const user = requireUser(req);
+    const tokenHash = hash(req.cookies.xiutu_session ?? '');
     const p = z
       .object({
         spaceId: id,
@@ -356,14 +407,21 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       while (!disconnect.signal.aborted) {
         await spaceRole(db, p.spaceId, user.id);
         if (disconnect.signal.aborted) break;
-        const active = await db.query("SELECT id FROM users WHERE id=$1 AND status='active'", [
-          user.id,
-        ]);
+        const active = await db.query(
+          `SELECT 1 FROM sessions s JOIN users u ON u.id=s.user_id
+           WHERE s.user_id=$1 AND s.token_hash=$2 AND s.expires_at>clock_timestamp() AND u.status='active'`,
+          [user.id, tokenHash],
+        );
         if (!active.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '会话已失效');
         if (disconnect.signal.aborted) break;
         const { rows } = await db.query(
-          'SELECT seq,type,project_id AS "projectId",entity_id AS "entityId",created_at AS "createdAt" FROM events WHERE space_id=$1 AND seq>$2 ORDER BY seq LIMIT 100',
-          [p.spaceId, p.after],
+          `SELECT seq,type,project_id AS "projectId",entity_id AS "entityId",created_at AS "createdAt"
+           FROM events WHERE space_id=$1 AND seq>$2 AND EXISTS (
+             SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id JOIN sessions s ON s.user_id=u.id
+             WHERE m.space_id=$1 AND m.user_id=$3 AND u.status='active'
+             AND s.token_hash=$4 AND s.expires_at>clock_timestamp()
+           ) ORDER BY seq LIMIT 100`,
+          [p.spaceId, p.after, user.id, tokenHash],
         );
         if (rows.length || Date.now() >= deadline)
           return {

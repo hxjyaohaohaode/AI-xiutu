@@ -27,6 +27,7 @@ import {
   responsesModel,
   type AssistantCandidate,
   type AssistantContext,
+  type AssistantDocumentSource,
   type VoiceContext,
   type AssistantScope,
   type AssistantSearchEvidence,
@@ -72,6 +73,7 @@ import {
   normalizeSharedImage,
   searchAssistantResources,
   selectedReferenceImages,
+  selectedAssistantDocument,
 } from './context.js';
 
 export interface AssistantDependencies {
@@ -254,6 +256,7 @@ export function createAssistantService(
     accessScope: AssistantScope = mergeAssistantScopes(row.scope, []),
     sessionHash?: string,
     frozenModel?: AssistantModelConfig,
+    projectDocument?: AssistantDocumentSource,
   ): Promise<
     AgentContext & {
       checkSnapshot(tx: Queryable, lock?: boolean): Promise<void>;
@@ -330,6 +333,10 @@ export function createAssistantService(
       if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, lock);
       await checkSettings(tx);
       if (context) await validateContext(tx, row.actor_id, row.project_id, context, lock);
+      if (projectDocument)
+        await selectedAssistantDocument(tx, row.project_id, {
+          documentId: projectDocument.id, expectedVersion: projectDocument.version,
+        }, lock);
       if (!scope.usePersonalMemory) return;
       const currentMemories = await readMemory(tx, lock);
       const currentNotes = await rememberedResources(
@@ -352,6 +359,7 @@ export function createAssistantService(
     }
     return {
       prompt,
+      projectDocument,
       executionMode: scope.executionGrantId
         ? await assertAssistantGrant(db, scope.executionGrantId, row.actor_id, row.project_id)
         : 'confirm',
@@ -502,29 +510,43 @@ export function createAssistantService(
           inputHash: bodyHash,
         });
         if (!proof.created) throw new AssistantJournalError('ASSISTANT_RECOVERY_REQUIRED');
-        await transaction(db, async (tx) => {
-          await lockedAssistantAccess(tx, row.actor_id, row.project_id, accessScope);
-          if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, true);
-          if (scope.executionGrantId)
-            await assertAssistantGrant(
-              tx,
-              scope.executionGrantId,
-              row.actor_id,
-              row.project_id,
-              true,
-            );
-          const current = (
-            await tx.query(
-              `SELECT state${voice ? '' : ',stop_requested_at'} FROM ${voice ? 'voice_sessions' : 'assistant_turns'} WHERE id=$1 FOR UPDATE`,
-              [row.id],
-            )
-          ).rows[0];
-          if (!voice) assertRunningTurn(current);
-          if (voice && current?.state !== 'active')
-            throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '派发已停止，等待核验');
-          await checkSnapshot(tx, true);
-          if (voice) await model(tx, row.model_id, 'realtime-voice');
-        });
+        try {
+          await transaction(db, async (tx) => {
+            await lockedAssistantAccess(tx, row.actor_id, row.project_id, accessScope);
+            if (sessionHash) await assertTurnSession(tx, row.actor_id, sessionHash, true);
+            if (scope.executionGrantId)
+              await assertAssistantGrant(
+                tx,
+                scope.executionGrantId,
+                row.actor_id,
+                row.project_id,
+                true,
+              );
+            const current = (
+              await tx.query(
+                `SELECT state${voice ? '' : ',stop_requested_at'} FROM ${voice ? 'voice_sessions' : 'assistant_turns'} WHERE id=$1 FOR UPDATE`,
+                [row.id],
+              )
+            ).rows[0];
+            if (!voice) assertRunningTurn(current);
+            if (voice && current?.state !== 'active')
+              throw new HttpError(409, 'ASSISTANT_STATE_CHANGED', '派发已停止，等待核验');
+            await checkSnapshot(tx, true);
+            if (voice) await model(tx, row.model_id, 'realtime-voice');
+          });
+        } catch (error) {
+          // The caller cannot open the vendor request until this fence returns.
+          // Record a determinate unsent rejection. An I/O or journal failure
+          // leaves the intent ambiguous for independent reconciliation.
+          if (error instanceof HttpError)
+            await db.query(
+              `UPDATE assistant_dispatches SET rejected_at=clock_timestamp()
+               WHERE ${voice ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2
+                 AND completed_at IS NULL AND rejected_at IS NULL`,
+              [row.id, sequenceOffset + index],
+            ).catch(() => {});
+          throw error;
+        }
       },
       async onRejected(index, requestId) {
         await db.query(
@@ -535,7 +557,9 @@ export function createAssistantService(
       },
       async onReceipt(index, requestId, usage, toolCalls, tier) {
         await db.query(
-          `UPDATE assistant_dispatches SET request_id=$3,usage=$4,tool_calls=$5,service_tier=$6,completed_at=clock_timestamp() WHERE ${'backend_model_id' in row ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2`,
+          `UPDATE assistant_dispatches SET request_id=$3,usage=$4,tool_calls=$5,service_tier=$6,completed_at=clock_timestamp()
+           WHERE ${voice ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2
+             AND completed_at IS NULL AND rejected_at IS NULL`,
           [row.id, sequenceOffset + index, requestId, JSON.stringify(usage), toolCalls, tier],
         );
       },
@@ -922,6 +946,11 @@ export function createAssistantService(
             'CANVAS_INSPECTION_UNAVAILABLE',
             '查看画面需要明确共享当前画面，并选择支持看图的模型',
           );
+        let projectDocument: AssistantDocumentSource | undefined;
+        if (body.projectDocument) {
+          await lockedAssistantAccess(tx, actorId, projectId, historyScope, sessionHash);
+          projectDocument = await selectedAssistantDocument(tx, projectId, body.projectDocument, true);
+        }
         if (body.scope.executionGrantId)
           await claimAssistantGrant(tx, {
             grantId: body.scope.executionGrantId,
@@ -958,6 +987,7 @@ export function createAssistantService(
                 ...settings,
                 ...(responseTuning ? { responseTuning, effectiveResponses: turnSettings.responses, effectiveMaxOutputTokens: turnSettings.maxOutputTokens } : {}),
                 historyScope,
+                ...(body.projectDocument ? { projectDocument: body.projectDocument } : {}),
                 ...(body.research ? { research: body.research } : {}),
               }),
             ],
@@ -972,6 +1002,7 @@ export function createAssistantService(
           turnSettings,
           historyScope,
           priorResourceCards,
+          projectDocument,
           ancestorRecords,
           recordOwners,
         };
@@ -989,6 +1020,7 @@ export function createAssistantService(
             admission.historyScope,
             sessionHash,
             admission.settings,
+            admission.projectDocument,
           );
           agentContext.history = admission.history;
           agentContext.research = body.research;
@@ -1077,6 +1109,11 @@ export function createAssistantService(
                   assetId: item.id,
                   sharedDataUrlSha256: hash(item.dataUrl),
                 })),
+                ...(admission.projectDocument ? { projectDocument: {
+                  id: admission.projectDocument.id,
+                  version: admission.projectDocument.version,
+                  sha256: hash(JSON.stringify(admission.projectDocument)),
+                } } : {}),
                 ...(visualAttachment
                   ? {
                       visualAttachment: {
@@ -1219,6 +1256,7 @@ export function createAssistantService(
                   termination: result.termination,
                   candidates,
                   workspace: result.workspace,
+                  ...(result.files?.length ? { files: result.files } : {}),
                   memorySuggestions: result.memorySuggestions,
                   ...(result.toolRecords?.length ? { toolRecords: result.toolRecords } : {}),
                   ...(result.selectedCandidateIndex !== undefined

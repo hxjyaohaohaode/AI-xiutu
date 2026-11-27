@@ -251,6 +251,15 @@ image input, uses the same decoding and moderation limits, and is bound to the
 turn's idempotency hash. The context manifest keeps its kind and normalized
 image hash. The turn stores the attachment bytes only in memory for dispatch.
 
+`projectDocument={documentId,expectedVersion}` explicitly attaches one saved
+document from this project. The ID and version are part of admission and must
+still match at dispatch and publication. The source has a 16,000-character
+and 48 KiB bound. The context manifest records ID, version and digest. The
+root and office delegate may receive the moderated text. `output.files` may
+contain up to four moderated drafts with `title`, `format` (`docx`, `pptx` or
+`xlsx`) and editable `body`. The user may export them or open them as a project
+draft and save through the normal document endpoint.
+
 `scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,publicSearch?,usePersonalMemory,creativeBrief?,executionGrantId?}`
 defaults to empty resource lists and false flags. There are at most12 spaces and8
 explicit image references, without duplicates. Each space requires current

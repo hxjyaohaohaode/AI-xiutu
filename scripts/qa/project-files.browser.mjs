@@ -299,6 +299,16 @@ try {
     await page.setViewportSize({ width, height });
     await downloadFrom(docsMenu, '.' + format, title + '.' + format);
     await page.screenshot({ path: resolve(artifacts, 'layout-' + width + '.png') });
+    await page.getByRole('button', { name: '版本历史', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: '版本历史', exact: true });
+    await dialog.getByRole('button', { name: /^版本 1 ·/ }).click();
+    await dialog.getByRole('button', { name: '载入为草稿', exact: true }).waitFor();
+    assert.equal(await dialog.locator('pre').textContent(), body);
+    assert.ok(await dialog.evaluate(element => element.getBoundingClientRect().width <= innerWidth));
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.screenshot({ path: resolve(artifacts, 'history-' + width + '.png') });
+    await page.keyboard.press('Escape');
+    await dialog.waitFor({ state: 'hidden' });
     report.viewports.push({ width, height, format });
   }
   await page.setViewportSize({ width: 1400, height: 900 });

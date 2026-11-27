@@ -67,7 +67,7 @@ export function planHistory(
     const before = sizes[i]!;
     // The archive pointer replaces the whole assistant message. It is not a
     // generated summary and never pretends a missing visual result was observed.
-    const replacement = `[Earlier assistant response archived${item.sourceTurnId ? `; read_history sourceTurnId=${item.sourceTurnId}` : ''}. Original user instructions immediately above remain authoritative.]`;
+    const replacement = `[Earlier assistant response archived${item.sourceTurnId ? `; read_history sourceTurnId=${item.sourceTurnId}` : ''}. Earlier user requirements remain context for this task. The current request and current application permissions govern new actions.]`;
     const after = size({ ...item, content: replacement });
     if (after >= before) continue;
     item.content = replacement;

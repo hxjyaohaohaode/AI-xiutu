@@ -1,9 +1,10 @@
-type AssetSource = 'upload' | 'generated' | 'sketch' | 'derived';
+import type { AssetOrientation, AssetSource } from '@ai-xiutu/contracts';
 type TimeWindow = { start: Date; end?: Date };
 export type LibrarySearch = {
   text: string;
   mime?: string;
   source?: AssetSource;
+  orientation?: AssetOrientation;
   time?: TimeWindow;
   empty: boolean;
 };
@@ -29,6 +30,11 @@ const sources: Record<string, AssetSource> = {
   sketch: 'sketch',
   加工素材: 'derived',
   derived: 'derived',
+};
+const orientations: Record<string, AssetOrientation> = {
+  竖图: 'portrait', 直幅: 'portrait', 豎圖: 'portrait', portrait: 'portrait',
+  横图: 'landscape', 橫圖: 'landscape', 橫幅: 'landscape', landscape: 'landscape',
+  方图: 'square', 方圖: 'square', square: 'square',
 };
 function timeWindow(value: string, now: Date): TimeWindow | null {
   const start = new Date(now);
@@ -82,6 +88,7 @@ export function parseLibrarySearch(input: string, now: Date): LibrarySearch {
     }
     const format = Object.hasOwn(formats, lower) ? formats[lower] : undefined;
     const source = Object.hasOwn(sources, lower) ? sources[lower] : undefined;
+    const orientation = Object.hasOwn(orientations, lower) ? orientations[lower] : undefined;
     if (format) {
       const mime = 'image/' + format;
       if (result.mime && result.mime !== mime) result.empty = true;
@@ -89,6 +96,9 @@ export function parseLibrarySearch(input: string, now: Date): LibrarySearch {
     } else if (source) {
       if (result.source && result.source !== source) result.empty = true;
       result.source = source;
+    } else if (orientation) {
+      if (result.orientation && result.orientation !== orientation) result.empty = true;
+      result.orientation = orientation;
     } else {
       const time = timeWindow(lower, now);
       if (!time) {
@@ -108,7 +118,7 @@ export function parseLibrarySearch(input: string, now: Date): LibrarySearch {
     }
   }
   result.text =
-    !result.mime && !result.source && !result.time && !/["“”]/u.test(input)
+    !result.mime && !result.source && !result.orientation && !result.time && !/["“”]/u.test(input)
       ? input.trim()
       : words.join(' ');
   return result;

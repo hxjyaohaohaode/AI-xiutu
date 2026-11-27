@@ -871,6 +871,78 @@ test('repeated tool IDs cannot duplicate candidates and conflicting IDs fail', a
     /CALL_ID_CONFLICT/,
   );
 });
+test('two replay-only frames terminate with the original reviewable candidate', async () => {
+  const call = tool('propose_edit', {
+    summary: 'Open the shadows', target: 'global', targetId: null,
+    changes: [{ path: 'adjustments.shadows', value: 12 }],
+  }, 'replay');
+  let requests = 0;
+  const result = await runEditorAgent('fixture', 'fixture', settings, context(), async (_url, init) => {
+    requests++;
+    if (requests === 3) {
+      const { input } = JSON.parse(String(init?.body));
+      assert.equal(input.filter((item: any) => item.call_id === 'replay').length, 2);
+    }
+    return response([call]);
+  });
+  assert.equal(requests, 3);
+  assert.equal(result.termination, 'incomplete');
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.selectedCandidateIndex, undefined);
+});
+test('a conflicting tool frame cannot launch a paid child or expose partial work', async () => {
+  let requests = 0;
+  let invoked = 0;
+  await assert.rejects(
+    runEditorAgent('fixture', 'fixture', settings, context({
+      prompt: 'Draft a slide deck.',
+      onTool: () => { invoked++; },
+    }), async () => {
+      requests++;
+      return response([
+        tool('delegate_studio_task', { tasks: [{ role: 'office-writer', brief: 'Draft a slide deck.' }] }, 'duplicate'),
+        tool('describe_editor', {}, 'duplicate'),
+      ]);
+    }),
+    /ASSISTANT_CALL_ID_CONFLICT/,
+  );
+  assert.equal(requests, 1);
+  assert.equal(invoked, 0);
+});
+
+test('an office teammate receives only the selected source and returns an editable typed workbook', async () => {
+  const prompt = 'Build an Excel work sheet from the approved project document.';
+  const requests: any[] = [];
+  const result = await runEditorAgent('fixture', 'fixture', settings, context({
+    prompt,
+    projectDocument: { id: 'source', version: 2, title: 'Metrics', body: 'verified-quantities: 14' },
+    memory: 'owner-only-memory',
+    history: [{ role: 'user', content: 'older-message' }],
+  }), async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    requests.push(body);
+    if (requests.length === 1)
+      return response([tool('delegate_studio_task', {
+        tasks: [{ role: 'office-writer', brief: prompt }],
+      }, 'office')]);
+    if (String(body.instructions).includes('delegated office-writer')) {
+      assert.deepEqual(body.tools.map((entry: { name: string }) => entry.name), ['draft_project_file']);
+      assert.match(JSON.stringify(body.input), /verified-quantities/);
+      assert.doesNotMatch(JSON.stringify(body.input), /owner-only-memory|older-message/);
+      return response([tool('draft_project_file', {
+        title: 'Report', format: 'xlsx', sections: [],
+        table: { columns: ['Code', 'Count'], rows: [['001', 14]] },
+      }, 'file')]);
+    }
+    assert.match(JSON.stringify(body.input), /fileIndex/);
+    return response([text('The workbook is ready for review.')]);
+  });
+  assert.equal(requests.length, 3);
+  assert.deepEqual(result.files, [{
+    title: 'Report', format: 'xlsx', body: '```sheet-tsv\n"Code"\t"Count"\n"001"\t14\n```',
+  }]);
+  assert.deepEqual(result.candidates, []);
+});
 test('output moderation covers all text, not just first chunk; revocation stops subsequent dispatch', async () => {
   const seen: string[] = [];
   const long = '普通文字'.repeat(3000) + '末尾审核标记';

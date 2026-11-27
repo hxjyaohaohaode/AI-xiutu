@@ -3867,6 +3867,8 @@ export function App({
                           sourceDocumentRequest={sourceDocumentRequest?.actorId === session.user?.id &&
                             sourceDocumentRequest?.projectId === aiProject?.id ? sourceDocumentRequest : null}
                           onSourceDocumentUsed={() => setSourceDocumentRequest(null)}
+                          onOpenProjectDocuments={project?.id === aiProject?.id
+                            ? () => { void changeView('docs'); } : undefined}
                           returnLabel={collageReturn ? t('返回拼图') : undefined}
                           collageActions={
                             project && ['owner', 'admin', 'editor'].includes(project.role)

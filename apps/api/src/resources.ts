@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { transaction, audit, type Database, type Queryable } from '@ai-xiutu/db';
-import { assetSources, resourceMemorySchema } from '@ai-xiutu/contracts';
+import { assetOrientations, assetSources, resourceMemorySchema } from '@ai-xiutu/contracts';
 import {
   id,
   hash,
@@ -9,6 +9,7 @@ import {
   projectAccess,
   assetDto,
   assetSourceSql,
+  assetOrientationSql,
   HttpError,
   assertVersion,
 } from './core.js';
@@ -28,6 +29,7 @@ export const resourceFiltersSchema = z
     remembered: z.enum(['true', 'false']).optional(),
     source: z.enum(assetSources).optional(),
     mime: z.string().max(80).regex(/^image\/[a-z0-9.+-]+$/).optional(),
+    orientation: z.enum(assetOrientations).optional(),
     groupBy: z.enum(['date', 'project', 'source', 'type']).optional(),
     timeZone: z.string().max(80).refine((zone) => {
       try { new Intl.DateTimeFormat('en', { timeZone: zone }); return true; }
@@ -88,15 +90,16 @@ export async function searchResources(db: Queryable, actorId: string, input: unk
       OR EXISTS(SELECT 1 FROM asset_recognitions r WHERE r.asset_id=a.id AND r.source_hash=a.content_hash AND strpos(lower(r.text_content),lower($5))>0))
     AND ($6::boolean IS NULL OR COALESCE(rm.remembered,false)=$6) AND ($7::text IS NULL OR (${assetSourceSql})=$7)
     AND ($8::timestamptz IS NULL OR a.created_at>=$8) AND ($9::timestamptz IS NULL OR a.created_at<$9)
-    AND ($10::text IS NULL OR a.mime=$10)`;
+    AND ($10::text IS NULL OR a.mime=$10)
+    AND ($11::text IS NULL OR (${assetOrientationSql})=$11)`;
   const values = [
     actorId, query.scope, query.spaceId ?? null, query.projectId ?? null, query.query,
     query.remembered ?? null, query.source ?? null, query.createdFrom ?? null, query.createdTo ?? null,
-    query.mime ?? null,
+    query.mime ?? null, query.orientation ?? null,
   ];
   if (query.groupBy) {
     const key = {
-      date: "to_char(a.created_at AT TIME ZONE COALESCE($11::text,'UTC'),'YYYY-MM-DD')",
+      date: "to_char(a.created_at AT TIME ZONE COALESCE($12::text,'UTC'),'YYYY-MM-DD')",
       project: 'p.id::text',
       source: assetSourceSql,
       type: 'a.mime',
@@ -118,8 +121,8 @@ export async function searchResources(db: Queryable, actorId: string, input: unk
       CASE WHEN rm.asset_id IS NULL THEN NULL ELSE jsonb_build_object('remembered',rm.remembered,'title',rm.title,'tags',rm.tags,'note',rm.note,'version',rm.version,'updatedAt',rm.updated_at) END AS memory,
       to_char(a.created_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cursor_at
       ${assetScope}
-      AND ($11::timestamptz IS NULL OR (a.created_at,a.id)<($11::timestamptz,$12::uuid))
-      ORDER BY a.created_at DESC,a.id DESC LIMIT $13`,
+      AND ($12::timestamptz IS NULL OR (a.created_at,a.id)<($12::timestamptz,$13::uuid))
+      ORDER BY a.created_at DESC,a.id DESC LIMIT $14`,
       [...values, cursor?.at ?? null, cursor?.id ?? null, query.limit + 1],
     )
   ).rows;

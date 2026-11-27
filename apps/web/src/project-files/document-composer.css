@@ -118,3 +118,52 @@
 .studio-view.documents-view .office-prose p {
   margin-block: 0.4em 0.85em;
 }
+.document-history {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) minmax(0, 2fr);
+  gap: 14px;
+}
+
+.document-history-list {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  overflow-y: auto;
+  max-height: min(45dvh, 28rem);
+}
+
+.document-history-list button[aria-pressed='true'] {
+  background: var(--surface-raised, var(--surface));
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+.document-history-preview {
+  min-width: 0;
+}
+
+.document-history-preview pre {
+  max-height: min(42dvh, 24rem);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  line-height: 1.65;
+  padding: 12px 0;
+}
+
+.document-history-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@media (max-width: 620px) {
+  .document-history {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-history-list {
+    max-height: 23dvh;
+  }
+}

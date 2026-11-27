@@ -1,5 +1,7 @@
 import type { CaptureProjectCover } from '../project-files/cover';
 import { ExportContent } from '../project-files/ExportContent';
+import { AssistantFileDraft } from './AssistantFileDraft';
+import { assistantProjectFileSchema, type AssistantProjectFile } from '@ai-xiutu/contracts';
 import { lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import './voice-workspace.css';
@@ -175,6 +177,7 @@ interface Turn {
     search?: AssistantSearchEvidence[];
     candidates: AssistantCandidate[];
     workspace?: AssistantWorkspace;
+    files?: AssistantProjectFile[];
     memorySuggestions?: MemorySuggestion[];
     toolRecords?: AssistantToolRecord[];
     execution?: {
@@ -220,6 +223,7 @@ interface Message {
   attachmentKind?: AssistantVisualAttachment['kind'];
   voiceSession?: number;
   candidateIds?: string[];
+  files?: AssistantProjectFile[];
 }
 const assistantDrafts = new Map<
   string,
@@ -236,6 +240,7 @@ export interface LiveAssistantProps {
   onActivityChange?: (activity: AIActivity) => void;
   onClose?: () => void;
   project: Project | null;
+  projectDocuments?: readonly { id: string; title: string; version: number }[];
   artwork: Artwork | null;
   recipe: EditorRecipe;
   isLoggedIn: boolean;
@@ -270,6 +275,7 @@ export interface LiveAssistantProps {
   visualAttachment?: AssistantVisualAttachment | null;
   onClearVisualAttachment?: (attachment: AssistantVisualAttachment) => void;
   onUseCanvasSource?: (item: AssistantCloudResource) => void;
+  onOpenProjectDocuments?: () => void;
 }
 function editorState(value: LiveAssistantProps): AssistantEditorState {
   return {
@@ -293,6 +299,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
   const compactCopy = modelCopy(useLocale());
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [modelOptionsOpen, setModelOptionsOpen] = useState(false);
+  const [sourceDocument, setSourceDocument] = useState<{
+    id: string; title: string; version: number;
+  } | null>(null);
   const {
     project,
     artwork,
@@ -1012,6 +1021,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               appStatus: turn.state === 'completed' ? undefined : turnStatus(turn),
               citations: turn.output?.citations,
               search: turn.output?.search,
+              files: turn.output?.files,
               hasSpecialistReview: turn.output?.toolRecords?.some((record) => ['consult_specialists', 'delegate_studio_task'].includes(record.tool)),
             });
           }
@@ -1778,6 +1788,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const baseline = assistantEditorKey(editorState(current.current));
     const photoBinding = props.canvasSourceId;
     const shareCanvas = mode === 'text' && shareImage && selected.imageInput && !explicitAttachment;
+    const document = mode === 'text' ? sourceDocument : null;
     let writePrepared = false;
     try {
       const preview = await getPreviewContext(shareCanvas);
@@ -1822,6 +1833,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
           modelId,
           prompt: text,
           context,
+          ...(document ? { projectDocument: {
+            documentId: document.id, expectedVersion: document.version,
+          } } : {}),
           ...(attachment ? { visualAttachment: attachment } : {}),
           scope: authorizedScope,
           parentTurnId,
@@ -1833,6 +1847,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
       // A storage failure stops before dispatch, so closing/reopening this panel cannot
       // discard an uncertain paid request and accidentally create a different key.
       rememberSubmission(frozen);
+      if (document) setSourceDocument(null);
       if (explicitAttachment) submittedVisual.current = { key: frozen.idempotencyKey, attachment: explicitAttachment };
       setMessages((old) => [...old, {
         id: `pending-${frozen.idempotencyKey}`,
@@ -1977,6 +1992,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             reasoningSummary: result.output!.reasoningSummary,
             citations: result.output!.citations,
             search: result.output!.search,
+            files: result.output!.files,
             hasSpecialistReview: result.output!.toolRecords?.some((record) => ['consult_specialists', 'delegate_studio_task'].includes(record.tool)),
           },
         ].slice(-40),
@@ -2671,6 +2687,12 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {message.hasSpecialistReview && message.id !== researchTurnId && (
               <ResearchGraph turnId={message.id} live={[]} running={false} historical />
             )}
+            {message.files?.slice(0, 4).map((value, index) => {
+              const file = assistantProjectFileSchema.safeParse(value);
+              return file.success ? <AssistantFileDraft key={index} file={file.data}
+                actorId={actorId} project={project} captureCover={props.captureProjectCover}
+                openDocuments={props.onOpenProjectDocuments} /> : null;
+            })}
             {!message.search?.some((item) => item.kind === 'web') &&
               !!message.citations?.length && (
                 <div className="assistant-citations">
@@ -2689,7 +2711,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {message.role === 'assistant' && message.text && !isStreaming && !message.voiceSession && (
               <div className="assistant-message-actions">
                 <CopyMessage text={message.text} />
-                <ExportContent title="" body={message.text} captureCover={props.captureProjectCover} />
+                {!message.files?.length && <ExportContent title="" body={message.text} captureCover={props.captureProjectCover} />}
                 {props.replyNarration && message.text.trim().length <= 4000 ? (
                   <ReplySpeech text={message.text} narration={props.replyNarration}
                     active={!inCall && !voiceVisible && props.visible !== false} />
@@ -3392,8 +3414,33 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <Eye size={15} /> {t('共享范围 ·')}
               {shareImage ? t('画面与参数') : t('仅参数')}
               {allowWebSearch ? t(' · 联网') : ''}
+              {mode === 'text' && sourceDocument ? t(' · 文档') : ''}
             </summary>
             <div className="assistant-context-options">
+              {mode === 'text' && (sourceDocument || !!props.projectDocuments?.length) && (
+                <label className="assistant-document-source">
+                  {t('本轮发送的项目文档')}
+                  <select
+                    value={sourceDocument ? sourceDocument.id + ':' + sourceDocument.version : ''}
+                    disabled={inCall || busy || submissionBlocked}
+                    onChange={event => setSourceDocument(props.projectDocuments?.find(
+                      doc => doc.id + ':' + doc.version === event.target.value,
+                    ) ?? null)}
+                  >
+                    <option value="">{t('不发送文档')}</option>
+                    {sourceDocument && !props.projectDocuments?.some(doc =>
+                      doc.id === sourceDocument.id && doc.version === sourceDocument.version,
+                    ) && <option disabled value={sourceDocument.id + ':' + sourceDocument.version}>
+                      {sourceDocument.title} · {t('版本 {v0}', { v0: sourceDocument.version })}
+                    </option>}
+                    {props.projectDocuments?.map(doc => (
+                      <option key={doc.id} value={doc.id + ':' + doc.version}>
+                        {doc.title} · {t('版本 {v0}', { v0: doc.version })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               <label>
                 <input
                   type="checkbox"

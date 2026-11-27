@@ -1,4 +1,5 @@
 import { DocumentComposer } from '../project-files/DocumentComposer';
+import { DocumentHistory } from '../project-files/DocumentHistory';
 import { defaultLayout, withDocumentLayout, sameDocumentFormat, type DocumentFormat } from '@ai-xiutu/contracts';
 import { readProjectSheet } from '../project-files/project-sheet';
 import { ProjectSheetEditor } from '../project-files/ProjectSheetEditor';
@@ -1764,6 +1765,25 @@ export function DocumentsView({
               </button>
               <FileText size={16} />
               <span>{selected ? t('版本 {v0}', { v0: selected.version }) : t('新建文档')}</span>
+              {selected && canEdit && (
+                <DocumentHistory
+                  key={ownerKey + selected.id}
+                  document={selected}
+                  canRestore={!dirty && !pendingSave && !busy && !conflict && !newerVersion}
+                  onDraft={(snapshot) => {
+                    if (!documentScope.current.canEdit || activeOwner.current !== ownerKey ||
+                      documentScope.current.selectedId !== snapshot.id || saveLock.current ||
+                      documentDrafts.get(actorId, project.id) || snapshot.version >= selected.version)
+                      return false;
+                    if (!updateDraft(snapshot)) return false;
+                    setShowFormatting(!!snapshot.formatting?.paragraphs.length);
+                    setEditorSession(value => value + 1);
+                    setSheetSource(false);
+                    setError(null);
+                    return true;
+                  }}
+                />
+              )}
               <span
                 className={dirty ? 'document-save-state is-dirty' : 'document-save-state'}
                 aria-live="polite"

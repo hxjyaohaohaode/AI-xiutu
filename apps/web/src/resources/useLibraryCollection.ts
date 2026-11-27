@@ -67,6 +67,7 @@ export function libraryRequest(tab: LibraryTab, filters: LibraryFilters, spaceId
     if (source) params.set('source', source);
   }
   if (search.mime) params.set('mime', search.mime);
+  if (search.orientation) params.set('orientation', search.orientation);
   let start = search.time?.start;
   let end = search.time?.end;
   if (filters.period !== 'all') {

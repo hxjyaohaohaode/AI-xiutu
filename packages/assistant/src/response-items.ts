@@ -71,6 +71,7 @@ export function readAssistantItems(data: Record<string, unknown>, publicSearch =
   )
     throw new Error('ASSISTANT_INVALID_RESPONSE');
   const calls: z.infer<typeof call>[] = [];
+  const callsInFrame = new Map<string, { name: string; arguments: string }>();
   const input: Record<string, unknown>[] = [];
   const text: string[] = [];
   const summaries: string[] = [];
@@ -115,6 +116,14 @@ export function readAssistantItems(data: Record<string, unknown>, publicSearch =
     } else if (raw.type === 'function_call' && !publicSearch) {
       if (!incomplete) {
         const item = call.parse(raw);
+        const prior = callsInFrame.get(item.call_id);
+        if (prior) {
+          if (prior.name !== item.name || prior.arguments !== item.arguments)
+            throw new Error('ASSISTANT_CALL_ID_CONFLICT');
+          continue;
+        }
+        callsInFrame.set(item.call_id, item);
+        if (callsInFrame.size > 8) throw new Error('ASSISTANT_TOOL_BUDGET');
         calls.push(item);
         input.push(item);
       }

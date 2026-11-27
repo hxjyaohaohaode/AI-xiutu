@@ -2,6 +2,17 @@
 
 核查日期：2026-11-09；续查：2026-11-10。本文用于建立可以继续深度开发的能力基线，不将竞品宣传、用户截图或模型说明等同于本项目已经达到的效果。资料阅读、算法实现、自动测试、真实浏览器操作和生产实测是不同证据层级；交付时应分别记录。
 
+## 2026-11-27 工作台运行时与交付研究
+
+| 参考产品及实际观察 | 映间的实现 |
+| --- | --- |
+| Codex 将工具、执行记录和持久状态交给运行时，子智能体入口含任务参数和上限。DeepSeek Harness 的核心文档区分工具循环和子代理控制。Claude Code 区分隔离上下文的子代理与共享任务的团队，也给出长任务交接和验证的做法。社区实际报告中出现过工具输出丢失和轮次重复。 [Codex Harness](https://openai.com/index/harness-engineering/) · [Codex 子代理源码](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs) · [DeepSeek 核心](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/core.md) · [DeepSeek 工具回执讨论](https://github.com/deepseek-ai/deepseek-harness/discussions/8782) · [Claude Code 子代理](https://code.claude.com/docs/en/sub-agents) · [Claude Code 团队](https://code.claude.com/docs/en/agent-teams) · [长任务恢复](https://www.anthropic.com/research/effective-harnesses-for-long-running-agents) | 服务端先检查整帧调用及历史 ID，再执行工具。相同协作分工归并到原交接，连续两帧无新工具工作时终结并保留可审阅候选。办公室角色和图像角色使用不同白名单。发出前再次检查授权，对确定未发出的失败记录终态，对未知结果继续保留对账依据。 [Agent 循环](../packages/assistant/src/agent.ts) · [派发入口](../apps/api/src/assistant/service.ts) |
+| OPPO 的照片智能体按图像提出亮度、色调、构图等建议，小米相册支持条件化检索。醒图开发者的版本说明列出补光、参考图和批量调色，评论中可观察到批量等待和参数判断的问题。美图电脑端按调整、局部改图、原件处理和批量任务组织工具。Google Photos 明确区分照片编辑、图库搜索与 Google One 套餐。 [ColorOS 17](https://www.oppo.com/my/coloros17/) · [HyperOS 4](https://www.mi.com/tw/event/2026/hyperos-2026/) · [醒图版本与评论](https://apps.apple.com/cn/app/id1500526240) · [美图电脑版](https://pc.meitu.com/pc) · [Google Photos](https://www.google.com/intl/en/photos/about/) | 当前画面的亮度统计生成曝光、阴影、高光建议。界面先列出现值和建议值，由用户应用到可撤销配方。相册将横图、竖图、方图与现有词语、日期及来源组合，按图像尺寸在有权限的范围内筛选。 [共享光线计算](../packages/editor/src/scene-tone.ts) · [素材检索](../apps/api/src/resources.ts) |
+| Microsoft PowerPoint 和 Google Docs 的版本入口支持查看历史与恢复。Canva Docs 的排版入口随选择提供字体、对齐、列表及行距。Gamma 公开说明主题设置和 PowerPoint 导出会受字体与版式支持影响。 [PowerPoint 版本](https://support.microsoft.com/en-us/powerpoint/work-together-on-powerpoint-presentations) · [Google 版本历史](https://support.google.com/docs/answer/190843) · [Canva 排版](https://www.canva.com/help/add-format-content/) · [Gamma 主题](https://help.gamma.app/en/articles/11029150-how-do-i-customize-themes-colors-and-fonts-in-gamma) · [Gamma 导出](https://help.gamma.app/en/articles/8022861-what-s-the-easiest-way-to-export-my-gamma) | 历史版本提供只读正文和按原格式导出。恢复先载入草稿，使用当前版本号保存出新版本。Agent 可以接收明确选择的一份项目文档，返回可下载、可继续编辑的文稿、演示提纲或工作表。表格数值和文字标识分别保留类型。 [版本 API](../apps/api/src/collaboration.ts) · [草稿界面](../apps/web/src/ai/AssistantFileDraft.tsx) |
+| Apple 建议用短且有反馈的动效维持操作连续性，按内容层次应用材质，并适配窗口和辅助功能设置。 [Motion](https://developer.apple.com/design/human-interface-guidelines/motion) · [Materials](https://developer.apple.com/design/human-interface-guidelines/materials) · [Layout](https://developer.apple.com/design/human-interface-guidelines/layout) | 版本历史复用项目对话框的焦点与关闭机制，光线建议和文件结果在相关面板按需展开。低动态设置下使用已有的轻动效路径。 |
+
+核查包含官方文档、公开工具页面、公开源码和具体讨论。浏览器打开了美图公开功能、Gamma 产品入口与 Google Docs 入口。Google Docs 页面显示连接故障，相关编辑行为依据产品帮助。醒图和两套手机相册的能力依据开发者资料，设备和地区的行为需真机分别验收。
+
 ## 2026-11-10 续查与实际推进
 
 用户最新明确要求保留前端整体视觉，优先提高真实功能、算法和联动质量。续查资料按下表落到功能与未解决边界，不能把“产品有此功能”写成“本项目质量已相同”。
