@@ -41,7 +41,6 @@ try {
   const recipe = createRecipeV4({
     geometry: { crop: { x: 0.1, y: 0.1, width: 0.47, height: 0.49 }, rotation: 90, flipX: true },
     adjustments: { exposure: 0.2, sharpness: 35 },
-    compositeGrade: createColorBlockV3({ adjustments: { shadows: -17 } }),
     detail: { clarity: -17 },
     effects: { grain: { amount: 16, colored: true }, vignette: { amount: 12 } },
   });
@@ -178,6 +177,16 @@ try {
           await exportDialog.waitFor({ state: 'hidden' });
         }
       }
+      // The original-size strip renderer deliberately gates out source composition.
+      // Use a separate recipe to check the interactive composite scope.
+      await page.getByLabel('选择配方文件', { exact: true }).setInputFiles({
+        name: 'composite-light.recipe.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify({
+          ...recipe,
+          compositeGrade: createColorBlockV3({ adjustments: { shadows: -17 } }),
+        })),
+      });
       const lightTool = page.locator('[data-dock-tool="light"]');
       if (await lightTool.getAttribute('aria-pressed') !== 'true') await lightTool.click();
       const balance = page.locator('.editor-light-suggestion:visible');
