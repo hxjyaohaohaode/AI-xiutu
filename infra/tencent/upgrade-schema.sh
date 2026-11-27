@@ -160,7 +160,10 @@ complete_commit() {
      $(sed -n 's/^RELEASE_SHA=//p' RELEASE) == "$target" &&
      $(oid_for "$old_db") == "$original_oid" &&
      $(oid_for xiutu) == "$(cat "$backup/candidate-oid")" ]] || return 1
-  gate_volume release && rm -f -- "$pending"
+  # Publish history only after the durable decision. Recovery repeats this atomic write.
+  printf '%s\n' "$old_sha" > "$backup/previous-sha.next" &&
+    mv -f -- "$backup/previous-sha.next" state/previous-sha &&
+    gate_volume release && rm -f -- "$pending"
 }
 recover() {
   local live_oid
@@ -395,8 +398,6 @@ main() {
   # Confirm future automatic deployments select the same tags with only RELEASE/.env.
   unset XIUTU_WEB_IMAGE_SUFFIX
   assert_layout "$target" "" || die 'Persistent Compose image selection is inconsistent.'
-  printf '%s\n' "$old_sha" > "$backup/previous-sha"
-  mv -f -- "$backup/previous-sha" state/previous-sha
   write_release "$backup/RELEASE.before" "$target"
   if [[ -f state/blocked-sha && $(cat state/blocked-sha) == "$target" ]]; then rm -- state/blocked-sha; fi
   sync -f RELEASE

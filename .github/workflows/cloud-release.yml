@@ -66,9 +66,11 @@ jobs:
         with:
           ref: ${{ env.RELEASE_SHA }}
           persist-credentials: false
-      - name: Exercise release transfer and interrupted-download recovery
+      - name: Verify release transfer, pilot HTTPS and rollback history
         if: steps.checked.outputs.ready == 'true'
-        run: python3 -B infra/tencent/test-fetch-release.py
+        run: |
+          python3 -B infra/tencent/test-fetch-release.py
+          python3 -B infra/tencent/test-pilot-verify.py
       - name: Build revision-labelled Linux images
         if: steps.checked.outputs.ready == 'true'
         run: |

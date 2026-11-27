@@ -33,9 +33,59 @@ image_ref() {
   fi
 }
 
+# Curl keeps the original TLS hostname, port and cookie scope while connecting only
+# to the local Caddy listener. Try DNS names before literal addresses in APP_ORIGIN.
+https_origins() {
+  local origin host
+  local -a values=() names=() addresses=()
+  IFS=',' read -r -a values <<< "$1"
+  for origin in "${values[@]}"; do
+    origin=${origin#"${origin%%[![:space:]]*}"}
+    origin=${origin%"${origin##*[![:space:]]}"}
+    [[ $origin =~ ^https://([a-zA-Z0-9][a-zA-Z0-9.-]*|\[[a-fA-F0-9:.]+\])(:[0-9]{1,5})?$ ]] || continue
+    host=${BASH_REMATCH[1]}
+    if [[ $host =~ ^[0-9.]+$ || $host == \[* ]]; then addresses+=("$origin"); else names+=("$origin"); fi
+  done
+  for origin in "${names[@]}" "${addresses[@]}"; do printf '%s\n' "$origin"; done
+}
+
+probe_origin() {
+  local origin=$1 registration_mode=$2 link=$3 code hostname
+  local -a probe=(curl -q --silent --show-error --max-time 12 --proto '=https' --globoff
+    --noproxy '*' --connect-to '::127.0.0.1:')
+  : > "$jar" || return 1
+  if [[ -n $link ]]; then
+    # Keep the private friend link out of argv and never follow an HTTP redirect.
+    code=$(printf 'url = "%s/go/%s"\n' "$origin" "$link" |
+      "${probe[@]}" --config - --cookie-jar "$jar" -o /dev/null -w '%{http_code}' 2>/dev/null) || return 1
+    [[ $code == 303 ]] || return 1
+    [[ $origin =~ ^https://(\[[^]]+\]|[^:]+)(:[0-9]+)?$ ]] || return 1
+    hostname=${BASH_REMATCH[1]}
+    hostname=${hostname#\[}
+    hostname=${hostname%\]}
+    # A 303 without a usable cookie would let a public landing page impersonate a gated one.
+    awk -F '\t' -v host="$hostname" 'NF == 7 {
+      domain = tolower($1); sub(/^#httponly_/, "", domain); sub(/^\./, "", domain)
+      h = tolower(host)
+      if ((h == domain || ($2 == "TRUE" && length(h) > length(domain) &&
+          substr(h,length(h)-length(domain)) == "." domain)) && $3 == "/" &&
+          ($5 == 0 || $5 > systime()) && length($6) && length($7)) valid = 1
+    } END {exit !valid}' "$jar" || return 1
+  fi
+  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/") || return 1
+  [[ "$code" == 200 ]] || return 1
+  "${probe[@]}" --fail --cookie "$jar" "$origin/health" | jq -es 'length == 1 and .[0].ok == true' >/dev/null || return 1
+  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/public-config" |
+    jq -es --arg mode "$registration_mode" \
+      'length == 1 and .[0].registrationMode == $mode and .[0].capabilities.smsConfigured == true' >/dev/null || return 1
+  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/session" |
+    jq -es 'length == 1 and (.[0] | has("user") and .user == null and .spaces == [])' >/dev/null || return 1
+  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/v1/projects") || return 1
+  [[ "$code" == 401 ]]
+}
+
 smoke() {
-  local ref=$1 service target id expected actual origin hostname code registration_mode
-  local -a probe
+  local ref=$1 service target id expected actual origins origin link= registration_mode
   for service in api worker web; do
     target=server
     [[ "$service" != web ]] || target=web
@@ -47,30 +97,20 @@ smoke() {
     actual=$(docker inspect --format '{{.State.Running}} {{.Image}}' "$id") || return 1
     [[ "$actual" == "true $expected" ]] || return 1
   done
-  origin=$(sed -n 's/^APP_ORIGIN=\(https:\/\/[A-Za-z0-9.-]*\)\r*$/\1/p' .env)
-  [[ -n "$origin" ]] || return 1
-  hostname=${origin#https://}
-  probe=(curl --silent --show-error --max-time 12 --resolve "$hostname:443:127.0.0.1")
+  origins=$(compose config --format json | jq -er '.services.api.environment.APP_ORIGIN | strings | select(length > 0)') || return 1
   if [[ -f state/friend-link ]]; then
-    [[ "$(cat state/friend-link)" =~ ^[a-f0-9]{48}$ ]] || return 1
-    code=$("${probe[@]}" --cookie-jar "$jar" -o /dev/null -w '%{http_code}' "$origin/go/$(cat state/friend-link)") || return 1
-    [[ "$code" == 303 ]] || return 1
+    link=$(cat state/friend-link) || return 1
   fi
-  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/") || return 1
-  [[ "$code" == 200 ]] || return 1
-  "${probe[@]}" --fail --cookie "$jar" "$origin/health" | jq -e '.ok == true' >/dev/null || return 1
   registration_mode=$(compose exec -T db psql -X -v ON_ERROR_STOP=1 -U xiutu -d xiutu -At \
     -c 'SELECT registration_mode FROM app_config WHERE id=true' </dev/null) || return 1
   [[ "$registration_mode" == open || "$registration_mode" == invite ]] || return 1
-  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/public-config" |
-    jq -e --arg mode "$registration_mode" \
-      '.registrationMode == $mode and .capabilities.smsConfigured == true' >/dev/null || return 1
-  "${probe[@]}" --fail --cookie "$jar" "$origin/v1/session" |
-    jq -e '.user == null and .spaces == []' >/dev/null || return 1
-  code=$("${probe[@]}" --cookie "$jar" -o /dev/null -w '%{http_code}' "$origin/v1/projects") || return 1
-  [[ "$code" == 401 ]]
+  while IFS= read -r origin; do
+    if probe_origin "$origin" "$registration_mode" ""; then return 0; fi
+    if [[ $link =~ ^[a-f0-9]{48}$ ]] && probe_origin "$origin" "$registration_mode" "$link"; then return 0; fi
+  done < <(https_origins "$origins")
+  echo 'No configured HTTPS origin passed the local TLS and session checks.' >&2
+  return 1
 }
-
 
 mode=auto
 if (( $# )); then
