@@ -420,3 +420,104 @@ test(
     }
   },
 );
+
+test(
+  'a delayed membership check recovers the latest missed roster only for authorized observers',
+  { skip: !databaseUrl },
+  async () => {
+    const f = await collaborationFixture(databaseUrl!);
+    const sockets: WebSocket[] = [];
+    const lock = await f.db.connect();
+    try {
+      const url = (await f.app.listen({ port: 0, host: '127.0.0.1' })).replace(/^http/, 'ws');
+      const path = '/v1/artworks/' + f.artwork.artwork.id + '/team-voice/join';
+      const join = async (actor: 'owner' | 'editor' | 'viewer') => {
+        const r = await f.call('POST', path, {}, actor);
+        assert.equal(r.statusCode, 200, r.body);
+        const { path: endpoint, ticket } = r.json();
+        const ws = new WebSocket(url + endpoint, [TEAM_VOICE_PROTOCOL, ticket], {
+          origin: f.origin,
+          headers: { cookie: f.actors[actor].cookie },
+        });
+        sockets.push(ws);
+        const client = stream(ws);
+        const { speakerId } = await client.wait('joined');
+        return { ...client, speakerId };
+      };
+      const owner = await join('owner'),
+        editor = await join('editor'),
+        viewer = await join('viewer');
+      const count = (client: ReturnType<typeof stream>) =>
+        client.messages.filter((e) => e.type === 'roster').length;
+      await editor.wait('roster', (e) => e.members.length === 3);
+      await viewer.wait('roster', (e) => e.members.length === 3);
+
+      async function holdRechecks(peers: number) {
+        await lock.query('BEGIN');
+        // A genuine delayed SQL recheck. The room stays connected while the old leases expire.
+        await lock.query('LOCK TABLE sessions IN ACCESS EXCLUSIVE MODE');
+        const deadline = Date.now() + 7000;
+        for (;;) {
+          const waiting = await lock.query(
+            "SELECT count(*)::int AS n FROM pg_locks WHERE relation='sessions'::regclass AND database=(SELECT oid FROM pg_database WHERE datname=current_database()) AND mode='AccessShareLock' AND NOT granted",
+          );
+          if (waiting.rows[0].n >= peers) break;
+          assert.ok(
+            Date.now() < deadline,
+            'membership checks did not reach the locked session table',
+          );
+          await delay(25);
+        }
+        await delay(2600); // server requires authorization no older than 2500 ms
+      }
+      const closePeer = async (client: ReturnType<typeof stream>) => {
+        const closed = new Promise<void>((resolve) => client.ws.once('close', () => resolve()));
+        client.ws.close(1000);
+        await closed;
+      };
+      const first = count(editor);
+      await holdRechecks(3);
+      await closePeer(owner);
+      assert.equal(count(editor), first);
+      await lock.query('COMMIT');
+      const ownerLeft = (event: Extract<TeamVoiceEvent, { type: 'roster' }>) =>
+        event.members.length === 2 &&
+        event.members.every((member) => member.speakerId !== owner.speakerId);
+      const remaining = await editor.wait('roster', ownerLeft);
+      assert.deepEqual(
+        remaining.members.map((p) => p.speakerId).sort(),
+        [editor.speakerId, viewer.speakerId].sort(),
+      );
+      await viewer.wait('roster', ownerLeft);
+      await delay(1200);
+      assert.equal(
+        count(editor),
+        first + 1,
+        'a subsequent ordinary refresh must not duplicate the snapshot',
+      );
+
+      const beforeRevocation = count(viewer);
+      await holdRechecks(2);
+      await closePeer(editor);
+      await lock.query('DELETE FROM memberships WHERE space_id=$1 AND user_id=$2', [
+        f.teamId,
+        f.actors.viewer.id,
+      ]);
+      await lock.query('COMMIT');
+      await waitFor(
+        () => viewer.ws.readyState,
+        (state) => state === WebSocket.CLOSED,
+      );
+      assert.equal(
+        count(viewer),
+        beforeRevocation,
+        'a revoked observer cannot receive a missed snapshot',
+      );
+    } finally {
+      await lock.query('ROLLBACK').catch(() => {});
+      lock.release();
+      for (const socket of sockets) socket.terminate();
+      await f.close();
+    }
+  },
+);

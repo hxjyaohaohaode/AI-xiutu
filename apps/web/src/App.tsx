@@ -1,5 +1,6 @@
 import { uploadProjectPhoto, retainedPhotoDimensions } from './media/upload-photo';
 import { projectCover } from './project-files/cover';
+import { BrandMark } from './components/BrandMark';
 import { ThemeSwitch } from './components/ThemeSwitch';
 import { hexRgba, NUMERIC_CONTROLS } from './editor/advanced-model';
 import { ParameterGlyph } from './editor/ParameterGlyph';
@@ -3247,6 +3248,7 @@ export function App({
                 <div className="workspace-identity">
                   <IconButton label={t('打开空间与项目')} onClick={() => setSidebarOpen(true)}>
                     <List size={21} />
+                    <BrandMark className="compact-navigation-mark" logoUrl={brandLogoUrl(config?.brand)} />
                   </IconButton>
                   <button
                     type="button"
@@ -3792,7 +3794,8 @@ export function App({
                               aria-pressed={editingTopbarOpen}
                               onClick={() => setEditingTopbarOpen((open) => !open)}
                             >
-                              <List size={18} />
+                              {editingTopbarOpen ? <List size={18} /> :
+                                <BrandMark className="inspector-navigation-mark" logoUrl={brandLogoUrl(config?.brand)} />}
                             </IconButton>
                           )}
                           <IconButton

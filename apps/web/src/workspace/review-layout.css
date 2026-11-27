@@ -214,8 +214,9 @@
 .floating-notice > button:hover { background: var(--surface-secondary); }
 .studio-workspace .workspace-notice-anchor { position: absolute; inset: auto 0 12px; height: 0; z-index: 41; pointer-events: none; }
 .studio-workspace .workspace-notice-anchor > .toast { position: absolute; bottom: 0; pointer-events: auto; }
-.studio-workspace .canvas-tools-overlay { position: absolute; inset: 6px 8px auto; display: flex; justify-content: space-between; z-index: 16; pointer-events: none; }
-.studio-workspace .canvas-tools-dock { display: flex; align-items: flex-start; gap: 5px; min-width: 0; }
+.studio-workspace .canvas-tools-overlay { position: absolute; inset: 6px 8px auto; display: flex; justify-content: space-between; column-gap: 5px; z-index: 16; pointer-events: none; }
+.studio-workspace .canvas-tools-dock { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 5px; min-width: 0; }
+.studio-workspace .canvas-tools-dock[data-side='end'] { justify-content: flex-end; min-inline-size: min-content; }
 .studio-workspace .canvas-tools-dock > * { pointer-events: auto; }
 .studio-workspace .canvas-tools-dock > :is(.image-action-strip, .collaboration-status) { position: relative; inset: auto; margin: 0; }
 .studio-workspace .canvas-tools-dock > .photo-session-actions { display: flex; }

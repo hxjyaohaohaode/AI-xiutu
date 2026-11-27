@@ -40,6 +40,7 @@ interface Peer {
   speakerId: number;
   muted: boolean;
   authorizedAt: number;
+  deliveredRoster?: string;
   lastPing: number;
   windowStart: number;
   windowBytes: number;
@@ -71,6 +72,7 @@ interface Room {
   id: string;
   peers: Map<string, Peer>;
   agent?: AgentLease;
+  latestRoster?: string;
   lastOutcome?: 'closed' | 'failed' | 'unknown';
 }
 interface AgentFactory {
@@ -132,17 +134,23 @@ export function registerTeamVoice(
     return result.rows[0];
   }
   function write(peer: Peer, data: string | Buffer) {
-    if (!active(peer)) return;
+    if (!active(peer)) return false;
     if (peer.ws.bufferedAmount > 256_000) {
       peer.ws.close(1008, 'slow consumer');
-      return;
+      return false;
     }
     peer.ws.send(data);
+    return true;
   }
   const send = (peer: Peer, event: TeamVoiceEvent) => write(peer, JSON.stringify(event));
   function broadcast(room: Room, event: TeamVoiceEvent) {
     const serialized = JSON.stringify(event);
     for (const peer of room.peers.values()) write(peer, serialized);
+  }
+  function syncRoster(room: Room, peer: Peer) {
+    const snapshot = room.latestRoster;
+    if (snapshot && snapshot !== peer.deliveredRoster && write(peer, snapshot))
+      peer.deliveredRoster = snapshot;
   }
   function roster(room: Room) {
     const agent: TeamVoiceAgentStatus = room.agent
@@ -154,7 +162,7 @@ export function registerTeamVoice(
           contextReady: room.agent.contextReady,
         }
       : { state: 'off', lastOutcome: room.lastOutcome };
-    broadcast(room, {
+    room.latestRoster = JSON.stringify({
       type: 'roster',
       agent,
       members: [...room.peers.values()].map((peer) => ({
@@ -163,7 +171,8 @@ export function registerTeamVoice(
         muted: peer.muted,
         listeningToAi: room.agent?.listeners.has(peer.speakerId) ?? false,
       })),
-    });
+    } satisfies TeamVoiceEvent);
+    for (const peer of room.peers.values()) syncRoster(room, peer);
   }
   function audio(room: Room, speakerId: number, bytes: Buffer, exclude?: Peer) {
     const frame = Buffer.allocUnsafe(bytes.length + 2);
@@ -312,7 +321,9 @@ export function registerTeamVoice(
         [...room.peers.values()].map(async (peer) => {
           try {
             if (now - peer.lastPing > 25_000) throw new Error('heartbeat expired');
-            peer.access = await access(room.id, peer.actorId, peer.authHash);
+            const permission = await access(room.id, peer.actorId, peer.authHash);
+            if (room.peers.get(peer.actorId) !== peer) return;
+            peer.access = permission;
             peer.authorizedAt = Date.now();
             const lease = room.agent;
             if (lease?.host === peer) {
@@ -327,6 +338,9 @@ export function registerTeamVoice(
                 roster(room);
               }
             }
+            // State changes can happen while this peer's previous access lease is stale.
+            // Catch up the current roster only. Audio and transient events stay live-only.
+            syncRoster(room, peer);
           } catch {
             peer.ws.close(1008, 'voice access changed');
             leave(room, peer);

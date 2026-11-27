@@ -835,6 +835,17 @@
   }
 }
 
+/* Keep the existing navigation action recognizable when the full brand link is tucked away. */
+.studio-workspace .compact-navigation-mark { display: none; }
+.studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .workspace-identity > .icon-button > svg { display: none; }
+.studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .workspace-identity > .icon-button > .compact-navigation-mark,
+.studio-workspace .mobile-inspector-actions .inspector-navigation-mark {
+  display: block;
+  width: 21px;
+  height: 21px;
+  object-fit: contain;
+}
+
 /* Compact default while a photo is open; the overflow button expands the utilities. */
 .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .floating-topbar .workspace-identity > .workspace-home-link,
 .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded]) .floating-topbar .workspace-top-actions > :is(.studio-search-trigger, .theme-toggle, .focus-toggle, .studio-account, .workspace-settings-trigger) {
