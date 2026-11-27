@@ -5,6 +5,7 @@ import { ApiError } from '../src/lib/api.ts';
 import type { AIJob } from '../src/ai/types.ts';
 import {
   acceptJobSubmission,
+  findJobReceipt,
   clearJobSubmission,
   freezeJobSubmission,
   isJobAdmissionRejected,
@@ -88,13 +89,13 @@ test('the legacy job request freezes references, generation options, grant, mode
   );
 });
 
-test('job recovery uses the existing project list after admission and never invents a per-job GET', () => {
+test('job recovery looks up the actor’s original receipt without relying on the latest 100 jobs', () => {
   const frozen = freezeJobSubmission({ ...base(), body: body() });
   const queued = acceptJobSubmission(frozen, job());
   const uncertain = acceptJobSubmission(queued, job('unknown'));
   for (const saved of [queued, uncertain]) {
     assert.deepEqual(jobSubmissionRequest(saved), {
-      path: `/projects/${projectId}/ai-jobs`,
+      path: `/projects/${projectId}/ai-jobs?requestKey=${key}`,
       init: { method: 'GET' },
     });
     assert.equal(jobSubmissionResolved(saved.state), false);
@@ -162,7 +163,9 @@ test('audio stays in page memory; after refresh its identity stays locked withou
   const afterRefresh = readJobSubmission(checkpoint, 'actor-a', new Map())!;
   assert.equal(afterRefresh.idempotencyKey, key);
   assert.equal(afterRefresh.requestBody, null);
-  assert.throws(() => jobSubmissionRequest(afterRefresh), /原始录音只保留在页面内存/);
+  assert.deepEqual(jobSubmissionRequest(afterRefresh), {
+    path: `/projects/${projectId}/ai-jobs?requestKey=${afterRefresh.idempotencyKey}`, init: { method: 'GET' },
+  });
   assert.throws(
     () =>
       saveJobSubmission(
@@ -252,4 +255,14 @@ test('a late old receipt cannot clear a newer checkpoint, and corrupted checkpoi
   checkpoint.setItem(slot, '{broken');
   assert.throws(() => readJobSubmission(checkpoint, 'actor-a'), /恢复记录无法读取/);
   assert.throws(() => saveJobSubmission(checkpoint, original), /恢复记录无法读取/);
+});
+
+
+test('missing job IDs accept only an explicitly request-scoped receipt from the API', () => {
+  const saved = freezeJobSubmission({ ...base(), body: body() });
+  const pending = job();
+  assert.equal(findJobReceipt(saved, { jobs: [pending] }), undefined);
+  assert.equal(findJobReceipt(saved, { requestKey: nextKey, jobs: [pending] }), undefined);
+  assert.equal(findJobReceipt(saved, { requestKey: key, jobs: [pending] }), pending);
+  assert.equal(findJobReceipt(acceptJobSubmission(saved, pending), { jobs: [pending] }), pending);
 });

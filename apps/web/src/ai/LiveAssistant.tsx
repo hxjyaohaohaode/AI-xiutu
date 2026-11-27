@@ -1,7 +1,10 @@
+import type { CaptureProjectCover } from '../project-files/cover';
+import { ExportContent } from '../project-files/ExportContent';
 import { lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import './voice-workspace.css';
 import { readModelCatalog } from '../lib/api';
+import { pickAssistantModel } from './model-selection';
 import { ModelReadStatus } from './ModelReadStatus';
 import { t, useLocale, type MessageParams } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
@@ -33,6 +36,7 @@ import {
 } from '@phosphor-icons/react';
 import type {
   AssistantCandidate,
+  AssistantToolRecord,
   AssistantContext,
   VoiceContext,
   AssistantCitation,
@@ -170,6 +174,7 @@ interface Turn {
     candidates: AssistantCandidate[];
     workspace?: AssistantWorkspace;
     memorySuggestions?: MemorySuggestion[];
+    toolRecords?: AssistantToolRecord[];
     execution?: {
       state: 'applied' | 'blocked' | 'review_required';
       code?: string;
@@ -209,6 +214,7 @@ interface Message {
   appStatus?: StatusMessage;
   citations?: AssistantCitation[];
   search?: AssistantSearchEvidence[];
+  hasSpecialistReview?: boolean;
   attachmentKind?: AssistantVisualAttachment['kind'];
   voiceSession?: number;
   candidateIds?: string[];
@@ -248,13 +254,15 @@ export interface LiveAssistantProps {
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
   onApplied: (artworkId: string) => void | Promise<void>;
+  generationOfferLabel?: (references: string[], prompt: string) => string | undefined;
   onPrepareGenerationDraft: (draft: {
     executionGrantId?: string;
     candidateId: string;
     prompt: string;
     referenceAssetIds: string[];
-  }) => Promise<(() => void) | null>;
+  }, direct?: boolean) => Promise<(() => void | Promise<void>) | null>;
   captureCanvasPreview?: () => Promise<string>;
+  captureProjectCover?: CaptureProjectCover;
   canvasSourceId?: number;
   replyNarration?: ReplyNarration;
   visualAttachment?: AssistantVisualAttachment | null;
@@ -599,7 +607,18 @@ export function LiveAssistant(props: LiveAssistantProps) {
   function updateTurnOptions(value: AssistantResponseTuning) {
     setTuningByModel((old) => ({ ...old, [modelId]: value }));
   }
+  const manualModel = useRef<{ actor: string | null; id: string } | null>(null);
+  const explicitCanvas = !!props.captureCanvasPreview && textPreviewChoice?.enabled === true &&
+    textPreviewChoice.source === props.canvasSourceId;
+  const wantsImage = mode === 'text' && (!!props.visualAttachment || referenceIds.length > 0 || explicitCanvas);
+  function defaultModel(preferred: (string | undefined)[]) {
+    return pickAssistantModel(models.map((model) => ({
+      id: model.id, imageInput: model.imageInput,
+      points: assistantTurnPrice(model.unitCost, model.responsePrice, tuningByModel[model.id] ?? {}, model.responseDefaults),
+    })), preferred, wantsImage);
+  }
   function chooseTextModel(id: string) {
+    manualModel.current = { actor: actorId, id };
     if (id !== modelId && activeGrant.current?.mode === 'suggest') {
       activeGrant.current = null;
       setGrant(null);
@@ -695,11 +714,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
     const replaceText = previous.actor !== actorId || (!prompt.trim() && !modelOptionsOpen && previous.text !== preferences.textModel);
     const replaceVoice = previous.actor !== actorId || (!voiceParametersOpen && previous.voice !== preferences.voiceModel);
     lastDefaults.current = { actor: actorId, text: preferences.textModel, voice: preferences.voiceModel };
-    setModelId((old) => !replaceText && models.some((item) => item.id === old) ? old :
-      (models.find((item) => item.id === preferences.textModel)?.id ?? models[0]?.id ?? ''));
+    if (!grant) setModelId((old) => {
+      if (!replaceText && manualModel.current?.actor === actorId && manualModel.current.id === old &&
+          models.some((item) => item.id === old)) return old;
+      return defaultModel(replaceText ? [preferences.textModel] : [old, preferences.textModel]);
+    });
     setVoiceId((old) => !replaceVoice && voices.some((item) => item.id === old) ? old :
       (voices.find((item) => item.id === preferences.voiceModel)?.id ?? voices[0]?.id ?? ''));
-  }, [catalog, actorId, catalogSelectionLocked, preferences.textModel, preferences.voiceModel]);
+  }, [catalog, actorId, catalogSelectionLocked, preferences.textModel, preferences.voiceModel, wantsImage, grant]);
   const currentVoiceControls = useRef({ callState, muted, end: endVoice });
   currentVoiceControls.current = { callState, muted, end: endVoice };
   const toggleVoiceMute = useCallback(() => {
@@ -988,6 +1010,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               appStatus: turn.state === 'completed' ? undefined : turnStatus(turn),
               citations: turn.output?.citations,
               search: turn.output?.search,
+              hasSpecialistReview: turn.output?.toolRecords?.some((record) => record.tool === 'consult_specialists'),
             });
           }
           for (const message of old) if (!merged.has(message.id)) merged.set(message.id, message);
@@ -1715,7 +1738,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     )
       return;
     const explicitAttachment = mode === 'text' ? props.visualAttachment : null;
-    if (explicitAttachment && !selected?.imageInput) {
+    if (!inCall && wantsImage && !selected?.imageInput) {
       setError(t('请选择支持图片的模型，或移除附件。'));
       return;
     }
@@ -1952,6 +1975,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             reasoningSummary: result.output!.reasoningSummary,
             citations: result.output!.citations,
             search: result.output!.search,
+            hasSpecialistReview: result.output!.toolRecords?.some((record) => record.tool === 'consult_specialists'),
           },
         ].slice(-40),
       );
@@ -2055,6 +2079,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     candidate: AssistantCandidate,
     decision: 'previewed' | 'rejected',
     automatic = false,
+    directGeneration = false,
   ) {
     if (!isLoggedIn || !project || submission.current) return;
     const token = requests.current.begin();
@@ -2106,14 +2131,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
           );
         }
       } else {
-        let commit: (() => void) | null = null;
+        let commit: (() => void | Promise<void>) | null = null;
         if (decision === 'previewed') {
           commit = await onPrepareGenerationDraft({
             executionGrantId: candidate.executionGrantId,
             candidateId: candidate.id,
             prompt: candidate.prompt ?? '',
             referenceAssetIds: candidate.referenceAssetIds ?? [],
-          });
+          }, directGeneration);
           if (!commit || !requestIsActive(token)) return;
         }
         await api(
@@ -2121,7 +2146,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
           jsonRequest('POST', { decision }),
         );
         if (!requestIsActive(token)) return;
-        commit?.();
+        await commit?.();
       }
       if (!requestIsActive(token)) return;
       setCandidates((old) =>
@@ -2268,8 +2293,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
       return;
     }
     freshConversation.current = !id;
-    if (!id && !catalogSelectionLocked && !grant)
-      setModelId(models.find((model) => model.id === preferences.textModel)?.id ?? models[0]?.id ?? '');
+    if (!id && !catalogSelectionLocked && !grant) {
+      manualModel.current = null;
+      setModelId(defaultModel([preferences.textModel]));
+    }
     setConversationId(id);
     setParentTurnId(undefined);
     setMessages([]);
@@ -2296,7 +2323,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
     !!catalog?.ready &&
     !!selected &&
     (inCall || (tuningValid && quote !== null)) &&
-    (mode !== 'text' || !props.visualAttachment || selected.imageInput) &&
+    (inCall || !wantsImage || selected.imageInput) &&
     (!inCall || callState === 'active');
   const needsSearchQuery =
     mode === 'text' && allowWebSearch && !!selected?.webSearch && !publicQuery.trim() && !inCall;
@@ -2639,6 +2666,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 currentAssetId={artwork?.assetId}
               />
             )}
+            {message.hasSpecialistReview && message.id !== researchTurnId && (
+              <ResearchGraph turnId={message.id} live={[]} running={false} historical />
+            )}
             {!message.search?.some((item) => item.kind === 'web') &&
               !!message.citations?.length && (
                 <div className="assistant-citations">
@@ -2657,6 +2687,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
             {message.role === 'assistant' && message.text && !isStreaming && !message.voiceSession && (
               <div className="assistant-message-actions">
                 <CopyMessage text={message.text} />
+                <ExportContent title="" body={message.text} captureCover={props.captureProjectCover} />
                 {props.replyNarration && message.text.trim().length <= 4000 ? (
                   <ReplySpeech text={message.text} narration={props.replyNarration}
                     active={!inCall && !voiceVisible && props.visible !== false} />
@@ -2686,8 +2717,9 @@ export function LiveAssistant(props: LiveAssistantProps) {
         confirmedCandidateIds={confirmedCandidateIds}
         onConfirmPreview={props.onConfirmPreview ? confirmCandidatePreview : undefined}
         onCancelPreview={props.onCancelPreview ? cancelCandidatePreview : undefined}
-        onDecision={(candidate, decision) => {
-          void decide(candidate, decision);
+        generationOfferLabel={props.generationOfferLabel}
+        onDecision={(candidate, decision, direct) => {
+          void decide(candidate, decision, false, direct);
         }}
         onPrompt={(text) => {
           setPrompt(text);
@@ -2739,7 +2771,8 @@ export function LiveAssistant(props: LiveAssistantProps) {
               canExecute={creative.mode !== 'suggest'}
               previewing={previewCandidateId === candidate.id}
               confirmed={confirmedCandidateIds.has(candidate.id)}
-              onDecision={(item, decision) => void decide(item, decision)}
+              generationOfferLabel={props.generationOfferLabel}
+              onDecision={(item, decision, direct) => void decide(item, decision, false, direct)}
               onConfirm={props.onConfirmPreview ? confirmCandidatePreview : undefined}
               onCancel={props.onCancelPreview ? cancelCandidatePreview : undefined}
             />
@@ -3109,7 +3142,10 @@ export function LiveAssistant(props: LiveAssistantProps) {
                 <ImageSquare size={14} />
                 <span>{t(shareImage ? '发送时附带当前画面' : '发送时不附带画面')}</span>
               </button>
-            ) : <small className="ai-attachment-status" role="status">{t('当前助手模型不支持图片输入')}</small>
+            ) : explicitCanvas ? <button type="button" className="ai-selected-context ai-canvas-share"
+              aria-pressed={true} disabled={busy || !!pendingSubmission} onClick={() => setShareImage(false)}>
+              <ImageSquare size={14} /><span>{t('移除当前预览')}</span>
+            </button> : <small className="ai-attachment-status" role="status">{t('当前助手模型不支持图片输入')}</small>
           )}
           {(referenceIds.length > 0 ||
             memory ||
@@ -3143,7 +3179,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               </span>
             </button>
           )}
-          {mode === 'text' && props.visualAttachment && selected && !selected.imageInput && (
+          {wantsImage && selected && !selected.imageInput && (
             <small className="ai-attachment-status" role="status">
               {t('请选择支持图片的模型，或移除附件。')}
             </small>
@@ -3355,7 +3391,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <label>
                 <input
                   type="checkbox"
-                  checked={mode === 'voice' ? shareVoiceImage : shareImage}
+                  checked={mode === 'voice' ? shareVoiceImage : shareImage && !!selected?.imageInput}
                   disabled={
                     callState === 'connecting' ||
                     callState === 'closing' ||
@@ -3619,14 +3655,14 @@ export function LiveAssistant(props: LiveAssistantProps) {
               <h4>
                 {pendingVoiceSubmission.sessionId ||
                 pendingVoiceSubmission.state === 'already-prepared'
-                  ? t('上次通话待平台核验')
+                  ? t('正在核对上次通话')
                   : t('上次通话的准备结果待确认')}
               </h4>
               <p>
                 {t('已保留项目「')}
                 {pendingVoiceSubmission.projectTitle}
                 {t(
-                  '」的原请求，核验完成前暂停创建新通话。 结束通话、断网或等待一段时间，都不能证明预占已结清。',
+                  '」的通话记录。结清后即可再次通话。',
                 )}
               </p>
               <p style={{ overflowWrap: 'anywhere' }}>
@@ -3642,7 +3678,7 @@ export function LiveAssistant(props: LiveAssistantProps) {
               </p>
               <p>
                 {t(
-                  '可在「用量」查看已知任务的状态与预占，并将以上标识提供给平台运营核验。 当前界面不支持自动恢复这次通话，原连接凭证也不能重新发放，仍需平台协助处理。',
+                  '系统会自动核对原通话回执。费用待核验时可在「用量」查看。',
                 )}
               </p>
               {!pendingVoiceSubmission.sessionId &&

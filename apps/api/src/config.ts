@@ -38,8 +38,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     host: env.HOST ?? '127.0.0.1',
     storageDir: resolve(env.STORAGE_DIR ?? '.data/private'),
     secureCookie: env.COOKIE_SECURE === 'true' || origins.every((o) => o.startsWith('https://')),
-    maxUploadBytes: bounded('MAX_UPLOAD_BYTES', 20 * 1024 * 1024, 1024, 50 * 1024 * 1024),
-    maxPixels: bounded('MAX_IMAGE_PIXELS', 40_000_000, 1, 64_000_000),
+    maxUploadBytes: bounded('MAX_UPLOAD_BYTES', 50 * 1024 * 1024, 1024, 50 * 1024 * 1024),
+    maxPixels: bounded('MAX_IMAGE_PIXELS', 64_000_000, 1, 64_000_000),
     trustProxyHops: bounded('TRUST_PROXY_HOPS', 0, 0, 1),
     supportQrFile: env.SUPPORT_QR_FILE?.trim() ? resolve(env.SUPPORT_QR_FILE.trim()) : undefined,
   };

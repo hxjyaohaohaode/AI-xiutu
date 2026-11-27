@@ -873,8 +873,8 @@
   backdrop-filter: none;
 }
 .studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions > button {
-  min-inline-size: 34px;
-  min-block-size: 38px;
+  min-inline-size: 44px;
+  min-block-size: 44px;
   padding: 0;
 }
 .studio-workspace[data-immersive-editor] .workspace-top-actions > .photo-session-actions > button > span { display: none; }
@@ -894,3 +894,41 @@
   font-size: 12px;
 }
 .local-manage-toggle > span { color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The view switch and PNG download both need full touch targets on compact phones.
+   The existing tools toggle reveals the less frequent trash and account actions. */
+@media (max-width: 403px) {
+  .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded])
+    .workspace-top-actions:has(.cloud-status-trigger) .photo-session-actions > [data-action='trash-photo'] {
+    display: none;
+  }
+}
+@media (max-width: 374px) {
+  .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded])
+    .photo-session-actions > [data-action='trash-photo'],
+  .studio-workspace[data-immersive-editor]:not([data-mobile-chrome-expanded])
+    .workspace-top-actions:has(.cloud-status-trigger) .photo-session-actions > [data-action='exit-photo'] {
+    display: none;
+  }
+}
+@media (max-width: 439px) {
+  /* The expanded header pairs navigation and photo actions above the utility row. */
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .workspace > .floating-topbar {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-auto-rows: 44px;
+    height: auto;
+    gap: 0;
+  }
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar
+    > :is(.workspace-identity, .workspace-view-navigation) {
+    grid-column: span 2;
+  }
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar > .workspace-top-actions {
+    display: contents;
+  }
+  .studio-workspace[data-immersive-editor][data-mobile-chrome-expanded] .floating-topbar .photo-session-actions {
+    grid-column: span 3;
+    justify-self: end;
+  }
+}

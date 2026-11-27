@@ -328,6 +328,7 @@ export async function processMedia(request: ProcessMediaRequest): Promise<MediaD
         inputPath,
         workDir,
         originalName: (request.originalName ?? 'image').slice(0, 255),
+        originalDisplayName: request.originalDisplayName?.slice(0, 255),
       },
       options,
       request.signal,

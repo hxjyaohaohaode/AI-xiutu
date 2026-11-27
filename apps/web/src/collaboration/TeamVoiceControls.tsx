@@ -49,8 +49,7 @@ export function TeamVoiceControls({
   const invitationBlocked =
     !room.invitationReady ||
     !!room.pendingInvitation ||
-    !!room.pendingIndividualVoice ||
-    (agent.state === 'off' && agent.lastOutcome === 'unknown');
+    !!room.pendingIndividualVoice;
   useEffect(() => {
     if (room.state !== 'connected' || !room.canInvite) return;
     const controller = new AbortController();
@@ -160,7 +159,7 @@ export function TeamVoiceControls({
               </p>
               <p>
                 {t(
-                  '请从工作区「用量」核对预占，并将以上标识提供给平台运营。 当前接口未提供历史邀请核验查询；房间邀请标识也不是计费会话标识。 重新加入、结束按钮的成功提示或新邀请的失败提示，都不能解除旧请求的待核验状态。',
+                  '系统会自动核对原通话回执，结清后即可重新邀请。费用待核验时可在「用量」查看。',
                 )}
               </p>
             </MotionDetails>
@@ -185,7 +184,7 @@ export function TeamVoiceControls({
               status={room.peerCaptionStatus}
             />
           )}
-          {agent.state === 'off' && agent.lastOutcome === 'unknown' && (
+          {agent.state === 'off' && agent.lastOutcome === 'unknown' && room.pendingInvitation && (
             <p role="status">{t('上一轮 AI 费用待核验。')}</p>
           )}
           {agent.state === 'off' && room.canInvite && catalog?.voiceReady && (

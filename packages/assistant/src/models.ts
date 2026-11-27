@@ -337,6 +337,7 @@ export const ASSISTANT_TOOL_NAMES = [
   'read_tool_result',
   'search_resources',
   'delegate_research',
+  'consult_specialists',
   'describe_editor',
   'propose_edit',
   'propose_curve',

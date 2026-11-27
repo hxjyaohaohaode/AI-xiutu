@@ -66,16 +66,32 @@ export const assistantResearchPlan = z
       nodes.filter((node) => node.kind === 'canvas').length <= 1,
   );
 export type AssistantResearchBranch = z.infer<typeof assistantResearchBranch>;
-export type AssistantDispatchPurpose = 'conversation' | 'web-search' | 'research-merge';
+export type AssistantDispatchPurpose = 'conversation' | 'web-search' | 'research-merge' | 'specialist-review';
 export interface AssistantBranchEvent {
   id: string;
   parentId: string | null;
   dependsOn: string[];
-  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination';
+  kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination'
+    | 'tone-review' | 'composition-review' | 'delivery-review';
   state: 'running' | 'completed' | 'failed';
   execution: 'provider' | 'server';
   resultCount?: number;
+  finding?: string;
 }
+
+/** Only these server tools produce reusable work records. Other offloaded tool
+ * output remains private to its original turn. */
+export const assistantRecordTool = z.enum([
+  'consult_specialists', 'inspect_candidate', 'propose_scene_balance',
+]);
+export const assistantToolRecord = z.object({
+  artifactId: z.uuid(),
+  tool: assistantRecordTool,
+  characters: z.number().int().min(1).max(250_000),
+}).strict();
+export type AssistantToolRecord = z.infer<typeof assistantToolRecord>;
+export const assistantToolRecords = z.array(assistantToolRecord).max(32);
+
 export const assistantScopeSchema = z
   .object({
     spaceIds: z.array(z.uuid()).max(12).default([]),

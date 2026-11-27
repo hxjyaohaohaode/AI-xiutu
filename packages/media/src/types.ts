@@ -144,6 +144,7 @@ export interface ProcessMediaRequest {
   /** A new private output directory. Existing output is never overwritten. */
   workDir: string;
   originalName?: string;
+  originalDisplayName?: string;
   signal?: AbortSignal;
   options?: MediaProcessingOptions;
 }

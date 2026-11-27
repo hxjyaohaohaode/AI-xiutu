@@ -369,7 +369,7 @@ export function attachVoiceBridge(
           state === 'closed' &&
           (
             await db.query(
-              'SELECT 1 FROM assistant_dispatches WHERE voice_id=$1 AND completed_at IS NULL LIMIT 1',
+              'SELECT 1 FROM assistant_dispatches WHERE voice_id=$1 AND completed_at IS NULL AND rejected_at IS NULL LIMIT 1',
               [row.id],
             )
           ).rowCount

@@ -319,6 +319,10 @@ try {
     return { page, panel, frames };
   }
   const owner = await open('owner', { width: 1440, height: 960 });
+  // Simulate losing the final receipt when the host leaves. The server continues
+  // settling the real session and the independent member remains connected.
+  const receiptRoute = '**/v1/me/voice-receipts/*';
+  await owner.page.route(receiptRoute, (route) => route.abort('connectionfailed'));
   const editor = await open('editor', { width: 390, height: 844 });
   const hasMic = (frame) =>
     frame.length > 2 && frame.readUInt16LE(0) > 0 && frame.subarray(2).some((byte) => byte !== 0);
@@ -496,7 +500,7 @@ try {
       );
     },
   );
-  await check('an unresolved team invitation blocks a new solo paid request', async () => {
+  await check('a disconnected host recovers the settled invitation without a second paid call', async () => {
     const page = owner.page;
     await owner.panel.getByRole('status', { name: '团队 AI 邀请恢复' }).waitFor();
     await page.locator('.collaboration-summary').click();
@@ -520,12 +524,24 @@ try {
       1,
       'no second provider call is dispatched for the unresolved host',
     );
+    await page.unroute(receiptRoute);
+    await wait(async () => {
+      const rows = await fixture.db.query(
+        "SELECT v.state,h.state AS settlement FROM voice_sessions v JOIN quota_holds h ON h.id=v.hold_id WHERE v.actor_id=$1",
+        [fixture.actors.owner.id],
+      );
+      return rows.rows.length === 1 && rows.rows[0].state === 'closed' && rows.rows[0].settlement === 'settled';
+    }, 'original host’s real database settlement');
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await wait(() => page.locator('.voice-call-workspace')
+      .getByRole('button', { name: '开始实时通话', exact: true }).isEnabled(),
+      'the original host can start another call after receipt recovery');
+    assert.equal(sockets.length, 1, 'recovery reads the receipt without dialing the provider');
   });
   await check(
     'solo live call keeps captions and public search inside the conversation',
     async () => {
-      // The original host intentionally left before a terminal receipt. Keep its
-      // checkpoint intact; the independent member never initiated the paid invite.
+      // The independent member can also move from the room into a personal call.
       const page = editor.page;
       await editor.panel.getByRole('button', { name: '离开团队语音', exact: true }).click();
       await page.setViewportSize({ width: 1440, height: 960 });

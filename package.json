@@ -19,14 +19,14 @@
     "test": "node scripts/test.mjs",
     "test:coverage": "node scripts/qa/native-coverage.mjs",
     "check": "npm run typecheck && npm test && npm run build -w @ai-xiutu/web",
-    "db:migrate": "tsx packages/db/src/migrate.ts",
+    "db:migrate": "node --import tsx packages/db/src/migrate.ts",
     "admin:create": "tsx apps/api/src/bootstrap.ts",
     "start": "node --env-file-if-exists=.env --import tsx apps/api/src/index.ts",
     "test:lite": "node scripts/with-lite.mjs test",
     "dev:lite": "node scripts/with-lite.mjs dev",
     "db:local": "node scripts/local-db.mjs",
     "worker:ai": "node --env-file-if-exists=.env --import tsx apps/worker-ai/src/index.ts",
-    "doctor": "tsx scripts/doctor.ts",
+    "doctor": "node --import tsx scripts/doctor.ts",
     "admin:lite": "node scripts/with-lite.mjs admin",
     "doctor:lite": "node scripts/with-lite.mjs doctor",
     "verify": "node scripts/verify.mjs",
@@ -59,5 +59,10 @@
     "prettier": "3.9.10",
     "typescript": "5.9.3",
     "vite": "8.3.7"
+  },
+  "overrides": {
+    "pptxgenjs": {
+      "image-size": "2.2.0"
+    }
   }
 }

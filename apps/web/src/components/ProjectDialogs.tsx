@@ -1,11 +1,16 @@
+import { getOriginalPhoto } from '../editor/original-photo-source';
+import { originalPhotoExportAvailable, originalPhotoExportSupported, exportOriginalPhoto } from '../editor/original-photo-export';
+import { getOutputDimensions, getEditorOutputDimensions } from '@ai-xiutu/editor';
+import { fitExportDimensions } from '../editor/export-size';
 import { SquishSwitch } from './control-motion';
 import { t } from '../i18n';
 import { secureUuid } from '../lib/uuid';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   Copy,
   DownloadSimple,
   LinkSimple,
+  ShareNetwork,
   Plus,
   ShieldCheck,
   Trash,
@@ -110,7 +115,7 @@ export function NameDialog({
   );
 }
 
-type PreparedImageExport = { url: string; name: string; bytes: number };
+type PreparedImageExport = { url: string; name: string; bytes: number; blob: Blob };
 export type ImageExportCheckpoint<Recipe> = SourceLoadCheckpoint<Recipe> & {
   live: boolean;
   sourcePending: boolean;
@@ -138,7 +143,7 @@ export async function prepareBoundImageExport<Recipe>(
   }
   // Do not even allocate an object URL for a result whose owner has changed.
   if (!current()) return null;
-  return { url: createUrl(blob), name, bytes: blob.size };
+  return { url: createUrl(blob), name, bytes: blob.size, blob };
 }
 
 export function ExportDialog({
@@ -156,6 +161,35 @@ export function ExportDialog({
 }) {
   const [format, setFormat] = useState<'png' | 'jpeg' | 'webp'>('png');
   const [quality, setQuality] = useState(0.94);
+  const [size, setSize] = useState('best');
+  const activeExport = useRef<AbortController | null>(null);
+  const [originalProgress, setOriginalProgress] = useState<number | null>(null);
+  const outputSize = useMemo(() => {
+    if (!editor.dimensions || !editor.recipe) return null;
+    try { return getEditorOutputDimensions(editor.dimensions, editor.recipe); }
+    catch { return null; } // The worker returns the actionable geometry error on export.
+  }, [editor.dimensions, editor.recipe]);
+  const originalSize = useMemo(() => {
+    if (format !== 'png' || !editor.originalPhotoExportable || !originalPhotoExportAvailable() || !editor.usingSourceProxy ||
+        !editor.originalDimensions || !originalPhotoExportSupported(editor.recipe)) return null;
+    try { return getOutputDimensions(editor.originalDimensions, editor.recipe.geometry); }
+    catch { return null; }
+  }, [format, editor.originalPhotoExportable, editor.usingSourceProxy, editor.originalDimensions, editor.recipe]);
+  const longEdge = outputSize ? Math.max(outputSize.width, outputSize.height) : 0;
+  const sizeChoices = [undefined, ...[3840, 2048, 1080].filter((edge) => edge < longEdge)]
+    .map((edge) => {
+      const value = edge === undefined ? 'full' : String(edge);
+      const pixels = outputSize ? fitExportDimensions(outputSize, edge) : null;
+      const resolution = pixels ? pixels.width + ' × ' + pixels.height : '';
+      const label = edge === undefined ? t(editor.usingSourceProxy ? '编辑副本 · {size}' : '完整画面 · {size}', { size: resolution }) : resolution;
+      return { value, label };
+    });
+  if (originalSize) sizeChoices.unshift({ value: 'original', label: t('原片编辑成品 · {size}', {
+    size: originalSize.width + ' × ' + originalSize.height,
+  }) });
+  const selectedSize = sizeChoices.some((choice) => choice.value === size) ? size : sizeChoices[0]!.value;
+  const renderOriginal = selectedSize === 'original';
+  const maxLongEdge = selectedSize === 'full' || renderOriginal ? undefined : Number(selectedSize);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [prepared, setPrepared] = useState<PreparedImageExport | null>(null);
@@ -165,8 +199,8 @@ export function ExportDialog({
   const live = useRef(true);
   const generation = useRef(0);
   const locked = useRef(false);
-  const current = useRef({ editor, sourcePending, format, quality });
-  current.current = { editor, sourcePending, format, quality };
+  const current = useRef({ editor, sourcePending, format, quality, maxLongEdge, renderOriginal });
+  current.current = { editor, sourcePending, format, quality, maxLongEdge, renderOriginal };
   const exportName = `${filenameBase(editor.file?.name ?? '作品')}-编辑.${format === 'jpeg' ? 'jpg' : format}`;
   function releasePrepared() {
     const previous = preparedRef.current;
@@ -180,15 +214,41 @@ export function ExportDialog({
     return () => {
       live.current = false;
       generation.current += 1;
+      activeExport.current?.abort();
       releasePrepared();
     };
   }, []);
   useEffect(() => {
     releasePrepared();
     setPrepared(null);
-  }, [format, quality, editor.file, editor.recipe]);
-  async function save() {
+    return () => activeExport.current?.abort();
+  }, [format, quality, maxLongEdge, renderOriginal, editor.file, editor.recipe, sourcePending]);
+  const offersFileShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function' &&
+    navigator.canShare?.({ files: [new File([], exportName, { type: 'image/' + format })] });
+  async function sharePrepared(result: PreparedImageExport) {
+    if (!preparedOwner.current?.isCurrent() || current.current.sourcePending || current.current.editor.isLoading()) return;
+    const file = new File([result.blob], result.name, { type: result.blob.type });
+    if (!navigator.canShare?.({ files: [file] })) {
+      setError(t('当前设备无法分享此文件，可直接下载。'));
+      return;
+    }
+    try {
+      await navigator.share({ files: [file] });
+    } catch (failure) {
+      if (!live.current || (failure instanceof Error && failure.name === 'AbortError')) return;
+      setError(t('可再次点击分享，或直接下载图片。'));
+    }
+  }
+  async function save(intent: 'download' | 'share') {
     if (locked.current || sourcePending || editor.loading || !editor.file) return;
+    if (intent === 'share' && preparedRef.current && preparedOwner.current?.isCurrent()) {
+      locked.current = true;
+      setBusy(true);
+      setError(null);
+      try { await sharePrepared(preparedRef.current); }
+      finally { locked.current = false; if (live.current) setBusy(false); }
+      return;
+    }
     locked.current = true;
     const request = ++generation.current;
     const read = () => ({
@@ -203,13 +263,26 @@ export function ExportDialog({
     setPrepared(null);
     setBusy(true);
     setError(null);
+    const controller = renderOriginal ? new AbortController() : null;
+    activeExport.current = controller;
+    setOriginalProgress(controller ? 0 : null);
     try {
       const result = await prepareBoundImageExport(
         read,
-        () => editor.exportImage(format, quality),
+        async () => {
+          if (!controller || !editor.originalDimensions)
+            return editor.exportImage(format, quality, false, undefined, maxLongEdge);
+          const file = await getOriginalPhoto(editor.localOriginalFile, editor.originalAssetId,
+            editor.file?.name ?? 'photo', controller.signal, editor.originalPhotoSha256);
+          controller.signal.throwIfAborted();
+          return exportOriginalPhoto(file, editor.recipe, editor.originalDimensions, controller.signal, (fraction) => {
+            if (live.current && activeExport.current === controller && !controller.signal.aborted)
+              setOriginalProgress(Math.round(fraction * 100));
+          });
+        },
         exportName,
       );
-      if (!live.current || request !== generation.current) {
+      if (!live.current || request !== generation.current || controller?.signal.aborted) {
         if (result) URL.revokeObjectURL(result.url);
         return;
       }
@@ -223,9 +296,16 @@ export function ExportDialog({
         isCurrent: () =>
           guard.isCurrent() &&
           current.current.format === format &&
-          current.current.quality === quality,
+          current.current.quality === quality && current.current.maxLongEdge === maxLongEdge &&
+          current.current.renderOriginal === renderOriginal,
       };
       setPrepared(result);
+      if (intent === 'share') {
+        // Some devices require a fresh gesture when image encoding outlasts activation.
+        if (navigator.userActivation?.isActive === false) onSuccess(t('文件已就绪，点击分享图片。'));
+        else await sharePrepared(result);
+        return;
+      }
       // The explicit download action starts delivery after encoding. The same
       // prepared file remains available if the browser requires another gesture.
       const link = document.createElement('a');
@@ -234,8 +314,9 @@ export function ExportDialog({
       link.click();
       onSuccess(t('下载已发起，可在浏览器下载记录中查看。'));
     } catch (e) {
-      if (live.current && request === generation.current) setError(errorMessage(e));
+      if (live.current && request === generation.current && !controller?.signal.aborted) setError(errorMessage(e));
     } finally {
+      if (activeExport.current === controller) activeExport.current = null;
       if (request === generation.current) {
         locked.current = false;
         if (live.current) setBusy(false);
@@ -291,6 +372,18 @@ export function ExportDialog({
           {format === 'webp' && <Check size={19} />}
         </button>
       </div>
+      {editor.usingSourceProxy && !renderOriginal && editor.originalDimensions && (
+        <div className="export-summary">
+          <span>{t('原件 {width} × {height} · 当前导出使用编辑副本', editor.originalDimensions)}</span>
+        </div>
+      )}
+      {outputSize && (sizeChoices.length > 1 ? (
+        <ChoiceSelect size="compact" label={t('输出尺寸')} value={selectedSize}
+          options={sizeChoices} disabled={busy} onValueChange={setSize} />
+      ) : (
+        <div className="export-summary"><span>{t('输出尺寸')}</span>
+          <strong>{outputSize.width} × {outputSize.height}</strong></div>
+      ))}
       {format !== 'png' && (
         <label className="quality-control">
           {t('图片质量')}
@@ -350,10 +443,11 @@ export function ExportDialog({
       <button
         className={`button ${ready ? 'button-quiet' : 'button-primary'} button-full`}
         disabled={actionsDisabled}
-        onClick={save}
+        onClick={() => void save('download')}
       >
         {busy ? (
-          <Busy label={t('正在计算与导出')} />
+          <Busy label={originalProgress === null ? t('正在计算与导出')
+            : t('正在导出原片 · {value}%', { value: originalProgress })} />
         ) : (
           <>
             <DownloadSimple size={18} />
@@ -361,7 +455,22 @@ export function ExportDialog({
           </>
         )}
       </button>
+      {busy && activeExport.current && <button type="button" className="text-button"
+        onClick={() => activeExport.current?.abort()}>{t('取消导出')}</button>}
       <div className="export-recipe-actions">
+        {editor.localOriginalFile && editor.usingSourceProxy ? (
+          <button type="button" className="text-button" disabled={actionsDisabled} onClick={() => {
+            if (editor.localOriginalFile) downloadBlob(editor.localOriginalFile, editor.localOriginalFile.name);
+          }}><DownloadSimple size={16} />{t('下载原件')}</button>
+        ) : editor.originalAssetId && !actionsDisabled ? (
+          <a className="text-button" download href={'/v1/assets/' + encodeURIComponent(editor.originalAssetId) + '/media/original'}>
+            <DownloadSimple size={16} />{t('下载原件')}
+          </a>
+        ) : null}
+        {offersFileShare && <button type="button" className="text-button" disabled={actionsDisabled}
+          onClick={() => void save('share')}>
+          <ShareNetwork size={16} />{t('分享图片')}
+        </button>}
         <button type="button" className="text-button" disabled={actionsDisabled} onClick={editor.exportRecipe}>
           <DownloadSimple size={16} />{t('保存编辑配方')}
         </button>
@@ -1010,6 +1119,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const [phone, setPhone] = useState('');
   const [mode, setMode] = useState<'reference' | 'copy'>('reference');
   const [days, setDays] = useState(7);
+  const [policy, setPolicy] = useState<SharingPolicy | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -1020,6 +1130,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   const currentProject = useRef(project.id);
   currentProject.current = project.id;
   const canManage = project.role === 'owner' || project.role === 'admin';
+  const modeAllowed = mode === 'reference' ? policy?.allowReference : policy?.allowCopy;
   const load = async () => {
     if (!mounted.current || currentProject.current !== project.id) return;
     const request = ++readRequest.current;
@@ -1034,11 +1145,13 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
     setGrantsLoading(true);
     setReadError(null);
     try {
-      const result = await api<{ grants: Grant[] }>(`/projects/${project.id}/grants`, {
+      const result = await api<{ grants: Grant[]; policy: SharingPolicy }>(`/projects/${project.id}/grants`, {
         signal: controller.signal,
       });
       if (isCurrent()) {
         setGrants(result.grants);
+        setPolicy(result.policy);
+        setMode((old) => old === 'copy' && result.policy.allowCopy || !result.policy.allowReference ? 'copy' : 'reference');
         setGrantsReady(true);
       }
     } catch (failure) {
@@ -1051,19 +1164,24 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
   useEffect(() => {
     mounted.current = true;
     setGrants([]);
+    setPhone('');
+    setMode('reference');
+    setDays(7);
+    setPolicy(null);
     setGrantsReady(false);
     setMessage('');
     setError(null);
-    void load();
+    if (canManage) void load();
+    else setGrantsLoading(false);
     return () => {
       mounted.current = false;
       readRequest.current++;
       readController.current?.abort();
     };
-  }, [project.id]);
+  }, [project.id, canManage]);
   async function share(event: FormEvent) {
     event.preventDefault();
-    if (locked.current || !canManage || !phone.trim()) return;
+    if (locked.current || !canManage || !modeAllowed || !phone.trim()) return;
     locked.current = true;
     setBusy(true);
     setError(null);
@@ -1113,7 +1231,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
       {!canManage && (
         <p className="form-hint">{t('只有项目所属空间的所有者或管理员可以管理外部授权。')}</p>
       )}
-      <form className="stack-form" onSubmit={share} aria-busy={busy}>
+      {canManage && <form className="stack-form" onSubmit={share} aria-busy={busy}>
         <label>
           {t('接收者手机号')}
           <input
@@ -1128,7 +1246,10 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             required
           />
         </label>
-        <div className="field-grid">
+        {policy && !policy.allowReference && !policy.allowCopy && <p role="status">{t('空间策略尚未允许此分享方式')}</p>}
+        {modeAllowed && <details key={project.id} className="share-options">
+          <summary>{t(mode === 'copy' ? '允许复制' : '参考共享')} · {t('{days} 天', { days })}</summary>
+          <div className="field-grid">
           <label>
             {t('共享方式')}
             <ChoiceSelect
@@ -1137,8 +1258,8 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
               value={mode}
               onValueChange={setMode}
               options={[
-                { value: 'reference', label: t('参考'), description: t('允许浏览与评论') },
-                { value: 'copy', label: t('允许复制'), description: t('可复制为独立项目') },
+                ...(policy?.allowReference ? [{ value: 'reference' as const, label: t('参考'), description: t('允许浏览与评论') }] : []),
+                ...(policy?.allowCopy ? [{ value: 'copy' as const, label: t('允许复制'), description: t('可复制为独立项目') }] : []),
               ]}
             />
           </label>
@@ -1161,6 +1282,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             ? t('对方可以明确复制到有编辑权限的空间。已经完成的独立副本不会因撤销共享而消失。')
             : t('撤销授权后，对方将无法继续访问源项目；已经下载的资料无法远程收回。')}
         </p>
+        </details>}
         <InlineError message={error} />
         {message && (
           <p className="success-note" role="status">
@@ -1170,7 +1292,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
         <button
           type="submit"
           className="button button-primary"
-          disabled={busy || !canManage || !phone.trim()}
+          disabled={busy || !modeAllowed || !phone.trim()}
         >
           {busy ? (
             <Busy />
@@ -1181,8 +1303,8 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
             </>
           )}
         </button>
-      </form>
-      <div className="grants-list" aria-busy={grantsLoading}>
+      </form>}
+      {canManage && <div className="grants-list" aria-busy={grantsLoading}>
         <h3>{t('项目授权')}</h3>
         {grantsLoading && <Busy label={t('正在读取')} />}
         <InlineError message={readError} />
@@ -1228,7 +1350,7 @@ export function ShareDialog({ project, onClose }: { project: Project; onClose: (
           !grants.filter((g) => !g.revokedAt).length && (
             <p className="quiet-copy">{t('暂时没有未撤销的外部授权。')}</p>
           )}
-      </div>
+      </div>}
     </Modal>
   );
 }

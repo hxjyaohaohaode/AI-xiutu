@@ -21,6 +21,9 @@ export class EditorVoiceClient {
   private nextAudioTime = 0;
   private heartbeat: ReturnType<typeof setInterval> | undefined;
   private disconnectTimer: ReturnType<typeof setTimeout> | undefined;
+  private readyTimer: ReturnType<typeof setTimeout> | undefined;
+  private failureReported = false;
+  private congestedSince: number | undefined;
   private ready = false;
   private outputPaused = false;
   private blockedItems = new Set<string>();
@@ -117,11 +120,16 @@ export class EditorVoiceClient {
     const url = new URL(path, window.location.href);
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
     this.socket = new WebSocket(url, ['xiutu-voice', ticket]);
+    this.readyTimer = setTimeout(() => {
+      this.fail('实时语音连接未就绪，请检查网络后核验原会话。');
+    }, 30_000);
     this.socket.onmessage = (message) => {
+      if (this.disposed) return;
       try {
         const event = JSON.parse(String(message.data)) as VoiceServerEvent;
         if (event.type === 'ready') {
           if (this.ready || this.ending) return;
+          clearTimeout(this.readyTimer);
           this.ready = true;
           this.onEvent(event);
           const opening = event.opening && this.openings?.[event.opening];
@@ -147,6 +155,7 @@ export class EditorVoiceClient {
           this.clearPlayback();
         }
         if (event.type === 'closed') {
+          clearTimeout(this.readyTimer);
           this.serverClosed = true;
           this.ready = false;
           clearInterval(this.heartbeat);
@@ -165,20 +174,24 @@ export class EditorVoiceClient {
         }
         this.onEvent(event);
       } catch {
-        this.onFailure('语音事件无法解析，连接已停止。');
-        this.dispose();
+        this.fail('语音事件无法解析，连接已停止。');
       }
     };
     this.socket.onclose = () => {
       if (!this.disposed && !this.serverClosed) {
-        this.onFailure('实时连接已断开，没有自动重拨；请查看会话和额度状态。');
-        this.dispose();
+        this.fail('实时连接已断开，没有自动重拨；请查看会话和额度状态。');
       }
     };
     this.socket.onerror = () => {
-      this.onFailure('无法连接实时语音服务；请检查网络与服务器配置。');
+      this.fail('无法连接实时语音服务；请检查网络与服务器配置。');
     };
     this.heartbeat = setInterval(() => this.send({ type: 'ping' }), 10_000);
+  }
+  private fail(message: string) {
+    if (this.failureReported || this.disposed || this.serverClosed) return;
+    this.failureReported = true;
+    try { this.onFailure(message); }
+    finally { this.dispose(); }
   }
   private enqueueAudio(base64: string, itemId?: string) {
     if (!this.audio || this.disposed) return;
@@ -241,11 +254,19 @@ export class EditorVoiceClient {
   }
   send(event: VoiceClientEvent) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN || this.disposed) return;
-    if (event.type === 'audio' && this.socket.bufferedAmount > 160_000) return;
     if (this.socket.bufferedAmount > 2_000_000) {
-      this.onFailure('上行网络拥塞，通话已停止。');
-      this.dispose();
+      this.fail('上行网络拥塞，通话已停止。');
       return;
+    }
+    if (event.type === 'audio') {
+      if (this.socket.bufferedAmount > 160_000) {
+        // Obsolete microphone frames cannot be replayed as live speech.
+        const now = performance.now();
+        this.congestedSince ??= now;
+        if (now - this.congestedSince >= 3000) this.fail('上行网络拥塞，通话已停止。');
+        return;
+      }
+      this.congestedSince = undefined;
     }
     if (event.type === 'text' || event.type === 'search') this.outputPaused = false;
     this.socket.send(JSON.stringify(event));
@@ -274,6 +295,7 @@ export class EditorVoiceClient {
   end() {
     if (this.disposed || this.ending) return;
     this.ending = true;
+    clearTimeout(this.readyTimer);
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
       this.dispose();
       return;
@@ -291,6 +313,7 @@ export class EditorVoiceClient {
     if (this.disposed) return;
     this.disposed = true;
     this.ready = false;
+    clearTimeout(this.readyTimer);
     this.cancelMicrophone?.();
     clearInterval(this.heartbeat);
     clearTimeout(this.disconnectTimer);

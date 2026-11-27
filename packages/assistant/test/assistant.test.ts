@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { textOnly, textTokens } from '../src/context-budget.js';
 import assert from 'node:assert/strict';
 import {
   createRecipeV3,
@@ -307,6 +308,172 @@ test('parallel research isolates literal public inputs, joins scoped evidence an
   assert.equal(join.dependsOn.length, 4);
   assert.equal(phases.at(-1).kind, 'root');
   assert.equal(phases.at(-1).state, 'completed');
+});
+
+test('independent specialists use scoped parallel model calls and return evidence to one synthesis', async () => {
+  const events: any[] = [],
+    bodies: any[] = [],
+    receipts: number[] = [];
+  let started = 0;
+  let release!: () => void;
+  const bothStarted = new Promise<void>((done) => {
+    release = done;
+  });
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({
+      prompt: '请两位专家复核这张图的色调与构图',
+      imageDataUrl: 'data:image/png;base64,Y2FudmFz',
+      visualAttachment: { kind: 'sketch', imageDataUrl: 'data:image/png;base64,c2tldGNo' },
+      memory: 'private-memory-marker',
+      selectedImages: [{ id: 'ref', dataUrl: 'data:image/png;base64,cHJpdmF0ZQ==' }],
+      history: [{ role: 'user', content: 'private-history-marker' }],
+      async onBranch(event) {
+        events.push(event);
+      },
+      async onReceipt(index) {
+        receipts.push(index);
+      },
+    }),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      bodies.push(body);
+      if (!body.tools) {
+        assert.equal(body.model, 'fixture');
+        assert.equal(body.store, false);
+        assert.deepEqual(
+          body.input[0].content.map((part: any) => part.type),
+          ['input_text', 'input_image', 'input_text', 'input_image'],
+        );
+        assert.match(body.input[0].content[2].text, /attachment \(sketch\)/);
+        assert.equal(body.input[0].content[3].image_url, 'data:image/png;base64,c2tldGNo');
+        assert.doesNotMatch(
+          JSON.stringify(body),
+          /private-memory-marker|private-history-marker|cHJpdmF0ZQ|search_resources/,
+        );
+        if (++started === 2) release();
+        await bothStarted;
+        return response([
+          text(body.instructions.includes('framing') ? '边缘应保留' : '高光接近截断'),
+        ]);
+      }
+      if (bodies.length === 1)
+        return response([
+          tool('consult_specialists', { roles: ['tone-review', 'composition-review'] }),
+        ]);
+      const merged = body.input.at(-1);
+      assert.equal(merged.type, 'function_call_output');
+      assert.match(merged.output, /边缘应保留/);
+      assert.match(merged.output, /高光接近截断/);
+      return response([text('保留左边缘并降低高光。')]);
+    },
+  );
+  assert.equal(result.text, '保留左边缘并降低高光。');
+  assert.equal(result.termination, 'completed');
+  assert.deepEqual(receipts.sort(), [0, 1, 2, 3]);
+  assert.equal(bodies.length, 4);
+  assert.deepEqual(
+    events.find((event) => event.id === 'specialist-merge' && event.state === 'completed')
+      .dependsOn,
+    ['tone-review', 'composition-review'],
+  );
+});
+
+test('a growing tool transcript repacks historical prose and preserves verbatim constraints', async () => {
+  const history = [
+    { role: 'user' as const, sourceTurnId: 'prior', content: '始终保留原图的长宽比。' },
+    {
+      role: 'assistant' as const,
+      sourceTurnId: 'prior',
+      content: '此前的构图分析包含细节。'.repeat(1000),
+    },
+  ];
+  let firstSize = 0;
+  await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context({ history }),
+    async (_url, options) => {
+      firstSize = textTokens(JSON.stringify(textOnly(JSON.parse(String(options?.body)))));
+      return response([text('完成')]);
+    },
+  );
+  let sends = 0;
+  const manifests: string[][] = [];
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    {
+      ...settings,
+      contextWindowTokens: firstSize + settings.maxOutputTokens + 1024 + 400,
+    },
+    context({
+      history,
+      onContext: async (manifest) => {
+        manifests.push(manifest.compactedSourceIds);
+      },
+    }),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      if (++sends === 1) return response([tool('describe_editor', {})]);
+      assert.match(JSON.stringify(body.input), /始终保留原图的长宽比/);
+      assert.match(JSON.stringify(body.input), /Earlier assistant response archived/);
+      assert.equal(body.input.at(-1).type, 'function_call_output');
+      return response([text('已保留原图比例。')]);
+    },
+  );
+  assert.equal(result.termination, 'completed');
+  assert.deepEqual(manifests, [[], ['prior']]);
+});
+
+test('a large requested tool-record page reaches the next model turn without recursive offloading', async () => {
+  const source = '修复'.repeat(2600);
+  const id = '10f5baf8-141c-41fd-b7e7-6d6730abb786';
+  let sends = 0;
+  assert.ok(textTokens(source) > 3000);
+  const result = await runEditorAgent('fixture', 'fixture', settings, context({
+    readToolResult: async (requestedId, offset, limit) => {
+      assert.equal(requestedId, id);
+      assert.equal(offset, 0);
+      assert.equal(limit, 6000);
+      return { artifactId: id, total: source.length, content: source };
+    },
+    storeToolResult: async () => { throw new Error('a bounded page must not create another archive'); },
+  }), async (_url, options) => {
+    const body = JSON.parse(String(options?.body));
+    if (++sends === 1) return response([tool('read_tool_result', { artifactId: id, offset: 0, limit: 6000 })]);
+    assert.equal(JSON.parse(body.input.at(-1).output).content, source);
+    return response([text('完整分页已收到。')]);
+  });
+  assert.equal(result.termination, 'completed');
+  assert.equal(sends, 2);
+});
+
+test('synthesis reserves its dispatch and rejects repeat or late specialist requests', async () => {
+  const bodies: any[] = [];
+  const result = await runEditorAgent(
+    'fixture',
+    'fixture',
+    settings,
+    context(),
+    async (_url, options) => {
+      const body = JSON.parse(String(options?.body));
+      bodies.push(body);
+      if (bodies.length === 1) return response([tool('describe_editor', {})]);
+      if (bodies.length === 2)
+        return response([
+          tool('consult_specialists', { roles: ['tone-review', 'delivery-review'] }),
+        ]);
+      assert.ok(body.tools);
+      assert.match(body.input.at(-1).output, /TOOL_INPUT_OR_ACCESS_REJECTED/);
+      return response([text('继续根据现有材料复核。')]);
+    },
+  );
+  assert.equal(result.termination, 'completed');
+  assert.equal(bodies.length, 3);
 });
 
 test('model-delegated private search is scoped and cannot start a public request', async () => {

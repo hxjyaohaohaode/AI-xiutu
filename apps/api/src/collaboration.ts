@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { transaction, emit, type Database, type Queryable } from '@ai-xiutu/db';
 import {
@@ -330,7 +331,7 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
     });
     return { document };
   });
-  app.get('/v1/events', async (req) => {
+  app.get('/v1/events', async (req, reply) => {
     const user = requireUser(req);
     const p = z
       .object({
@@ -340,22 +341,36 @@ export function registerCollaboration(app: FastifyInstance, db: Database): void 
       })
       .parse(req.query);
     const deadline = Date.now() + p.waitMs;
-    while (true) {
-      await spaceRole(db, p.spaceId, user.id);
-      const active = await db.query("SELECT id FROM users WHERE id=$1 AND status='active'", [
-        user.id,
-      ]);
-      if (!active.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '会话已失效');
-      const { rows } = await db.query(
-        'SELECT seq,type,project_id AS "projectId",entity_id AS "entityId",created_at AS "createdAt" FROM events WHERE space_id=$1 AND seq>$2 ORDER BY seq LIMIT 100',
-        [p.spaceId, p.after],
-      );
-      if (rows.length || Date.now() >= deadline || req.raw.destroyed)
-        return {
-          events: rows.map((r) => ({ ...r, seq: Number(r.seq) })),
-          nextCursor: rows.length ? Number(rows.at(-1)!.seq) : p.after,
-        };
-      await new Promise((resolve) => setTimeout(resolve, Math.min(500, deadline - Date.now())));
+    const disconnect = new AbortController();
+    const abort = () => disconnect.abort();
+    reply.raw.once('close', abort);
+    if (reply.raw.destroyed) abort();
+    try {
+      while (!disconnect.signal.aborted) {
+        await spaceRole(db, p.spaceId, user.id);
+        if (disconnect.signal.aborted) break;
+        const active = await db.query("SELECT id FROM users WHERE id=$1 AND status='active'", [
+          user.id,
+        ]);
+        if (!active.rowCount) throw new HttpError(401, 'AUTH_REQUIRED', '会话已失效');
+        if (disconnect.signal.aborted) break;
+        const { rows } = await db.query(
+          'SELECT seq,type,project_id AS "projectId",entity_id AS "entityId",created_at AS "createdAt" FROM events WHERE space_id=$1 AND seq>$2 ORDER BY seq LIMIT 100',
+          [p.spaceId, p.after],
+        );
+        if (rows.length || Date.now() >= deadline)
+          return {
+            events: rows.map((r) => ({ ...r, seq: Number(r.seq) })),
+            nextCursor: rows.length ? Number(rows.at(-1)!.seq) : p.after,
+          };
+        await delay(Math.min(500, deadline - Date.now()), undefined, { signal: disconnect.signal });
+      }
+    } catch (error) {
+      if (!(disconnect.signal.aborted && error instanceof Error && error.name === 'AbortError'))
+        throw error;
+    } finally {
+      reply.raw.off('close', abort);
     }
+    return { events: [], nextCursor: p.after };
   });
 }

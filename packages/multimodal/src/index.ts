@@ -23,3 +23,6 @@ export * from './openai-speech.js';
 export * from './openai-inventory.js';
 export * from './openai-specialist.js';
 export * from './openai-image-artifacts.js';
+
+export { createMaskedOutput } from './masked-output.js';
+export { boundedPhotoReference } from './photo-reference.js';

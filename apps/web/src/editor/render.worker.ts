@@ -19,6 +19,7 @@ import {
   prepareBudgetedPreview,
   MAX_PREVIEW_PIXELS,
 } from './previewBudget';
+import { resizeForExport } from './export-size';
 import { editorGeometryKey } from './coordinates';
 import { fitsNativePreview } from './native-preview';
 
@@ -49,6 +50,7 @@ type Message = {
   sourceDimensions?: Dimensions;
   recipe?: EditorRecipe;
   originalOnly?: boolean;
+  maxLongEdge?: number;
   format?: 'png' | 'jpeg' | 'webp';
   quality?: number;
   maxPixels?: number;
@@ -130,7 +132,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
     if (exporting && message.cutout) {
       if (message.format !== undefined && message.format !== 'png')
         throw new Error('人物素材需要透明 PNG 格式。');
-      const blob = await encodeRgbaPng(renderCutout(source, message.cutout));
+      const blob = await encodeRgbaPng(resizeForExport(renderCutout(source, message.cutout), message.maxLongEdge));
       self.postMessage({ id: message.id, type: message.type, blob });
       return;
     }
@@ -174,7 +176,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
       self.postMessage({ id: message.id, type: message.type });
       return;
     }
-    const result = exporting
+    const rendered = exporting
       ? message.originalOnly
         ? source
         : renderEditorRecipeTiled(source, message.recipe, {
@@ -183,6 +185,7 @@ self.onmessage = async (event: MessageEvent<Message>) => {
             tileSize: 512,
           })
       : renderPreview();
+    const result = exporting ? resizeForExport(rendered, message.maxLongEdge) : rendered;
     if (exporting && typeof OffscreenCanvas !== 'undefined') {
       const format = message.format ?? 'png';
       const canvas = new OffscreenCanvas(result.width, result.height);

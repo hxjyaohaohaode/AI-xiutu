@@ -41,6 +41,10 @@ Responses 和 Live / Realtime 目录公布按型号及快照核对的档案。�
 
 任务分支的 `candidate`、`pixel-review`、`nomination` 节点通过 `dependsOn` 记录准备候选、实际像素复核和推荐的依赖关系。推荐只返回进入应用权限核验的提名，随后仍检查有效授权、成本、协作租约和冻结版本；图谱完成不等于作品已保存。沿用现有分支读取接口，不新增通用 MCP 服务、工具发现/执行端点或任意外部 skill 安装能力。
 
+对于需要独立意见的创意方案或图像复核，主助手可通过 `consult_specialists` 委派色调、构图、交付三种职责中的一至两种。每位复核者收到当前用户原话、本轮已共享的画布和本轮随消息附上的图片，使用本轮已选模型进行独立供应商调用。复核者没有工具，也看不到个人记忆、对话历史和其他参考图。并发回执分别入账，汇总后的意见回到当前对话。所有公开检索、复核与主对话共用四次模型请求上限，并为汇总预留一次。实际图像检查继续使用原有编辑器渲染路径。[Claude Code 的独立上下文](https://code.claude.com/docs/en/sub-agents) · [Codex 的子智能体派发](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs)
+
+工具返回较长结果，或像素复核增加图像后，运行时会在下一次派发前重新核算上下文。必要时将更早的助手文字替换为原文入口，保留用户原话、候选决定、当前工具结果与共享图像。最新清单可在该轮上下文接口读取。授权记忆仅带入已确认的约束、更正与有词面匹配的可选项。已确定拒绝、已收到用量、仍无结果的派发在数据库中逐条区分；故障恢复时依据这些记录结算或保留预占，并追加终态事件。中断后迟到的回执会在下一次恢复检查时归入原派发，全部结果明确时只结算一次。[Codex 上下文压缩源码](https://github.com/openai/codex/blob/main/codex-rs/core/src/compact.rs) · [DeepSeek Harness 中断恢复源码](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/agent-loop/src/index.ts)
+
 每轮最多三次检查；单进程最多两个 Worker，其中最多一个运行原尺寸检查。普通调参使用最长边512px代理、15秒期限。新增/改变局部修复或质感必须在原尺寸执行整套配方，30秒期限，源图/输出各16MP上限、全部图层合计16MP、压缩输入合计32MiB；沿用编辑器的更严格局部工作量和选区预算。提交给模型的JPEG仍缩至512px，统计使用实际原尺寸像素。`fullResolutionChecked` 与 `inspectedRecipeHash` 绑定候选；未共享、超时、无供体或超预算时不得自动保存新局部效果，候选保留以便用户审阅/缩小选区。Worker的192MiB V8旧生代限制不包含图像数组和原生解码缓冲，实际内存还受上述像素预算约束。这些检查不等于审美通过、HDR/高位深编辑或16MP手机性能承诺。
 
 语音更新当前作品后，采纳按该候选的不可变基础版本解析素材。画布编辑立即作废旧上下文。新候选绑定通话上下文代数，应用前同时验证代数、作品头版本、保存基线哈希和当前权限。迟到回执用于结算，旧画面上的候选不会继续进入编辑。
@@ -79,6 +83,22 @@ Responses 和 Live / Realtime 目录公布按型号及快照核对的档案。�
 Responses 文本增量经累积审核写入持久序号事件，完成时校验终包。工具、检索结果、上下文清单和停止状态一并记录。SSE 按最后序号恢复，每连接25秒轮转，单用户最多3个、进程最多128个。事件批次读取时复核会话与素材范围。文本运行可主动停止。派发前停止释放预占，已有有效回执时结算，结果不明时留待核验。原音频与实时画面 base64 不进入长期日志。分类型流事件参考 [Vercel AI SDK Stream Protocols](https://ai-sdk.dev/docs/ai-sdk-ui/stream-protocol)。
 
 公开检索使用用户单独填写的查询词，单独派发一轮，私有编辑请求只接收经校验的公开证据。图片检索需要独立能力开关。云端图可在当前工作台查看缩略图并显式选为参考，公开图提供原图和来源页链接。供应商请求字段见 [OpenAI Web Search](https://developers.openai.com/api/docs/guides/tools-web-search)。
+
+### 恢复原始分工与像素检查记录
+
+新完成的协作轮会保存三类结果：两位专家实际给出的独立结论（`consult_specialists`）、针对某个候选的实际像素检查（`inspect_candidate`）、以及根据当前画面测量得出的明暗方案（`propose_scene_balance`）。刷新后或继续多轮之后，可以在原回复下展开「研究分工」读取已通过审核的专家原话。这次只读查询不会重新派发模型；同一对话后续询问“上次构图复核具体说了什么”时，助手可读取原件。像素测量对应当时的画面与候选。新的素材或编辑版本可以重新发起检查。[专家与工具实现](src/agent.ts) · [分工显示](../../apps/web/src/ai/ResearchGraph.tsx)
+
+历史投影携带工具名和源轮次。即使旧助手长文已压缩，`read_history` 仍返回该轮对外发布的工具记录目录。模型再用 `read_tool_result` 按偏移读取（每页最多 6,000 个 UTF-16 单元）。服务校验整份 JSON 的 SHA-256，返回来源、摘要、总长度与分页内容。已分页的长中文结果直接进入下一次模型输入，避免再次归档为预览。原始结果存入已有的 PostgreSQL `assistant_tool_artifacts`；目录随成功提交的轮次输出一同发布。旧轮次仍可读取原消息和候选，升级前没有保存的专家意见不会补写。主动委派两位专家、汇总及所有后续模型请求继续遵循既有的调用预算和报价。[历史预算与指针](src/context-budget.ts) · [持久化和读取](../../apps/api/src/assistant/service.ts)
+
+允许恢复的目录只来自本次请求沿父轮次追溯的已完成记录。服务再次检查账号会话、项目和资料范围，并验证工具记录归属的轮次。其他项目成员、同一会话的旁支和未列入目录的旧临时工具输出都不能靠记录 ID 读取。专家接收本轮用户要求及本轮明确提供的图像；保存的专家结论是最多 1,800 个 UTF-16 单元的已审核文字，候选检查记录保存测量数据，图像和凭据均不进入这些工具记录。资料权限变化后，恢复路径沿用项目的撤权检查。[原生数据库及协议回归](../../apps/api/test/assistant.test.ts) · [分页回归](test/assistant.test.ts) · [压缩回归](test/context-stream.test.ts)
+
+本地验收使用 PostgreSQL 18.6、生产构建和 Chromium 158。助手、协议、账本恢复及界面相关原生测试 110 项通过、零跳过。浏览器以离线协议响应完成两人分工（四次请求）及同一对话的下一轮（一次请求），实际重新加载页面后，从原回复展开色调和构图意见，仅触发一次私有读取，额外模型请求为零。测试没有调用商业模型。[浏览器验收入口](../../scripts/qa/assistant.browser.mjs)
+
+| 公开参考实现 | 本项目采用的方法 |
+| --- | --- |
+| DeepSeek Harness 的工具结果裁剪器将原事件序号与裁剪后的序号关联，再更新用于模型请求的投影。[固定版本源码](https://github.com/deepseek-ai/deepseek-harness/blob/4b399c39a6d1479cd84ca591b4d7c88e24d38a96/packages/compaction/compaction-tool-result-pruner/src/index.ts) · [记录类型](https://github.com/deepseek-ai/deepseek-harness/blob/4b399c39a6d1479cd84ca591b4d7c88e24d38a96/packages/compaction/compaction-tool-result-pruner/src/types.ts) | 保留精确工具原件，单独计算模型当前需要的历史和定位信息。 |
+| OpenAI Codex 在本地压缩路径从历史快照收集用户消息并构建压缩后的输入。[固定版本源码](https://github.com/openai/codex/blob/afe555b9d3e95b4f58b247212565070f1555bc5d/codex-rs/core/src/compact.rs) | 保留用户约束与工作记录指针；较早的助手长文压缩后仍可通过来源读取原文。 |
+| Anthropic 公开的 Claude Agent SDK for Python 在 `get_session_messages` 按父消息标识重建 JSONL 记录，恢复同一轮并行工具的调用与结果。此处依据的是公开 SDK 读取实现。[固定版本源码](https://github.com/anthropics/claude-agent-sdk-python/blob/6c1b03f920981a5e93efae884a31fadbfabb9418/src/claude_agent_sdk/_internal/sessions.py#L1284) | 沿作者自己的父轮次链恢复团队结果，保留各专家原文与角色，继续使用工作台原有数据库和授权机制。 |
 
 ## 5. 失败与恢复不变量
 

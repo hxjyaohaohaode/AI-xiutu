@@ -54,7 +54,8 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
   app.get('/v1/projects/:id/grants', async (req) => {
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
-    await projectAccess(db, p.id, user.id, 'admin');
+    const project = await projectAccess(db, p.id, user.id, 'admin');
+    const { rows: [space] } = await db.query('SELECT sharing_policy FROM spaces WHERE id=$1', [project.space_id]);
     const rows = (
       await db.query(
         'SELECT g.*,u.display_name,u.phone FROM share_grants g JOIN users u ON u.id=g.target_user_id WHERE project_id=$1 ORDER BY created_at DESC',
@@ -62,6 +63,7 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
       )
     ).rows;
     return {
+      policy: sharingPolicy.parse(space!.sharing_policy),
       grants: rows.map((g) => ({
         id: g.id,
         projectId: g.project_id,
@@ -140,10 +142,15 @@ export function registerSharing(app: FastifyInstance, db: Database): void {
     const p = z.object({ id, grantId: id }).parse(req.params);
     await transaction(db, async (tx) => {
       const project = await projectAccess(tx, p.id, user.id, 'admin');
-      await tx.query(
-        'UPDATE share_grants SET revoked_at=clock_timestamp() WHERE id=$1 AND project_id=$2',
+      const result = await tx.query(
+        'UPDATE share_grants SET revoked_at=clock_timestamp() WHERE id=$1 AND project_id=$2 AND revoked_at IS NULL RETURNING id',
         [p.grantId, p.id],
       );
+      if (!result.rowCount) {
+        const prior = await tx.query('SELECT id FROM share_grants WHERE id=$1 AND project_id=$2', [p.grantId, p.id]);
+        if (!prior.rowCount) throw new HttpError(404, 'GRANT_NOT_FOUND', '分享记录不存在');
+        return;
+      }
       await audit(tx, user.id, 'sharing.revoke', 'grant', p.grantId);
       await emit(tx, project.space_id, p.id, 'sharing.revoked', p.grantId);
     });

@@ -18,6 +18,8 @@ import {
 } from '@ai-xiutu/db';
 import {
   assistantSearchEvidenceSchema,
+  assistantToolRecords,
+  type AssistantToolRecord,
   assistantTurnSchema,
   publicPricingSnapshot,
   voiceSessionSchema,
@@ -118,20 +120,20 @@ async function finishInterruptedTurn(
   journal: AssistantJournal,
   stopped: boolean,
   code: string,
-  rejected = false,
 ) {
   const counts = (
     await tx.query(
-      `SELECT count(*) FILTER (WHERE completed_at IS NULL)::int AS pending,
+      `SELECT count(*)::int AS total,
+            count(*) FILTER (WHERE completed_at IS NULL AND rejected_at IS NULL)::int AS pending,
             count(*) FILTER (WHERE completed_at IS NOT NULL)::int AS completed
      FROM assistant_dispatches WHERE turn_id=$1`,
       [row.id],
     )
   ).rows[0]!;
   const missingMarker =
-    counts.pending + counts.completed === 0 &&
+    counts.total === 0 &&
     (await journal.hasEvidence({ id: row.id, kind: 'turn' }));
-  const uncertain = missingMarker || counts.pending > (rejected ? 1 : 0);
+  const uncertain = missingMarker || counts.pending > 0;
   if (uncertain) await markUnknownHold(tx, row.hold_id);
   else if (counts.completed) await settleHold(tx, row.hold_id);
   else await releaseHold(tx, row.hold_id);
@@ -179,18 +181,17 @@ export function createAssistantService(
   const key = env.OPENAI_API_KEY ?? '';
   const textModerator = dependencies.textModerator ?? createTextModerator(env);
   const imageModerator = dependencies.imageModerator ?? createImageModerator(env);
-  const ready = Boolean(
-    env.AI_ASSISTANT_ENABLED === 'true' &&
-    key &&
-    textModerator.configured &&
-    imageModerator.configured,
-  );
-  const voiceReady = ready && env.AI_VOICE_ENABLED === 'true';
+  const ready = Boolean(env.AI_ASSISTANT_ENABLED === 'true' && key && textModerator.configured);
+  const imageReady = ready && imageModerator.configured;
+  const voiceReady = imageReady && env.AI_VOICE_ENABLED === 'true';
   const allowTestModel = env.NODE_ENV === 'test' && Boolean(dependencies.fetcher);
   const pendingTurns = new Set<Promise<void>>();
   const reason = ready
     ? null
-    : '智能体未启用：需要服务器 API 密钥、文字与图像审核服务，以及启用开关。';
+    : '文字助手需要启用开关、服务器模型密钥和文字审核服务。';
+  const voiceReason = voiceReady ? null : reason ?? (
+    !imageReady ? '实时语音需要配置图像审核服务。' : '实时语音开关尚未启用。'
+  );
   async function model(db: Queryable, modelId: string, operation: string, lock = false, admit = false) {
     const row = (
       await db.query(
@@ -294,7 +295,7 @@ export function createAssistantService(
       if (JSON.stringify(current) !== expectedSettings)
         throw new HttpError(409, 'ASSISTANT_MODEL_CHANGED', '模型能力或预算已变化，请重新确认');
     }
-    const selectedImages = backendModel.imageInput
+    const selectedImages = imageReady && backendModel.imageInput
       ? await selectedReferenceImages(db, storage, row.actor_id, scope, imageModerator)
       : [];
     const voice = 'backend_model_id' in row;
@@ -525,6 +526,13 @@ export function createAssistantService(
           if (voice) await model(tx, row.model_id, 'realtime-voice');
         });
       },
+      async onRejected(index, requestId) {
+        await db.query(
+          `UPDATE assistant_dispatches SET request_id=NULLIF($3,''),rejected_at=clock_timestamp()
+           WHERE ${voice ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2 AND completed_at IS NULL AND rejected_at IS NULL`,
+          [row.id, sequenceOffset + index, requestId],
+        );
+      },
       async onReceipt(index, requestId, usage, toolCalls, tier) {
         await db.query(
           `UPDATE assistant_dispatches SET request_id=$3,usage=$4,tool_calls=$5,service_tier=$6,completed_at=clock_timestamp() WHERE ${'backend_model_id' in row ? 'voice_id' : 'turn_id'}=$1 AND sequence=$2`,
@@ -584,25 +592,24 @@ export function createAssistantService(
   }
   async function recoverStale() {
     await assertJournal();
-    // No external sends occur here. A dispatch/connection marker forces unknown.
+    // Replay persisted outcomes without reissuing a request. Unconfirmed sends retain their hold.
     await transaction(db, async (tx) => {
       const turns = await tx.query(
-        "SELECT * FROM assistant_turns WHERE state='running' AND updated_at<clock_timestamp()-interval '5 minutes' FOR UPDATE SKIP LOCKED",
+        `SELECT t.* FROM assistant_turns t
+         WHERE (t.state='running' AND t.updated_at<clock_timestamp()-interval '5 minutes')
+           OR (t.state='unknown' AND t.error_code='PROCESS_INTERRUPTED'
+             AND EXISTS (SELECT 1 FROM assistant_dispatches d WHERE d.turn_id=t.id)
+             AND NOT EXISTS (SELECT 1 FROM assistant_dispatches d WHERE d.turn_id=t.id
+                             AND d.completed_at IS NULL AND d.rejected_at IS NULL))
+         FOR UPDATE OF t SKIP LOCKED`,
       );
       for (const row of turns.rows) {
-        const sent =
-          Boolean(
-            (
-              await tx.query('SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 LIMIT 1', [
-                row.id,
-              ])
-            ).rowCount,
-          ) || (await journal.hasEvidence({ id: row.id, kind: 'turn' }));
-        if (sent) await markUnknownHold(tx, row.hold_id);
-        else await releaseHold(tx, row.hold_id);
-        await tx.query(
-          "UPDATE assistant_turns SET state=$2,error_code='PROCESS_INTERRUPTED',updated_at=clock_timestamp() WHERE id=$1",
-          [row.id, sent ? 'unknown' : 'failed'],
+        await finishInterruptedTurn(
+          tx,
+          row as PaidRow,
+          journal,
+          Boolean(row.stop_requested_at),
+          'PROCESS_INTERRUPTED',
         );
       }
       const voices = await tx.query(
@@ -622,7 +629,9 @@ export function createAssistantService(
   }
   return {
     ready,
+    imageReady,
     voiceReady,
+    voiceReason,
     reason,
     allowTestModel,
     key,
@@ -695,8 +704,6 @@ export function createAssistantService(
       await Promise.allSettled([...pendingTurns]);
     },
     async turn(actorId: string, projectId: string, raw: unknown, sessionHash: string) {
-      if (!ready) throw new HttpError(503, 'ASSISTANT_NOT_CONFIGURED', reason!);
-      await assertJournal();
       const body = assistantTurnSchema.parse(raw);
       const requestHash = hash(JSON.stringify(body));
       // Replaying an already admitted request must not revalidate an old canvas
@@ -713,6 +720,17 @@ export function createAssistantService(
           throw new HttpError(409, 'IDEMPOTENCY_CONFLICT', '此请求标识已用于其他内容');
         return this.getTurn(actorId, replay.id);
       }
+      // An idempotent replay reads a previously admitted turn. Only new paid
+      // work depends on provider readiness and a matching dispatch journal.
+      if (!ready) throw new HttpError(503, 'ASSISTANT_NOT_CONFIGURED', reason!);
+      const wantsVisual = Boolean(
+        body.visualAttachment || body.context?.imageDataUrl || body.scope.referenceAssetIds.length ||
+        body.scope.publicSearch?.kind === 'images' ||
+        body.research?.some((node) => node.kind === 'canvas' || (node.kind === 'web' && node.resultKind === 'images')),
+      );
+      if (wantsVisual && !imageReady)
+        throw new HttpError(503, 'ASSISTANT_IMAGE_REVIEW_UNAVAILABLE', '图像审核未配置，可继续文字对话或仅使用编辑参数。');
+      await assertJournal();
       await validateScope(db, actorId, body.scope);
       const requestedModel = await model(db, body.modelId, 'assistant-turn', false, true);
       validateTurnQuote(requestedModel);
@@ -725,7 +743,7 @@ export function createAssistantService(
           throw new HttpError(409, 'ASSISTANT_QUOTE_CHANGED', '请确认本轮点数后再发送');
         return result;
       }
-      if (body.visualAttachment && !requestedModel.imageInput)
+      if ((body.visualAttachment || body.context?.imageDataUrl) && !requestedModel.imageInput)
         throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
       const context = await currentContext(actorId, projectId, body.context);
       const visualAttachment = body.visualAttachment
@@ -758,7 +776,9 @@ export function createAssistantService(
           ).rowCount
         )
           throw new HttpError(429, 'ASSISTANT_BUSY', '请等待上一轮协作完成');
-        let history: NonNullable<AgentContext['history']> = [];
+        const history: NonNullable<AgentContext['history']> = [];
+        const ancestorRecords = new Map<string, AssistantToolRecord[]>();
+        const recordOwners = new Map<string, string>();
         const priorCards = new Map<
           string,
           { assetId: string; name: string; sourceTurnId: string }
@@ -813,6 +833,11 @@ export function createAssistantService(
             byTurn.set(turn_id, list);
           }
           for (const parent of ancestors) {
+            const records = assistantToolRecords.safeParse(parent.output?.toolRecords);
+            if (records.success && records.data.length) {
+              ancestorRecords.set(parent.id, records.data);
+              for (const record of records.data) recordOwners.set(record.artifactId, parent.id);
+            }
             const userText = String(parent.prompt);
             const references = byTurn.get(parent.id) ?? [];
             for (const raw of Array.isArray(parent.output?.search) ? parent.output.search : []) {
@@ -834,6 +859,9 @@ export function createAssistantService(
                 content: String(parent.output?.text ?? ''),
                 sourceTurnId: parent.id,
                 ...(references.length ? { candidateTrace: JSON.stringify(references) } : {}),
+                ...(records.success && records.data.length
+                  ? { recordTools: [...new Set(records.data.map((record) => record.tool))] }
+                  : {}),
               },
             );
           }
@@ -859,8 +887,10 @@ export function createAssistantService(
         const settings = await model(tx, body.modelId, 'assistant-turn', true, true);
         const responseTuning = body.responseTuning;
         const quote = validateTurnQuote(settings);
-        const turnSettings = quote.config;
-        if (visualAttachment && !settings.imageInput)
+        const turnSettings = imageReady ? quote.config : {
+          ...quote.config, imageInput: false, webImageSearch: false,
+        };
+        if ((visualAttachment || context?.imageDataUrl) && !settings.imageInput)
           throw new HttpError(400, 'ASSISTANT_IMAGE_UNAVAILABLE', '当前助手模型不支持图片输入');
         const webBranches = (body.research ?? []).filter((branch) => branch.kind === 'web');
         if (
@@ -942,6 +972,8 @@ export function createAssistantService(
           turnSettings,
           historyScope,
           priorResourceCards,
+          ancestorRecords,
+          recordOwners,
         };
       });
       if (admission.replay) return this.getTurn(actorId, admission.row.id);
@@ -1062,7 +1094,7 @@ export function createAssistantService(
                 [row.id, JSON.stringify(admission.historyScope)],
               );
               await tx.query(
-                'INSERT INTO assistant_context_snapshots(turn_id,manifest) VALUES($1,$2) ON CONFLICT(turn_id) DO NOTHING',
+                'INSERT INTO assistant_context_snapshots(turn_id,manifest) VALUES($1,$2) ON CONFLICT(turn_id) DO UPDATE SET manifest=EXCLUDED.manifest',
                 [row.id, JSON.stringify(evidence)],
               );
               await appendRunEvent(tx, row.id, 'context.prepared', evidence);
@@ -1090,6 +1122,7 @@ export function createAssistantService(
             });
             return {
               sourceTurnId: sourceId,
+              toolRecords: admission.ancestorRecords.get(sourceId) ?? [],
               offset,
               total: content.length,
               content: content.slice(offset, offset + limit),
@@ -1103,15 +1136,24 @@ export function createAssistantService(
             return result.rows[0]!.id;
           };
           agentContext.readToolResult = async (artifactId, offset, limit) => {
-            const artifact = (
-              await db.query(
-                'SELECT content,content_hash FROM assistant_tool_artifacts WHERE id=$1 AND turn_id=$2',
-                [artifactId, row.id],
-              )
-            ).rows[0];
-            if (!artifact) throw new HttpError(404, 'TOOL_ARTIFACT_NOT_FOUND', '工具结果不可用');
+            const sourceTurnId = admission.recordOwners.get(artifactId) ?? row.id;
+            // Only a successful direct ancestor's published work records cross a turn.
+            // The current turn may also read its transient oversized tool results.
+            const artifact = await transaction(db, async (tx) => {
+              await lockedAssistantAccess(tx, actorId, projectId, admission.historyScope, sessionHash);
+              return (await tx.query(
+                `SELECT a.content,a.content_hash FROM assistant_tool_artifacts a
+                 JOIN assistant_turns t ON t.id=a.turn_id
+                 WHERE a.id=$1 AND a.turn_id=$2 AND t.actor_id=$3 AND t.project_id=$4
+                   AND (t.id=$5 OR t.state='completed')`,
+                [artifactId, sourceTurnId, actorId, projectId, row.id],
+              )).rows[0];
+            });
+            if (!artifact || hash(artifact.content) !== artifact.content_hash)
+              throw new HttpError(404, 'TOOL_ARTIFACT_NOT_FOUND', '工具结果不可用');
             return {
               artifactId,
+              sourceTurnId,
               hash: artifact.content_hash,
               offset,
               total: artifact.content.length,
@@ -1178,6 +1220,7 @@ export function createAssistantService(
                   candidates,
                   workspace: result.workspace,
                   memorySuggestions: result.memorySuggestions,
+                  ...(result.toolRecords?.length ? { toolRecords: result.toolRecords } : {}),
                   ...(result.selectedCandidateIndex !== undefined
                     ? { selectedCandidateId: candidates[result.selectedCandidateIndex]?.id }
                     : {}),
@@ -1213,7 +1256,6 @@ export function createAssistantService(
               journal,
               stopped,
               stopped ? 'ASSISTANT_STOPPED' : code,
-              error instanceof ProviderError && error.outcome === 'rejected',
             );
           });
         }
@@ -1242,7 +1284,7 @@ export function createAssistantService(
         );
         await appendRunEvent(tx, turnId, 'run.stopping', {});
         const pending = await tx.query(
-          'SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 AND completed_at IS NULL LIMIT 1',
+          'SELECT 1 FROM assistant_dispatches WHERE turn_id=$1 AND completed_at IS NULL AND rejected_at IS NULL LIMIT 1',
           [turnId],
         );
         const state = pending.rowCount
@@ -1293,7 +1335,7 @@ export function createAssistantService(
     },
     async prepareVoice(actorId: string, projectId: string, raw: unknown, teamArtworkId?: string) {
       if (!voiceReady)
-        throw new HttpError(503, 'VOICE_NOT_CONFIGURED', reason ?? '实时语音开关尚未启用');
+        throw new HttpError(503, 'VOICE_NOT_CONFIGURED', voiceReason!);
       await assertJournal();
       const body = voiceSessionSchema.parse(raw);
       let profile: ReturnType<typeof voiceModel>;

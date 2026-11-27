@@ -282,6 +282,28 @@ changed content under that key returns409. Interrupted work with an unresolved
 dispatch remains unknown. Completed dispatch receipts remain available for
 settlement even if publication was stopped.
 
+Text and visual readiness are independent. In the assistant model catalog,
+`ready` requires the enabled assistant, a model credential and text moderation.
+`imageReady` additionally requires image moderation. A text-only installation
+advertises no visual input or public image-search capability. It accepts text,
+authorized resource metadata and parameter-only edit context. Direct visual
+attachments, canvas snapshots or inspections, selected reference images and
+public image searches return 503 `ASSISTANT_IMAGE_REVIEW_UNAVAILABLE` before
+reservation. Historical turns retain authorized text and decisions only; they
+do not resend previous image bytes. Voice keeps its existing prerequisites.
+
+A model may call `consult_specialists` to request one or two independent tone,
+composition, or delivery reviews. They use the selected model and the current
+message with the explicitly shared canvas and visual attachment. Each worker has no tools or history.
+Workers run concurrently and reserve a final root dispatch within the same
+four-request ceiling. The branches endpoint exposes their dependencies, and
+usage stages use `specialist-review`. After schema 29, each dispatch independently
+records a definitive provider rejection or a confirmed usage receipt. Startup
+recovery settles only known outcomes and publishes the terminal event to replay
+clients. An ambiguous dispatch retains its existing hold. If a previously
+interrupted run later acquires a final outcome for every dispatch, the next
+recovery pass resolves the hold once. No provider request is reissued.
+
 ### 6.2 Suggestions remain candidates
 
 `POST /v1/assistant-candidates/:candidateId/decision` accepts
@@ -366,6 +388,8 @@ reference role. Generated workspace cards use the shared strict whitelist and
 existing candidate/reference IDs; they cannot run arbitrary HTML or commands.
 
 ### 6.3 Voice preparation and application WebSocket
+
+`GET /v1/me/voice-receipts/:key` retrieves the signed-in caller’s receipt by the original personal or team call request UUID. It returns the session ID, actor ID, request UUID, project ID, optional team artwork ID, session state and hold state. A missing receipt returns HTTP 404. Clients resume normal calling after matching the original call to a closed or failed session with a settled or released hold. The lookup remains available after the caller leaves the project.
 
 `POST /v1/projects/:projectId/voice-sessions` accepts
 `{idempotencyKey:UUID,modelId,backendModelId?,voice,context?,scope?,delegation?,translation?,tuning?,expectedUnits?}` and returns

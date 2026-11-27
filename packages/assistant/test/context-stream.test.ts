@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { planHistory, ContextBudgetError } from '../src/context-budget.js';
+import { planHistory, historyContent, ContextBudgetError } from '../src/context-budget.js';
 import { streamResponse } from '../src/stream.js';
 import { validateAssistantWorkspace } from '@ai-xiutu/contracts';
 import { ASSISTANT_TOOLS } from '../src/agent.js';
@@ -16,6 +16,7 @@ test('token compaction preserves every original user constraint and a source for
       role: 'assistant' as const,
       sourceTurnId: `turn-${i}`,
       content: '这是尚未采纳的助手建议。'.repeat(300),
+      recordTools: i === 0 ? ['consult_specialists'] : [],
       candidateTrace: JSON.stringify([
         { id: `choice-${i}`, decision: 'previewed', base_version: i + 1 },
       ]),
@@ -30,7 +31,9 @@ test('token compaction preserves every original user constraint and a source for
     plan.messages.filter((m) => m.role === 'user'),
     history.filter((m) => m.role === 'user'),
   );
-  assert.ok(plan.manifest.compactedSourceIds.length > 0);
+  assert.ok(plan.manifest.compactedSourceIds.includes('turn-0'));
+  const record = plan.messages.find((m) => m.role === 'assistant' && m.sourceTurnId === 'turn-0')!;
+  assert.match(historyContent(record), /consult_specialists.*read_history sourceTurnId=turn-0/);
   assert.equal(plan.manifest.candidateTraceSourceIds.length, 20);
   for (const entry of plan.messages.filter((item) => item.role === 'assistant'))
     assert.equal(

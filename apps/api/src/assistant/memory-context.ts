@@ -11,12 +11,14 @@ function terms(text: string) {
     text
       .normalize('NFKC')
       .toLowerCase()
-      .match(/[\p{L}\p{N}]+/gu) ?? [];
+      .match(/\p{Script=Han}+|[\p{Script=Latin}\p{N}]+|[\p{L}\p{N}]+/gu) ?? [];
   return new Set(
     words.flatMap((word) => {
       if (!/\p{Script=Han}/u.test(word)) return word.length > 1 ? [word] : [];
       const characters = Array.from(word);
-      return characters.slice(1).map((character, index) => characters[index] + character);
+      return characters.length === 1
+        ? [word]
+        : characters.slice(1).map((character, index) => characters[index] + character);
     }),
   );
 }
@@ -43,7 +45,7 @@ export function selectAssistantMemories(items: AssistantMemory[], prompt: string
   const selected: AssistantMemory[] = [];
   let tokens = 0;
   for (const { item, score } of optional) {
-    if (selected.length >= 6 || (score === 0 && selected.length >= 1)) break;
+    if (selected.length >= 6 || score === 0) break;
     const count = textTokens(item.title + '\n' + item.content);
     if (tokens + count > 1800) continue;
     selected.push(item);
@@ -89,7 +91,7 @@ export async function rememberedResources(
       score: relevance(query, item.title, item.tags.join(' ') + ' ' + item.note),
     }))
     .sort((a, b) => b.score - a.score)
-    .filter(({ score }, index) => score > 0 || index === 0)
+    .filter(({ score }) => score > 0)
     .slice(0, 4)
     .map(({ item }) => item);
 }

@@ -1,3 +1,5 @@
+import { uploadProjectPhoto } from '../media/upload-photo';
+import type { CaptureProjectCover } from '../project-files/cover';
 import { captureSketchVisual } from '../editor/capture';
 import {
   fileTranscriptionOptionsSchema, supportsFileTranscriptionOptions, type FileTranscriptionOptions,
@@ -48,7 +50,7 @@ import type {
   AssistantVisualAttachment,
 } from '@ai-xiutu/contracts';
 import { secureUuid } from '../lib/uuid';
-import { readModelCatalog, api, errorMessage, jsonRequest } from '../lib/api';
+import { readModelCatalog, api, ApiError, errorMessage, jsonRequest } from '../lib/api';
 import { assetCopyAttempt } from '../lib/asset-copy';
 import type { Artwork, Asset, Project, PublicConfig, Space } from '../lib/types';
 import { Busy, IconButton, InlineError, Modal } from './Ui';
@@ -65,7 +67,7 @@ import { ModelChoice } from '../ai/ModelChoice';
 import { VoiceCapture } from './VoiceCapture';
 import { MotionDetails } from '../motion/Presence';
 import {
-  prepareGenerationDraft,
+  prepareGenerationDraft, quickImageOffer, generationFrame, chooseGenerationSize,
   type GenerationDraftInput,
   type ReferenceCopyJournal,
 } from './generationDraft';
@@ -81,6 +83,7 @@ import {
   clearJobSubmission,
   freezeJobSubmission,
   isJobAdmissionRejected,
+  findJobReceipt,
   jobSubmissionRequest,
   jobSubmissionResolved,
   readJobSubmission,
@@ -106,6 +109,9 @@ import type {
   ModelResponse,
 } from '../ai/types';
 export type { AIOperation } from '../ai/types';
+export type SourceDocumentRequest = {
+  actorId: string; projectId: string; id: string; version: number; title: string;
+};
 
 const tasks = [
   {
@@ -133,7 +139,7 @@ const tasks = [
     placeholder: '写标题、介绍，或继续润色上一版…',
     button: '生成文案',
     hint: '仅发送文字与已选上下文',
-    chips: ['给这件作品写三个标题', '把语气改得简洁自然', '写一段适合分享的作品介绍'],
+    chips: ['按文档整理演示稿', '把源数据整理为可编辑图表'],
   },
   {
     id: 'transcribe' as const,
@@ -165,6 +171,7 @@ interface AIPanelDraft {
   parentJobId: string | null;
   threadId: string | null | 'recent';
   documentId: string;
+  documentVersion?: number;
   generationGrantId?: string;
   auxiliary: { kind: 'mask' | 'markup'; assetId: string } | null;
 }
@@ -216,12 +223,15 @@ export function AIPanel({
   isLoggedIn,
   onAuth,
   captureCanvasPreview,
+  captureProjectCover,
   canvasSourceId,
   captureReferenceCanvas,
   referenceCanvasLabel = '用当前编辑图',
   onUseCanvasSource,
   collageActions,
   generationRequest,
+  sourceDocumentRequest,
+  onSourceDocumentUsed,
   returnLabel,
   onBeforeArtworkWrite,
   onAfterArtworkWrite,
@@ -263,12 +273,15 @@ export function AIPanel({
   isLoggedIn: boolean;
   onAuth: () => void;
   captureCanvasPreview?: () => Promise<string>;
+  captureProjectCover?: CaptureProjectCover;
   canvasSourceId?: number;
   captureReferenceCanvas?: () => Promise<File>;
   referenceCanvasLabel?: string;
   onUseCanvasSource?: (item: AssistantCloudResource) => void;
   collageActions?: CollageResultActions;
   generationRequest?: string;
+  sourceDocumentRequest?: SourceDocumentRequest | null;
+  onSourceDocumentUsed?: () => void;
   returnLabel?: string;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
@@ -406,6 +419,8 @@ export function AIPanel({
   );
   const [documents, setDocuments] = useState<{ id: string; title: string; version: number }[]>([]);
   const [documentId, setDocumentId] = useState(cached?.documentId ?? '');
+  const [documentVersion, setDocumentVersion] = useState(cached?.documentVersion);
+  const [documentLabel, setDocumentLabel] = useState('');
   const fileInput = useRef<HTMLInputElement>(null);
   const promptInput = useRef<HTMLTextAreaElement>(null);
   const submitLock = useRef(false);
@@ -467,6 +482,7 @@ export function AIPanel({
     parentJobId,
     threadId,
     documentId,
+    documentVersion,
     generationGrantId,
     auxiliary,
   };
@@ -517,12 +533,13 @@ export function AIPanel({
   const needsArtwork = operation === 'edit-plan';
   const parent = jobs.find((job) => job.id === parentJobId);
   const referencedCount = referenceIds.length + (selectedReferenceFile ? 1 : 0);
-  const referenceLimit = caps?.references.maxCount ?? 0;
+  const referenceLimit = selected?.provider === 'ark'
+    ? Number(selected.supportsReference === true) : (caps?.references.supported ? caps.references.maxCount : 0);
   const referenceFailure =
     operation === 'generate-image' && referencedCount
       ? imageOptions.outputFormat === 'svg'
         ? t('SVG 仅支持文字生图。')
-        : !caps?.references.supported || referencedCount > referenceLimit
+        : referencedCount > referenceLimit
           ? t('当前模型最多支持 {count} 张参考图，请移除多余参考或切换模型。', { count: referenceLimit })
           : null
       : null;
@@ -589,7 +606,7 @@ export function AIPanel({
     !batchFailure &&
     !referenceFailure &&
     (operation !== 'generate-image' ||
-      (referencedCount <= referenceLimit && (!referencedCount || !!caps?.references.supported)));
+      referencedCount <= referenceLimit);
   const allThreads = Array.from(new Set(jobs.map((job) => job.threadId ?? job.id)));
   const visibleThread = threadId === 'recent' ? (allThreads[0] ?? null) : threadId;
   const visibleJobs = jobs
@@ -767,6 +784,18 @@ export function AIPanel({
     setAssistantOpen(false);
   }, [visible, generationRequest, inputLocked, assistantLocked, preparingDraft, operation]);
   useEffect(() => {
+    if (!sourceDocumentRequest || !visible || inputLocked || assistantLocked || preparingDraft ||
+        sourceDocumentRequest.actorId !== userId || sourceDocumentRequest.projectId !== project?.id) return;
+    changeOperation('generate-text');
+    setAssistantOpen(false);
+    setOverlay(null);
+    setDocumentId(sourceDocumentRequest.id);
+    setDocumentVersion(sourceDocumentRequest.version);
+    setDocumentLabel(sourceDocumentRequest.title);
+    setRefresh((v) => v + 1);
+    onSourceDocumentUsed?.();
+  }, [visible, sourceDocumentRequest, inputLocked, assistantLocked, preparingDraft, userId, project?.id]);
+  useEffect(() => {
     if (!project) {
       setJobs([]);
       return;
@@ -783,7 +812,13 @@ export function AIPanel({
         if (!live) return;
         const saved = pending.current;
         if (saved?.projectId === project.id && saved.jobId) {
-          const receipt = result.jobs.find((job) => job.id === saved.jobId);
+          let receipt = result.jobs.find((job) => job.id === saved.jobId);
+          if (!receipt) {
+            const exact = await api<{ requestKey?: string; jobs: AIJob[] }>(jobSubmissionRequest(saved).path, { signal: controller.signal });
+            if (!live || pending.current?.idempotencyKey !== saved.idempotencyKey) return;
+            receipt = findJobReceipt(saved, exact);
+            if (receipt) result.jobs.unshift(receipt);
+          }
           if (receipt && (receipt.state !== saved.state || jobSubmissionResolved(receipt.state))) {
             rememberReceipt(saved, receipt);
             if (saved.recipeSnapshot) setPrompt((old) => (old.trim() === saved.prompt ? '' : old));
@@ -847,13 +882,22 @@ export function AIPanel({
     setParentJobId(null);
     changed();
   }
-  async function prepareAssistantGenerationDraft(input: GenerationDraftInput) {
+  function candidateOffer(referenceIds: string[], draftPrompt: string) {
+    if (!modelResponse || !(modelResponse.operationStatus?.['generate-image']?.available ??
+        modelResponse.availableOperations?.includes('generate-image')) || !recovery.ready || pending.current) return undefined;
+    const firstReference = referenceIds.map((id) => availableAssets.find((asset) => asset.id === id &&
+      asset.projectId === project?.id) ?? (currentAsset?.id === id ? currentAsset : undefined)).find(Boolean);
+    return quickImageOffer(modelResponse.models, referenceIds.length, modelId, generationFrame(draftPrompt, firstReference));
+  }
+  async function prepareAssistantGenerationDraft(input: GenerationDraftInput, direct = false) {
     if (!project || !isLoggedIn || !userId) throw new Error('请先登录并选择草案要保存的项目。');
     const expectedScope = scope;
     const expectedGeneration = generation.current;
     const expectedEpoch = ++generationDraftEpoch.current;
     const expectedContext = consentContext.current;
     const expectedInput = JSON.stringify(input);
+    const offer = direct ? candidateOffer(input.referenceAssetIds, input.prompt) : undefined;
+    if (direct && !offer) throw new Error(t('当前没有可提交的生图报价，请重新选择模型。'));
     let copiedAny = false;
     const assertCurrent = () => {
       if (
@@ -909,9 +953,37 @@ export function AIPanel({
             asset,
           ]);
         },
-        commit: (prepared) => {
-          // No image request is sent here. The user still chooses a model and
-          // its supported parameters before explicitly submitting generation.
+        commit: async (prepared) => {
+          if (offer) {
+            if (pending.current || submitLock.current) throw new Error(t('上一轮创作结果仍待确认。'));
+            const ids = prepared.referenceAssetIds;
+            // The candidate UUID binds repeat clicks in any tab to the same charged job.
+            const saved = freezeJobSubmission({
+              actorId: userId, projectId: project.id, projectTitle: project.title, recipeSnapshot: '',
+              body: {
+                operation: 'generate-image', modelId: offer.model.id, idempotencyKey: prepared.candidateId,
+                prompt: prepared.prompt.trim(), width: offer.width, height: offer.height,
+                expectedUnits: offer.units, imageOptions: offer.options,
+                executionGrantId: prepared.executionGrantId,
+                ...(ids.length ? offer.model.provider === 'ark' && ids.length === 1
+                  ? { referenceAssetId: ids[0] } : { referenceAssetIds: ids } : {}),
+              },
+            });
+            submitLock.current = true;
+            setBusy(true);
+            try {
+              rememberSubmission(saved);
+              const result = await runSubmission(saved, expectedGeneration, true);
+              if (!result || !mounted.current || generation.current !== expectedGeneration) return;
+              setOperation('generate-image');
+              setModelId(offer.model.id);
+              setAssistantOpen(false);
+            } finally {
+              submitLock.current = false;
+              if (mounted.current && generation.current === expectedGeneration) setBusy(false);
+            }
+            return;
+          }
           onClearReference();
           dismissVisualReference();
           setUploadedReference(null);
@@ -939,14 +1011,11 @@ export function AIPanel({
     if (!file || !onReferenceFile) return;
     const expected = consentContext.current;
     try {
-      const limit = Math.min(
-        config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
-        caps?.references.maxBytes ?? 20 * 1024 * 1024,
-      );
+      const limit = config?.limits.maxUploadBytes ?? 50 * 1024 * 1024;
       if (file.size > limit) throw new Error('参考图超过当前上传或模型字节限制。');
       const header = readImageHeader(
         new Uint8Array(await file.slice(0, MAX_HEADER_BYTES).arrayBuffer()),
-        { maxPixels: config?.media?.maxPixels ?? 40_000_000, maxDimension: 16384 },
+        { maxPixels: config?.media?.maxPixels ?? 64_000_000, maxDimension: 16384 },
       );
       if (header.animated || !['png', 'jpeg', 'webp'].includes(header.format))
         throw new Error('AI参考请选择已确认的静态 PNG、JPEG 或 WebP。');
@@ -1013,35 +1082,27 @@ export function AIPanel({
           recipe,
         });
       } else if (operation === 'generate-image') {
-        Object.assign(body, { prompt: prompt.trim(), width, height });
+        Object.assign(body, { prompt: prompt.trim(), width, height, expectedUnits: quote });
         if (generationGrantId) body.executionGrantId = generationGrantId;
         const options = requestImageOptions(selected, imageOptions);
         if (options && !referencedCount) delete options.inputFidelity;
         if (options) body.imageOptions = options;
         const ids = [...referenceIds];
         if (selectedReferenceFile) {
-          if (selectedReferenceFile.size > Math.min(
-            config?.limits.maxUploadBytes ?? 20 * 1024 * 1024,
-            caps?.references.maxBytes ?? 20 * 1024 * 1024,
-          )) throw new Error('参考图超过当前云端上传限制。');
+          if (selectedReferenceFile.size > (config?.limits.maxUploadBytes ?? 50 * 1024 * 1024)) throw new Error('参考图超过当前云端上传限制。');
           let asset = uploadedReference?.file === selectedReferenceFile ? uploadedReference.asset : null;
           if (!asset) {
-            const form = new FormData();
-            form.append('file', selectedReferenceFile);
-            asset = (
-              await api<{ asset: Asset }>(
-                '/projects/' + project.id + '/assets?source=' + selectedReferenceSource,
-                { method: 'POST', body: form },
-              )
-            ).asset;
+            asset = await uploadProjectPhoto(selectedReferenceFile, project.id, userId!, () => {
+              if (expectedGeneration !== generation.current) throw new Error('当前项目、来源或草稿已变化，请回到原草案后再继续。');
+            }, '?source=' + selectedReferenceSource);
             if (expectedGeneration !== generation.current) return;
             setUploadedReference({ file: selectedReferenceFile, asset });
           }
           ids.push(asset.id);
         }
         if (ids.length) {
-          if (selected?.provider === 'openai') body.referenceAssetIds = ids;
-          else body.referenceAssetId = ids[0];
+          if (selected?.provider === 'ark' && ids.length === 1) body.referenceAssetId = ids[0];
+          else body.referenceAssetIds = ids;
         }
         if (auxiliary) {
           if (!ids.length) throw new Error('遮罩或标注需要先选择参考图。');
@@ -1049,10 +1110,12 @@ export function AIPanel({
         }
       } else if (operation === 'generate-text') {
         body.prompt = prompt.trim();
-        const doc = documents.find((item) => item.id === documentId);
-        if (doc) {
-          body.contextDocumentId = doc.id;
-          body.expectedDocumentVersion = doc.version;
+        if (documentId) {
+          const doc = documents.find((item) => item.id === documentId);
+          const version = documentVersion ?? doc?.version;
+          if (!version) throw new Error(t('文档引用暂时无法核对，请重新选择来源。'));
+          body.contextDocumentId = documentId;
+          body.expectedDocumentVersion = version;
         }
       } else if (operation === 'transcribe') {
         if (!audioBase64) throw new Error('请先录制一段语音。');
@@ -1090,12 +1153,12 @@ export function AIPanel({
     let job: AIJob;
     try {
       const request = jobSubmissionRequest(saved);
-      if (saved.jobId) {
-        const result = await api<{ jobs: AIJob[] }>(request.path, request.init);
-        const found = result.jobs.find((item) => item.id === saved.jobId);
+      if (request.init.method === 'GET') {
+        const result = await api<{ requestKey?: string; jobs: AIJob[] }>(request.path, request.init);
+        const found = findJobReceipt(saved, result);
         if (!found)
           throw new Error(
-            '最近 100 条项目记录中没有找到本轮任务。已保留原请求，请在用量记录中核对或联系平台；不会创建新任务。',
+            '暂未查到本轮任务回执，请稍后再查。',
           );
         job = found;
       } else {
@@ -1103,6 +1166,8 @@ export function AIPanel({
       }
     } catch (error) {
       if (!saved.jobId && isJobAdmissionRejected(error, !firstAttempt)) resolveSubmission(saved);
+      if (error instanceof ApiError && error.code === 'IMAGE_QUOTE_CHANGED')
+        setCatalogAttempt((current) => current + 1);
       throw error;
     }
     // Persist a late acknowledgement even if the panel closed while POST was pending.
@@ -1298,6 +1363,10 @@ export function AIPanel({
       };
     }),
   ];
+  const referenceFrame = availableAssets.find((asset) => asset.id === referenceIds[0]) ??
+    (uploadedReference?.file === selectedReferenceFile ? uploadedReference?.asset : undefined);
+  const referenceSize = selected && referenceFrame && imageOptions.outputFormat !== 'gif'
+    ? chooseGenerationSize(selected, { ...imageOptions, size: undefined }, referenceFrame) : undefined;
   const imageParameters = operation === 'generate-image' && (
     <ImageParameters
       model={selected}
@@ -1305,6 +1374,7 @@ export function AIPanel({
       height={height}
       options={imageOptions}
       hasReference={referencedCount > 0}
+      referenceSize={referenceSize}
       disabled={inputLocked}
       onSize={(w, h) => {
         setImageOptions((current) => {
@@ -1396,6 +1466,7 @@ export function AIPanel({
             onAfterArtworkWrite={onAfterArtworkWrite}
             onApplied={onDecisionApplied ?? onOpenArtwork}
             captureCanvasPreview={captureCanvasPreview}
+            captureProjectCover={captureProjectCover}
             canvasSourceId={canvasSourceId}
             replyNarration={narrationModel && {
               model: narrationModel.label, points: narrationModel.pointsPerPlan, jobs, start: narrateReply,
@@ -1406,6 +1477,12 @@ export function AIPanel({
               else onClearVisualAttachment?.(attachment);
             }}
             onUseCanvasSource={onUseCanvasSource}
+            generationOfferLabel={(refs, draftPrompt) => {
+              const offer = candidateOffer(refs, draftPrompt);
+              return offer && t('生成 · {model} · {width}×{height} · {units} 点', {
+                model: offer.model.label, width: offer.width, height: offer.height, units: offer.units,
+              });
+            }}
             onPrepareGenerationDraft={prepareAssistantGenerationDraft}
           />
         )}
@@ -1464,6 +1541,7 @@ export function AIPanel({
               {visibleJobs.length && project ? (
                 <AIThread
                   jobs={visibleJobs}
+                  captureCover={captureProjectCover}
                   project={project}
                   artwork={artwork}
                   userId={userId}
@@ -1582,6 +1660,22 @@ export function AIPanel({
                     {imageParameters}
                   </section>
                 )}
+                {operation === 'generate-text' && (documents.length > 0 || documentId) && (
+                  <ChoiceSelect className="context-document-select" size="compact" ariaLabel={t('本轮上下文')}
+                    disabled={inputLocked} value={documentId ? documentId + ':' + (documentVersion ?? documents.find((d) => d.id === documentId)?.version ?? '') : ''}
+                    displayLabel={documentId ? (documents.find((d) => d.id === documentId)?.title || documentLabel || t('本轮上下文')) +
+                      (documentVersion ? ' · V' + documentVersion : '') : t('引用项目文档')}
+                    onValueChange={(value) => {
+                      const doc = documents.find((d) => d.id + ':' + d.version === value);
+                      setDocumentId(doc?.id ?? '');
+                      setDocumentVersion(doc?.version);
+                      setDocumentLabel(doc?.title ?? '');
+                      changed();
+                    }}
+                    options={[{ value: '', label: t('不引用文档') }, ...documents.map((doc) => ({
+                      value: doc.id + ':' + doc.version, label: doc.title + ' · V' + doc.version,
+                    }))]} />
+                )}
                 {parent && (
                   <div className="ai-context-strip">
                     <ArrowBendDownRight size={14} />
@@ -1669,10 +1763,10 @@ export function AIPanel({
                   sources={operation === 'generate-image' ? [
                     { key: 'references', name: t('参考图'), icon: <Paperclip size={17} />, action: () => setOverlay('references') },
                     { key: 'sketch', name: t('画草图'), icon: <PencilSimple size={17} />,
-                      disabled: !caps?.references.supported || referencedCount >= referenceLimit, action: onDraw },
+                      disabled: referencedCount >= referenceLimit, action: onDraw },
                     ...(captureReferenceCanvas ? [{
                       key: 'canvas', name: t(referenceCanvasLabel), icon: <Scan size={17} />,
-                      disabled: capturingReference || !caps?.references.supported || referencedCount >= referenceLimit,
+                      disabled: capturingReference || referencedCount >= referenceLimit,
                       action: () => void useEditedFrame(),
                     }] : []),
                   ] : []}
@@ -1834,27 +1928,6 @@ export function AIPanel({
                 {t(reason)}
               </p>
             )}
-            {operation === 'generate-text' && documents.length > 0 && (
-              <section className="ai-option-section">
-                <ChoiceSelect
-                  className="context-document-select"
-                  label={t('本轮上下文')}
-                  value={documentId}
-                  disabled={inputLocked}
-                  onValueChange={(value) => {
-                    setDocumentId(value);
-                    changed();
-                  }}
-                  options={[
-                    { value: '', label: t('不引用文档') },
-                    ...documents.map((doc) => ({
-                      value: doc.id,
-                      label: `${doc.title} · V${doc.version}`,
-                    })),
-                  ]}
-                />
-              </section>
-            )}
             {operation === 'transcribe' && selected?.provider === 'openai' && (
               <>
                 <TranscriptionParameters
@@ -1905,7 +1978,7 @@ export function AIPanel({
                 type="button"
                 className="text-button"
                 disabled={
-                  inputLocked || !caps?.references.supported || referencedCount >= referenceLimit
+                  inputLocked || referencedCount >= referenceLimit
                 }
                 onClick={() => fileInput.current?.click()}
               >
@@ -1916,7 +1989,7 @@ export function AIPanel({
                 type="button"
                 className="text-button"
                 disabled={
-                  inputLocked || !caps?.references.supported || referencedCount >= referenceLimit
+                  inputLocked || referencedCount >= referenceLimit
                 }
                 data-action="open-sketch"
                 onClick={onDraw}
@@ -1930,7 +2003,6 @@ export function AIPanel({
                   className="text-button"
                   disabled={
                     inputLocked ||
-                    !caps?.references.supported ||
                     referenceIds.includes(currentAsset.id) ||
                     referencedCount >= referenceLimit
                   }
@@ -1949,7 +2021,6 @@ export function AIPanel({
                   disabled={
                     inputLocked ||
                     capturingReference ||
-                    !caps?.references.supported ||
                     referencedCount >= referenceLimit
                   }
                   onClick={() => void useEditedFrame()}
@@ -1992,7 +2063,7 @@ export function AIPanel({
                   aria-pressed={referenceIds.includes(asset.id)}
                   disabled={
                     inputLocked ||
-                    !caps?.references.supported ||
+                    !referenceLimit ||
                     (!referenceIds.includes(asset.id) && referencedCount >= referenceLimit)
                   }
                   onClick={() => {
@@ -2013,7 +2084,8 @@ export function AIPanel({
                 </button>
               ))}
             </div>
-            {(!caps?.references.supported || !referenceLimit) && (
+            {referencedCount > 0 && <p className="control-note">{t('大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。')}</p>}
+            {!referenceLimit && (
               <p className="control-note">{t('当前模型不支持参考图')}</p>
             )}
             {(caps?.references.allowMask || caps?.references.allowMarkup) && (
@@ -2144,7 +2216,7 @@ export function AIPanel({
               {!pendingSubmission.jobId && pendingSubmission.requestBody === null && (
                 <p>
                   {t(
-                    '原始录音仅保留在页面内存中，刷新后已不可重放。请先查看任务和用量记录并联系平台核验。',
+                    '原录音已从页面内存中释放。可以直接查询本轮结果。',
                   )}
                 </p>
               )}
@@ -2159,12 +2231,10 @@ export function AIPanel({
                   </button>
                   <button
                     type="button"
-                    disabled={
-                      busy || (!pendingSubmission.jobId && pendingSubmission.requestBody === null)
-                    }
+                    disabled={busy}
                     onClick={() => void recoverSubmission()}
                   >
-                    {pendingSubmission.jobId ? t('读取本轮结果') : t('按原请求核对并继续')}
+                    {pendingSubmission.jobId || pendingSubmission.requestBody === null ? t('读取本轮结果') : t('按原请求核对并继续')}
                   </button>
                 </div>
               ) : (

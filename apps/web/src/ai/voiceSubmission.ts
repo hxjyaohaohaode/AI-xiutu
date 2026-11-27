@@ -140,7 +140,7 @@ export function voiceSubmissionRequest(value: VoiceSubmission): {
   init: RequestInit;
 } {
   // The API returns VOICE_ALREADY_PREPARED for an existing key, not its old ticket.
-  // There is no user-facing voice GET endpoint. Do not manufacture a recovery URL.
+  // This POST is only for the original admission. Settlement is read separately.
   if (value.sessionId || value.state === 'already-prepared')
     throw new Error('原通话已准备过，平台不会重新发放连接票据。请凭原标识联系平台核验。');
   if (value.requestBody === null)
@@ -166,7 +166,7 @@ export function acceptVoiceSubmission(
   return Object.freeze({ ...value, sessionId: receipt.id, state: 'prepared' });
 }
 
-/** Only the bound socket's authoritative terminal event can release the local lock. */
+/** Settle the live socket only from the bound terminal event. */
 export function voiceSubmissionEvent(
   value: VoiceSubmission,
   event: Extract<VoiceServerEvent, { type: 'ready' | 'closed' }>,

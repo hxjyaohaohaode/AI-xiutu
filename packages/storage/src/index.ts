@@ -452,7 +452,7 @@ export class LocalPrivateStorage {
 export function createPrivateStorage(env: NodeJS.ProcessEnv = process.env) {
   return new LocalPrivateStorage({
     storageDir: env.STORAGE_DIR ?? '.data/private',
-    maxPixels: Number(env.MAX_IMAGE_PIXELS ?? 40_000_000),
-    maxUploadBytes: Number(env.MAX_UPLOAD_BYTES ?? 20 * 1024 * 1024),
+    maxPixels: Number(env.MAX_IMAGE_PIXELS ?? 64_000_000),
+    maxUploadBytes: Number(env.MAX_UPLOAD_BYTES ?? 50 * 1024 * 1024),
   });
 }

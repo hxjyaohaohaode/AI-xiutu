@@ -8,7 +8,7 @@ export function CandidateActions({
   canExecute,
   previewing = false,
   confirmed = false,
-  onDecision,
+  onDecision, generationOfferLabel,
   onConfirm,
   onCancel,
 }: {
@@ -17,10 +17,12 @@ export function CandidateActions({
   canExecute: boolean;
   previewing?: boolean;
   confirmed?: boolean;
-  onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected') => void;
+  onDecision: (candidate: AssistantCandidate, decision: 'previewed' | 'rejected', direct?: boolean) => void;
+  generationOfferLabel?: (references: string[], prompt: string) => string | undefined;
   onConfirm?: () => void;
   onCancel?: () => void;
 }) {
+  const offerLabel = candidate.kind === 'generation' && generationOfferLabel?.(candidate.referenceAssetIds ?? [], candidate.prompt ?? '');
   const finished = candidate.appliedRevisionId
     ? t('已保存新版本')
     : candidate.decision === 'rejected'
@@ -55,7 +57,7 @@ export function CandidateActions({
       </button>
       <button
         type="button"
-        className="ai-candidate-primary"
+        className={offerLabel ? undefined : 'ai-candidate-primary'}
         disabled={disabled || !canExecute}
         onClick={() => onDecision(candidate, 'previewed')}
       >
@@ -64,6 +66,8 @@ export function CandidateActions({
           ? candidate.decision === 'previewed' ? t('重新预览') : t('在画布预览')
           : t('选择生图模型与规格')}
       </button>
+      {offerLabel && <button type="button" className="ai-candidate-primary" disabled={disabled || !canExecute}
+        onClick={() => onDecision(candidate, 'previewed', true)}>{offerLabel}</button>}
     </div>
   );
 }

@@ -1,4 +1,10 @@
 export const launchEnglish = {
+  "{days} 天": "{days} days",
+  "空间策略尚未允许此分享方式": "Sharing is disabled for this space.",
+  "分享图片": "Share image",
+  "当前设备无法分享此文件，可直接下载。": "Your device cannot share this file. You can download it.",
+  "可再次点击分享，或直接下载图片。": "Try sharing again or download the image.",
+  "文件已就绪，点击分享图片。": "The file is ready. Choose Share image.",
   "问点什么，或告诉我想怎么修图…": "Ask a question or tell me how to edit your photo…",
   "默认值会同步到此账号的其他设备。每轮仍可在对话里单独选择模型和参数。": "Defaults sync to your other devices. You can still choose a model and settings for each message in the chat.",
   "默认 gpt-transcribe": "Default: gpt-transcribe",
@@ -82,6 +88,12 @@ export const launchEnglish = {
 };
 
 export const launchTraditional = {
+  "{days} 天": "{days} 天",
+  "空间策略尚未允许此分享方式": "空間目前未開放此分享方式。",
+  "分享图片": "分享圖片",
+  "当前设备无法分享此文件，可直接下载。": "目前裝置無法分享此檔案，可直接下載。",
+  "可再次点击分享，或直接下载图片。": "可再次點選分享，或直接下載圖片。",
+  "文件已就绪，点击分享图片。": "檔案已就緒，點選分享圖片。",
   "问点什么，或告诉我想怎么修图…": "問個問題，或告訴我想怎麼修圖…",
   "默认值会同步到此账号的其他设备。每轮仍可在对话里单独选择模型和参数。": "預設值會同步到此帳號的其他裝置。每輪仍可在對話中單獨選擇模型和參數。",
   "默认 gpt-transcribe": "預設 gpt-transcribe",

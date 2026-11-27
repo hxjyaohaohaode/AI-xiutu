@@ -41,7 +41,7 @@ for (const flag of [
   process.env[flag] = 'false';
 process.env.NODE_ENV = 'test';
 const { collaborationFixture } = await import('../../apps/api/test/collaboration-fixture.ts');
-const { createServer } = await import('vite');
+const { createServer, preview } = await import('vite');
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const artifacts = resolve(root, process.env.BROWSER_ARTIFACT_DIR ?? 'artifacts/browser-assistant');
 await mkdir(artifacts, { recursive: true });
@@ -69,6 +69,8 @@ let dispatches = 0,
   firstDelta = false;
 let turnAdmissions = 0;
 let spatialFixture = false;
+let reviewFixture = null;
+const reviewFindings = { tone: '保留窗边高光的渐变。', composition: '保留左缘画框的留白。' };
 let fixtureExposure = -1.5;
 const bodies = [];
 const sentence = '已保留人物特征，准备降低曝光并保持自然肤质。';
@@ -303,6 +305,17 @@ try {
             },
             { headers: { 'x-request-id': `fixture-search-${dispatches}` } },
           );
+        if (reviewFixture) {
+          let output;
+          const message = (text) => ({ type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] });
+          if (reviewFixture === 'follow-up') output = [message('下一轮已准备好。')];
+          else if (!body.tools) output = [message(body.instructions.includes('framing') ? reviewFindings.composition : reviewFindings.tone)];
+          else if (body.input.some((item) => item.type === 'function_call_output')) output = [message('两位专家的工作已汇总。')];
+          else output = [{ type: 'function_call', name: 'consult_specialists', call_id: 'qa-review-pair', arguments: JSON.stringify({ roles: ['tone-review','composition-review'] }) }];
+          return Response.json({ id: `local-review-${dispatches}`, status: 'completed', output,
+            usage: { input_tokens: 20, output_tokens: 10, total_tokens: 30 } },
+            { headers: { 'x-request-id': `local-review-${dispatches}` } });
+        }
         const calls = body.input.filter((item) => item.type === 'function_call');
         const roundDone = calls.some((item) => item.call_id === 'fixture-edit');
         const output = roundDone
@@ -431,14 +444,16 @@ try {
   );
   await fixture.app.listen({ host: '127.0.0.1', port: 0 });
   process.env.PORT = String(fixture.app.server.address().port);
-  vite = await createServer({
-    cacheDir: resolve(artifacts, 'vite-cache'),
-    configFile: resolve(root, 'apps/web/vite.config.ts'),
-    server: { host: '127.0.0.1', port, strictPort: true },
-  });
-  await vite.listen();
+  const configFile = resolve(root, 'apps/web/vite.config.ts');
+  const listen = { host: '127.0.0.1', port, strictPort: true };
+  if (process.env.ASSISTANT_QA_BUILT === '1') {
+    vite = await preview({ configFile, preview: listen });
+  } else {
+    vite = await createServer({ configFile, cacheDir: resolve(artifacts, 'vite-cache'), server: listen });
+    await vite.listen();
+  }
   const channel = process.env.BROWSER_CHANNEL;
-  assert.ok(!channel || ['chrome', 'msedge'].includes(channel));
+  assert.ok(!channel || ['chromium', 'chrome', 'msedge'].includes(channel));
   browser = await chromium.launch({ headless: true, ...(channel ? { channel } : {}) });
   report.browser = browser.version();
   const context = await browser.newContext({
@@ -912,6 +927,50 @@ try {
     );
     assert.equal(dispatches, before);
     return { historyIsolation: true, readOnlySwitch: true };
+  });
+  await testCase('previous-specialist-findings-reopen-on-demand-after-a-real-reload', async () => {
+    await newConversation();
+    const before = dispatches;
+    try {
+      reviewFixture = 'review';
+      const admitted = page.waitForResponse((r) => r.request().method() === 'POST' && new URL(r.url()).pathname.endsWith('/assistant-turns'));
+      await submit('分别复核色调和构图。');
+      const source = (await (await admitted).json()).id;
+      await page.getByText('两位专家的工作已汇总。', { exact: true }).waitFor();
+      assert.equal(dispatches - before, 4);
+      reviewFixture = 'follow-up';
+      await submit('继续同一会话。');
+      await page.getByText('下一轮已准备好。', { exact: true }).waitFor();
+      assert.equal(dispatches - before, 5);
+      let reads = 0;
+      const path = `/v1/assistant-turns/${source}/branches`;
+      const countReads = (request) => {
+        if (new URL(request.url()).pathname === path && request.method() === 'GET') reads++;
+      };
+      page.on('request', countReads);
+      try {
+        await openProject(page, false);
+        const history = page.locator('.assistant-messages');
+        const reopen = history.getByRole('button', { name: '研究分工', exact: true });
+        await reopen.waitFor();
+        assert.equal(reads, 0, 'older reviews do not fetch their private contents on page load');
+        await reopen.click();
+        const graph = history.locator('.assistant-research-graph');
+        for (const [label, finding] of [['色调复核', reviewFindings.tone], ['构图复核', reviewFindings.composition]]) {
+          const task = graph.locator('.research-task').filter({ hasText: label });
+          await task.locator(':scope > summary').click();
+          await task.getByText(finding, { exact: true }).waitFor();
+        }
+        assert.equal(reads, 1);
+        assert.equal(dispatches - before, 5, 'opening a saved finding never starts a model');
+        await page.screenshot({ path: resolve(artifacts, 'specialist-findings-after-reload.png') });
+        return { sourceTurn: source, originalRequests: 4, followUpRequests: 1, recordReads: reads, replayRequests: 0 };
+      } finally {
+        page.off('request', countReads);
+      }
+    } finally {
+      reviewFixture = null;
+    }
   });
   await testCase(
     'active-text-request-survives-panel-hide-and-return-without-a-new-admission',

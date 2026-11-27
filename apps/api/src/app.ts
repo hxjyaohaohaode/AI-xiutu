@@ -69,6 +69,7 @@ export interface AiService {
     },
   ): {
     runtimeAvailable: boolean;
+    runtimeOperations?: string[];
     runtimeReason?: string | null;
     minPixels?: number;
     maxPixels?: number;
@@ -81,7 +82,7 @@ export interface AiService {
     body: unknown;
     sessionHash?: string;
   }): Promise<unknown>;
-  list(args: { actorId: string; projectId: string }): Promise<unknown>;
+  list(args: { actorId: string; projectId: string; requestKey?: string }): Promise<unknown>;
   cancel?(args: {
     actorId: string;
     jobId: string;
@@ -295,7 +296,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
       const parsed = assistantModelConfigSchema.safeParse(model.config);
       return parsed.success &&
         parsed.data.enabled &&
-        !modelProfileError(String(model.id), parsed.data)
+        !openAIShutdownDate(String(model.id)) &&
+        !modelProfileError(String(model.id), parsed.data, assistantRuntime.allowTestModel)
         ? [{ id: String(model.id), config: parsed.data }]
         : [];
     });
@@ -329,7 +331,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         available: assistantRuntime.voiceReady && assistantAvailable && voiceAvailable,
         reason: assistantRuntime.voiceReady
           ? '需要启用的语音协议档案与后端智能体模型'
-          : (assistantRuntime.reason ?? '实时语音开关未启用'),
+          : assistantRuntime.voiceReason,
       },
     };
     for (const operation of ['generate-image', 'edit-plan', 'generate-text', 'transcribe', ...OPENAI_SPECIALIST_OPERATIONS]) {
@@ -338,14 +340,13 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
         available: ai?.availableOperations?.includes(operation) ?? false,
         reason: ai?.reason ?? '执行适配器未配置',
       };
-      const configured = configuredModels.some(
-        (model) =>
-          model.config?.enabled === true &&
-          Array.isArray(model.config.operations) &&
-          model.config.operations.includes(operation) &&
-          (!(OPENAI_SPECIALIST_OPERATIONS as readonly string[]).includes(operation) ||
-            ai?.describeModel?.(model.id, model.config)?.runtimeAvailable === true),
-      );
+      const configured = configuredModels.some((model) => {
+        if (!model.config?.enabled || !(model.config.operations ?? ['edit-plan']).includes(operation))
+          return false;
+        const descriptor = ai?.describeModel?.(model.id, model.config);
+        // One enabled provider cannot make a different provider's catalog entry runnable.
+        return descriptor?.runtimeOperations?.includes(operation) ?? descriptor?.runtimeAvailable ?? false;
+      });
       gates[operation] = {
         available: executorStatus.available && configured,
         reason: executorStatus.available
@@ -408,7 +409,8 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     const user = requireUser(req);
     const p = z.object({ id }).parse(req.params);
     await projectAccess(db, p.id, user.id);
-    return ai ? ai.list({ actorId: user.id, projectId: p.id }) : { jobs: [] };
+    const { requestKey } = z.object({ requestKey: id.optional() }).parse(req.query);
+    return ai ? ai.list({ actorId: user.id, projectId: p.id, requestKey }) : { jobs: [] };
   });
   app.get('/v1/ai-jobs/:id/audio', async (req, reply) => {
     const user = requireUser(req);

@@ -3,23 +3,42 @@ export type MessageBlock =
   | { kind: 'paragraph' | 'heading' | 'quote'; text: string; line: number }
   | { kind: 'code'; text: string; language: string; line: number }
   | { kind: 'list'; ordered: boolean; items: { text: string; number?: number }[]; line: number }
-  | { kind: 'table'; headers: string[]; rows: string[][]; line: number };
+  | { kind: 'table'; headers: string[]; rows: string[][]; line: number; textCells?: Set<number> };
 
 const listItem = (line: string) => /^(?: {0,3})(?:(\d{1,5})[.)]|[-+*])\s+(.+)$/.exec(line);
 const fence = (line: string) => /^ {0,3}(`{3,}|~{3,})([\w+-]*)\s*$/.exec(line);
 const heading = (line: string) => /^ {0,3}#{1,6}\s+(.+?)(?:\s+#+)?$/.exec(line);
 const quote = (line: string) => /^ {0,3}>\s?(.*)$/.exec(line);
-const tableCells = (line: string) =>
-  line
-    .trim()
-    .replace(/^\|/, '')
-    .replace(/\|$/, '')
-    .split('|')
-    .map((cell) => cell.trim());
+function tableCells(line: string): string[] {
+  const source = line.trim().replace(/^\|/, '');
+  const cells: string[] = [];
+  let text = '', backslashes = 0, endedAtSeparator = false;
+  for (const char of source) {
+    if (char === '\\') {
+      backslashes++;
+      endedAtSeparator = false;
+      continue;
+    }
+    if (char === '|') {
+      text += '\\'.repeat(Math.floor(backslashes / 2));
+      endedAtSeparator = backslashes % 2 === 0;
+      if (endedAtSeparator) {
+        cells.push(text.trim());
+        text = '';
+      } else text += '|';
+    } else {
+      text += '\\'.repeat(backslashes) + char;
+      endedAtSeparator = false;
+    }
+    backslashes = 0;
+  }
+  if (!endedAtSeparator) cells.push((text + '\\'.repeat(backslashes)).trim());
+  return cells;
+}
 const tableRule = (line: string) =>
   line.includes('|') && tableCells(line).every((cell) => /^:?-{3,}:?$/.test(cell));
 
-export function messageBlocks(text: string): MessageBlock[] {
+export function messageBlocks(text: string, maxTableColumns = 12): MessageBlock[] {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
   const result: MessageBlock[] = [];
   let index = 0;
@@ -57,7 +76,7 @@ export function messageBlocks(text: string): MessageBlock[] {
     }
     if (current.includes('|') && lines[index + 1] && tableRule(lines[index + 1]!)) {
       const headers = tableCells(current);
-      if (headers.length <= 12 && tableCells(lines[index + 1]!).length === headers.length) {
+      if (headers.length <= maxTableColumns && tableCells(lines[index + 1]!).length === headers.length) {
         const rows: string[][] = [];
         index += 2;
         while (index < lines.length && lines[index]!.includes('|')) {

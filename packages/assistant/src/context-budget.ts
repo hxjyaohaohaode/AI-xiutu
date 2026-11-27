@@ -11,6 +11,7 @@ export interface HistoryMessage {
   content: string;
   sourceTurnId?: string;
   candidateTrace?: string;
+  recordTools?: string[];
 }
 export interface ContextBudget {
   contextWindowTokens: number;
@@ -18,9 +19,11 @@ export interface ContextBudget {
   visualTokenReserve: number;
 }
 export function historyContent(item: HistoryMessage) {
-  return item.candidateTrace
-    ? `${item.content}\nCandidate decisions at admission: ${item.candidateTrace}`
-    : item.content;
+  const parts = [item.content];
+  if (item.candidateTrace) parts.push(`Candidate decisions at admission: ${item.candidateTrace}`);
+  if (item.sourceTurnId && item.recordTools?.length)
+    parts.push(`Saved tool records (${item.recordTools.join(', ')}); read_history sourceTurnId=${item.sourceTurnId} to locate the original results.`);
+  return parts.join('\n');
 }
 export class ContextBudgetError extends Error {
   constructor(public readonly code: string) {

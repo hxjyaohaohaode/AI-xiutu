@@ -1,5 +1,5 @@
 import { validateImage } from './engine.js';
-import type { RGBAImage } from './types.js';
+import type { Dimensions, RGBAImage } from './types.js';
 
 export const PNG_SIGNATURE = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
 const crcTable = Uint32Array.from({ length: 256 }, (_, index) => {
@@ -61,16 +61,45 @@ function* storedDeflate(rows: Iterable<Uint8Array>) {
   yield end;
 }
 
-/** Encode straight sRGB samples without a premultiplied canvas round trip. */
-export async function encodeRgbaPng(image: RGBAImage): Promise<Blob> {
-  validateImage(image);
+/** One PNG stream across all strips. Each yielded strip starts on an output row. */
+export async function encodeRgbaPngStrips(
+  { width, height }: Dimensions,
+  strips: Iterable<RGBAImage>,
+): Promise<Blob> {
+  function* lines() {
+    let written = 0;
+    for (const strip of strips) {
+      if (
+        strip.width !== width ||
+        !Number.isSafeInteger(strip.height) ||
+        strip.height < 1 ||
+        strip.height > height - written ||
+        strip.data.length !== width * strip.height * 4
+      )
+        throw new RangeError('Invalid PNG strip dimensions');
+      yield* scanlines(strip);
+      written += strip.height;
+    }
+    if (written !== height) throw new RangeError('PNG is missing scanlines');
+  }
   const header = new Uint8Array(13);
   const view = new DataView(header.buffer);
-  view.setUint32(0, image.width);
-  view.setUint32(4, image.height);
+  view.setUint32(0, width);
+  view.setUint32(4, height);
   header.set([8, 6], 8);
   const parts = [PNG_SIGNATURE, chunk('IHDR', header), chunk('sRGB', Uint8Array.of(0))];
-  const rows = scanlines(image);
+  const pages: Blob[] = [];
+  let compressedBytes = 0;
+  const append = (bytes: Uint8Array) => {
+    parts.push(chunk('IDAT', bytes));
+    compressedBytes += bytes.length;
+    if (compressedBytes >= 1024 * 1024) {
+      pages.push(new Blob(parts));
+      parts.length = 0;
+      compressedBytes = 0;
+    }
+  };
+  const rows = lines();
   if (typeof CompressionStream === 'function') {
     const stream = new ReadableStream<Uint8Array<ArrayBuffer>>({
       pull(controller) {
@@ -82,13 +111,21 @@ export async function encodeRgbaPng(image: RGBAImage): Promise<Blob> {
     const reader = stream.pipeThrough(new CompressionStream('deflate')).getReader();
     try {
       for (let part = await reader.read(); !part.done; part = await reader.read())
-        parts.push(chunk('IDAT', part.value));
+        append(part.value);
     } finally {
       reader.releaseLock();
     }
   } else {
-    for (const part of storedDeflate(rows)) parts.push(chunk('IDAT', part));
+    if (width * 4 + 1 > 65_535) throw new Error('Large PNG rows require CompressionStream');
+    for (const part of storedDeflate(rows)) append(part);
   }
   parts.push(chunk('IEND', new Uint8Array(0)));
-  return new Blob(parts, { type: 'image/png' });
+  pages.push(new Blob(parts));
+  return new Blob(pages, { type: 'image/png' });
+}
+
+/** Encode straight sRGB samples without a premultiplied canvas round trip. */
+export async function encodeRgbaPng(image: RGBAImage): Promise<Blob> {
+  validateImage(image);
+  return encodeRgbaPngStrips(image, [image]);
 }

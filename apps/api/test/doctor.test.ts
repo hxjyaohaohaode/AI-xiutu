@@ -90,6 +90,11 @@ test(
       assert.equal(catalog.models.length, 40);
       assert.equal(catalog.modelsOmitted, count - 40);
 
+      const requestedImages = await run({ AI_IMAGE_ENABLED: 'true', ARK_API_KEY: '', OPENAI_IMAGE_ENABLED: 'false' });
+      assert.equal(requestedImages.code, 1);
+      const imageCheck = requestedImages.checks.find((item) => item.check === 'adapters')!;
+      assert.ok(!imageCheck.ok && JSON.parse(imageCheck.detail).missingOperations.includes('generate-image'));
+
       const voiceWithoutCredentials = await run({
         AI_ASSISTANT_ENABLED: 'true',
         AI_VOICE_ENABLED: 'true',
@@ -101,6 +106,38 @@ test(
         )!.ok,
         false,
       );
+      // This deployment has a configured adapter and an empty model catalog,
+      // independent of the catalog rows exercised by other integration suites.
+      const isolatedSchema = 'doctor_' + randomUUID().replaceAll('-', '');
+      await fixture.db.query(`CREATE SCHEMA ${isolatedSchema}`);
+      try {
+        await fixture.db.query(
+          `CREATE TABLE ${isolatedSchema}.assistant_model_configs (LIKE assistant_model_configs)`,
+        );
+        const isolated = new URL(databaseUrl!);
+        isolated.searchParams.set('options', `-csearch_path=${isolatedSchema},public`);
+        const missingProfiles = await run({
+          DATABASE_URL: isolated.href,
+          AI_ASSISTANT_ENABLED: 'true',
+          AI_VOICE_ENABLED: 'true',
+          AI_MODERATION_PROVIDER: 'openai',
+          OPENAI_API_KEY: 'offline-test-only',
+        });
+        assert.equal(missingProfiles.code, 1);
+        const assistant = missingProfiles.checks.find(
+          (item) => item.check === 'assistant-and-dispatch-journal',
+        )!;
+        const detail = JSON.parse(assistant.detail);
+        assert.equal(assistant.ok, false);
+        assert.equal(detail.ready, false);
+        assert.equal(detail.voiceReady, false);
+        assert.deepEqual(detail.enabledOperations, []);
+        assert.match(detail.reason, /智能体模型档案/);
+        assert.match(detail.voiceReason, /语音协议档案/);
+        assert.equal(detail.liveAccountTested, false);
+      } finally {
+        await fixture.db.query(`DROP SCHEMA ${isolatedSchema} CASCADE`);
+      }
       const unavailableNative = await run({
         MEDIA_ADVANCED_ENABLED: 'true',
         MEDIA_PYTHON: join(fixture.directory, 'missing-python'),

@@ -1,5 +1,6 @@
 /** App-owned AI, generation and voice interface copy; never applied to user messages or prompts. */
 export const aiEnglish: Record<string, string> = {
+  '大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。': 'Large originals stay in the project. Oversized references are resized to a maximum edge of 1024 pixels. Masks and annotations keep their coordinates.',
   朗读: 'Read aloud',
   暂停朗读: 'Pause reading',
   继续朗读: 'Resume reading',
@@ -712,6 +713,11 @@ Object.assign(aiEnglish, {
   按画面亮度准备调色候选: 'Preparing a tone adjustment using image measurements',
   依据当前画面测量调整明暗: 'Adjust light using current image measurements',
   准备编辑候选: 'Prepare an edit candidate',
+  色调复核: 'Tone review',
+  构图复核: 'Composition review',
+  交付复核: 'Delivery review',
+  独立专业复核: 'Specialist review',
+  请求已拒绝: 'Request rejected',
   复核候选像素: 'Review candidate pixels',
   推荐候选: 'Nominate a candidate',
   编辑任务进度: 'Editing progress',
@@ -1115,6 +1121,17 @@ Object.assign(aiEnglish, {
     'Automatic editing stopped. Your candidates are retained. Check the version, editing lease or permissions before continuing. {code}',
 });
 export const openAIEnglish = {
+  '正在核对上次通话': 'Checking your last call',
+  '」的通话记录。结清后即可再次通话。': '”. You can call again once settlement is confirmed.',
+  '系统会自动核对原通话回执。费用待核验时可在「用量」查看。': 'The original call receipt is checked automatically. See Usage for pending charges.',
+  '系统会自动核对原通话回执，结清后即可重新邀请。费用待核验时可在「用量」查看。': 'The call receipt is checked automatically. You can invite again after settlement. See Usage for pending charges.',
+  '当前没有可提交的生图报价，请重新选择模型。': 'No current image quote is available. Choose a model again.',
+  '上一轮创作结果仍待确认。': 'The previous creation request is still pending.',
+  '生成 · {model} · {width}×{height} · {units} 点': 'Generate · {model} · {width}×{height} · {units} credits',
+  '暂未查到本轮任务回执，请稍后再查。': 'This task receipt is not available yet. Check again shortly.',
+  '原录音已从页面内存中释放。可以直接查询本轮结果。': 'The original recording was cleared from memory. You can still look up its result.',
+  '生图报价已变更，请刷新模型报价后再生成': 'Image pricing changed. Refresh the model quote before generating.',
+  '尚未查到这次通话的回执': 'No receipt is available for this call yet.',
   "已审核的生成中间预览": "Reviewed intermediate image",
   "AI 生成的 GIF 动画": "AI-generated GIF animation",
   "SVG 仅支持文字生图。": "SVG is available for text-to-image generation.",
@@ -1291,6 +1308,18 @@ export const openAIEnglish = {
 };
 
 export const openAITraditional = {
+  '大图保留项目原件。普通参考按模型预算缩至最长 1024 像素；蒙版和标注保留原坐标。': '大圖保留專案原件。一般參考圖依模型預算縮至最長 1024 像素。遮罩和標註保留原座標。',
+  '正在核对上次通话': '正在核對上次通話',
+  '」的通话记录。结清后即可再次通话。': '」的通話記錄。結清後即可再次通話。',
+  '系统会自动核对原通话回执。费用待核验时可在「用量」查看。': '系統會自動核對原通話回執。費用待核驗時可在「用量」查看。',
+  '系统会自动核对原通话回执，结清后即可重新邀请。费用待核验时可在「用量」查看。': '系統會自動核對原通話回執，結清後即可重新邀請。費用待核驗時可在「用量」查看。',
+  '当前没有可提交的生图报价，请重新选择模型。': '目前沒有可提交的生圖報價，請重新選擇模型。',
+  '上一轮创作结果仍待确认。': '上一輪創作結果仍待確認。',
+  '生成 · {model} · {width}×{height} · {units} 点': '生成 · {model} · {width}×{height} · {units} 點',
+  '暂未查到本轮任务回执，请稍后再查。': '暫未查到本輪任務回執，請稍後再查。',
+  '原录音已从页面内存中释放。可以直接查询本轮结果。': '原錄音已從頁面記憶體中釋放。可以直接查詢本輪結果。',
+  '生图报价已变更，请刷新模型报价后再生成': '生圖報價已變更，請重新整理模型報價後再生成',
+  '尚未查到这次通话的回执': '尚未查到這次通話的回執',
   "已审核的生成中间预览": "已審核的生成中間預覽",
   "AI 生成的 GIF 动画": "AI 生成的 GIF 動畫",
   "SVG 仅支持文字生图。": "SVG 僅支援文字生圖。",

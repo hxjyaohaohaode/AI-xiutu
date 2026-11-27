@@ -1,3 +1,5 @@
+import { uploadProjectPhoto, retainedPhotoDimensions } from './media/upload-photo';
+import { projectCover } from './project-files/cover';
 import { ThemeSwitch } from './components/ThemeSwitch';
 import { hexRgba, NUMERIC_CONTROLS } from './editor/advanced-model';
 import { ParameterGlyph } from './editor/ParameterGlyph';
@@ -108,7 +110,7 @@ import {
   subscribeDocumentDrafts,
 } from './account/document-drafts';
 import { modalMotionRoleForDialog } from './components/modal-profiles';
-import type { AIOperation } from './components/AIPanel';
+import type { AIOperation, SourceDocumentRequest } from './components/AIPanel';
 import { AIPanelFeature } from './components/AIPanelFeature';
 import { IDLE_AI_ACTIVITY, type AIActivity } from './ai/AIVisibility';
 import type { CollageResultActions } from './ai/AIThread';
@@ -432,6 +434,7 @@ export function App({
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [aiOpen, setAiOpen] = useState(false);
   const [voiceEntry, setVoiceEntry] = useState(0);
+  const [sourceDocumentRequest, setSourceDocumentRequest] = useState<SourceDocumentRequest | null>(null);
   const aiOpenRef = useRef(aiOpen);
   aiOpenRef.current = aiOpen;
   const [inspectorVisited, setInspectorVisited] = useState(false);
@@ -747,6 +750,14 @@ export function App({
   const dirty = !!editor.file && JSON.stringify(editor.recipe) !== savedRecipe;
   const artworkRef = useRef(artwork);
   artworkRef.current = artwork;
+  const coverForProject = (id: string | undefined) => editor.file ? projectCover(id, () => {
+    const source = editor.getSourceIdentity();
+    const { actor, epoch } = sessionFence.snapshot();
+    return {
+      project: projectIdRef.current, artwork: artworkRef.current, base: cloudBaseSources.current.get(source),
+      actor, epoch, navigation: projectRequest.current, source, recipe: editor.getRecipe(),
+    };
+  }, async () => (await captureCanvasImage()).imageDataUrl) : undefined;
   const isEditorDirty = () =>
     !!editor.file && JSON.stringify(editor.getRecipe()) !== savedRecipeRef.current;
   const refreshConfig = useCallback(() => {
@@ -1623,6 +1634,37 @@ export function App({
     return true;
   }
 
+  const downloadInProgress = useRef(false);
+  const [downloading, setDownloading] = useState(false);
+  async function downloadCurrentPhoto() {
+    if (!editor.file || editor.isLoading() || opening || downloadInProgress.current) return;
+    downloadInProgress.current = true;
+    setDownloading(true);
+    const owner = sessionFence.snapshot();
+    const name = filenameBase(editor.file.name) + '-编辑.png';
+    const guard = createSourceLoadGuard(() => ({
+      context: projectRequest.current,
+      source: editor.getSourceIdentity(),
+      recipe: editor.getRecipe(),
+    }));
+    try {
+      const pixels = await editor.exportImage('png');
+      if (!sessionFence.isCurrent(owner) || !activeRef.current) return;
+      if (!guard.isCurrent() || editor.isLoading()) {
+        notify(t('当前画面已变化，请重新生成导出文件。'));
+        return;
+      }
+      downloadBlob(pixels, name);
+      notify(t('下载已发起，可在浏览器下载记录中查看。'), 'success');
+    } catch (error) {
+      if (sessionFence.isCurrent(owner) && activeRef.current && guard.isCurrent())
+        notify(errorMessage(error), 'error');
+    } finally {
+      downloadInProgress.current = false;
+      setDownloading(false);
+    }
+  }
+
   async function flattenLayers() {
     if (!editor.file) return;
     const name = filenameBase(editor.file.name);
@@ -1704,7 +1746,9 @@ export function App({
       if (!current()) return;
       const layerFiles = await resolveLayerReferences(recipe, current, new Map(draft.layerFiles));
       if (!current()) return;
-      if (!(await editor.loadFile(file, recipe, current, layerFiles)) || !current()) return;
+      if (!(await editor.loadFile(file, recipe, current, layerFiles,
+        sourceAsset ? retainedPhotoDimensions(sourceAsset) ?? null : undefined,
+        sourceAsset?.provenance?.editorProxy ? sourceAsset.id : undefined)) || !current()) return;
       if (sourceAsset) cloudBaseSources.current.set(editor.getSourceIdentity(), sourceAsset);
       if (projectData) {
         const target = projectData.project;
@@ -1778,6 +1822,8 @@ export function App({
         data.revision.recipe,
         load.isCurrent,
         layerReferences,
+        retainedPhotoDimensions(data.asset) ?? null,
+        data.asset.provenance?.editorProxy ? data.asset.id : undefined,
       );
       if (!loaded) return load.abandoned();
       if (load.request !== projectRequest.current) return false;
@@ -1844,6 +1890,9 @@ export function App({
         new File([blob], next.name, { type: blob.type || next.mime }),
         undefined,
         load.isCurrent,
+        undefined,
+        retainedPhotoDimensions(next) ?? null,
+        next.provenance?.editorProxy ? next.id : undefined,
       );
       if (!loaded) return load.abandoned();
       if (load.request !== projectRequest.current) return false;
@@ -2056,15 +2105,9 @@ export function App({
           )
             layerFile = await normalizeImageSourceFile(layerFile);
           assertCurrent();
-          if (layerFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+          if (layerFile.size > (config?.limits.maxUploadBytes ?? 50 * 1024 * 1024))
             throw new Error(t('合成素材超出服务器上传预算。'));
-          const form = new FormData();
-          form.append('file', layerFile);
-          const uploaded = await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
-            method: 'POST',
-            body: form,
-          });
-          uploadedAsset = uploaded.asset;
+          uploadedAsset = await uploadProjectPhoto(layerFile, target.id, session.user!.id, assertCurrent);
         }
         if (
           savedSource !== rawEditor.getSourceIdentity() ||
@@ -2136,7 +2179,7 @@ export function App({
           if (
             editor.dimensions &&
             editor.dimensions.width * editor.dimensions.height >
-              (config?.limits.maxPixels ?? 40_000_000)
+              (config?.limits.maxPixels ?? 64_000_000)
           )
             throw new Error(
               t(
@@ -2147,20 +2190,15 @@ export function App({
             !!config?.media && !config.media.serverImport.includes(editor.sourceFormat),
           );
           if (!stillCurrent()) return;
-          if (uploadFile.size > (config?.limits.maxUploadBytes ?? 20 * 1024 * 1024))
+          if (uploadFile.size > (config?.limits.maxUploadBytes ?? 50 * 1024 * 1024))
             throw new Error(
               t('上传文件超过当前云端 {v0} MiB 上限，本地作品仍然保留。', {
-                v0: Math.floor((config?.limits.maxUploadBytes ?? 20 * 1024 * 1024) / 1024 / 1024),
+                v0: Math.floor((config?.limits.maxUploadBytes ?? 50 * 1024 * 1024) / 1024 / 1024),
               }),
             );
-          const form = new FormData();
-          form.append('file', uploadFile);
-          currentAsset = (
-            await api<{ asset: Asset }>(`/projects/${target.id}/assets`, {
-              method: 'POST',
-              body: form,
-            })
-          ).asset;
+          currentAsset = await uploadProjectPhoto(uploadFile, target.id, session.user!.id, () => {
+            if (!stillCurrent()) throw new Error(t('图片或账号范围已变化，未继续上传图层。'));
+          });
         }
         if (!stillCurrent())
           throw new Error(t('源图片或项目已切换，本次素材保留在原项目，未绑定到当前画面。'));
@@ -2219,6 +2257,12 @@ export function App({
     if (!pendingImport || !project) throw new Error(t('请先选择文件和保存项目。'));
     const incoming = pendingImport;
     const destination = project;
+    const owner = sessionFence.snapshot();
+    const assertOwner = () => {
+      if (!owner.actor || !sessionFence.isCurrent(owner))
+        throw new Error(t('账号已切换，原照片导入已停止。'));
+    };
+    assertOwner();
     const guard = createSourceLoadGuard(() => ({
       context: projectRequest.current,
       source: editor.getSourceIdentity(),
@@ -2228,12 +2272,11 @@ export function App({
       throw new Error(
         t('这份文件超过当前服务端上传上限。没有上传，请使用较小副本或调整服务配置。'),
       );
-    const form = new FormData();
-    form.append('file', incoming);
-    const uploaded = await api<{ asset: Asset }>(`/projects/${destination.id}/assets`, {
-      method: 'POST',
-      body: form,
-    });
+    const uploaded = { asset: await uploadProjectPhoto(incoming, destination.id, owner.actor!, () => {
+      assertOwner();
+      if (!guard.isCurrent()) throw new Error(t('图片或账号范围已变化，未继续上传图层。'));
+    }) };
+    assertOwner();
     const result = await api<{ artwork: Artwork; revision: Revision }>(
       `/projects/${destination.id}/artworks`,
       jsonRequest('POST', {
@@ -2242,6 +2285,7 @@ export function App({
         recipe: createRecipeV4(),
       }),
     );
+    if (!sessionFence.isCurrent(owner)) return;
     setRefreshToken((value) => value + 1);
     if (guard.status() === 'superseded') {
       notify(
@@ -2497,6 +2541,8 @@ export function App({
         data.revision.recipe,
         load.isCurrent,
         references,
+        retainedPhotoDimensions(data.asset) ?? null,
+        data.asset.provenance?.editorProxy ? data.asset.id : undefined,
       );
       if (!loaded) {
         load.abandoned();
@@ -2713,6 +2759,7 @@ export function App({
   const floatingVoice = activePanelId === 'ai' && aiActivity.callVisible;
   const mobileAssistantOpen = phoneEditor && activePanelId === 'ai' && !floatingVoice;
   const immersiveEditor = phoneEditor && view === 'editor' && !!editor.file && !mobileAssistantOpen;
+  const photoActionsInHeader = immersiveEditor && (!mobileChromeExpanded || workspaceLayout.view.width <= 439);
   const photoSessionActions = (
     <div className="image-action-strip photo-session-actions">
       <button type="button" data-action="exit-photo" aria-label={t('退出编辑')}
@@ -2720,6 +2767,12 @@ export function App({
         onClick={() => void exitPhotoEditing()}>
         <ArrowLeft size={17} aria-hidden />
         <span>{t('退出编辑')}</span>
+      </button>
+      <button type="button" data-action="download-photo" aria-label={t('下载 {format}', { format: 'PNG' })}
+        title={t('下载 {format}', { format: 'PNG' })} disabled={downloading || !editor.file || opening || editor.loading}
+        onClick={() => void downloadCurrentPhoto()}>
+        {downloading ? <Busy label="" /> : <DownloadSimple size={17} aria-hidden />}
+        <span>{t('下载 {format}', { format: 'PNG' })}</span>
       </button>
       {canRemovePhoto && <button type="button" data-action="trash-photo"
         aria-label={t(deletePhotoLabel)} title={t(deletePhotoLabel)}
@@ -3261,7 +3314,7 @@ export function App({
                   }
                 />
                 <div className="workspace-top-actions">
-                  {immersiveEditor && !mobileChromeExpanded && photoSessionActions}
+                  {photoActionsInHeader && photoSessionActions}
                   {immersiveEditor &&
                     <IconButton label={t(mobileChromeExpanded ? '收起顶部工具' : '展开顶部工具')}
                       className="mobile-chrome-toggle" aria-expanded={mobileChromeExpanded}
@@ -3407,7 +3460,13 @@ export function App({
                   dismissLabel={interactionText('dismissCloud')}
                   onRetry={retryCloudRead} onDismiss={() => setCloudNoticeDismissed(true)} />}
               </div>
-              <div className="workspace-notice-anchor" ref={setNoticeContainer} />
+              <div
+                className="workspace-notice-anchor"
+                ref={setNoticeContainer}
+                style={view === 'editor' && workspaceLayout.view.toolShelfHeight ? {
+                  bottom: `calc(${workspaceLayout.view.toolShelfHeight + 16}px + env(safe-area-inset-bottom))`,
+                } : undefined}
+              />
               <div className="workspace-body">
                 <MotionSwitch
                   switchKey={view}
@@ -3429,7 +3488,7 @@ export function App({
                         }}
                       >
                         {editor.file && <CanvasTools layout={canvasTools} focused={workspaceLayout.focused}
-                          fixedActions={immersiveEditor && !mobileChromeExpanded ? undefined : photoSessionActions}
+                          fixedActions={photoActionsInHeader ? undefined : photoSessionActions}
                           actions={<div className="image-action-strip" data-motion="canvas-toolbar">
                             <IconButton
                               label={t('打开另一张图片')}
@@ -3536,6 +3595,15 @@ export function App({
                             project={project}
                             refreshToken={refreshToken}
                             onDirtyChange={setDocumentDirty}
+                            captureCover={coverForProject(project.id)}
+                            onUseDocument={async (doc) => {
+                              const actor = sessionFence.snapshot();
+                              const projectScope = projectRequest.current;
+                              if (!actor.actor || !await openAI() || !sessionFence.isCurrent(actor) ||
+                                  projectRequest.current !== projectScope) return;
+                              setSourceDocumentRequest({ actorId: actor.actor, projectId: project.id,
+                                id: doc.id, version: doc.version, title: doc.title });
+                            }}
                           />
                         ) : (
                           requireProject
@@ -3783,6 +3851,9 @@ export function App({
                           visible={activePanelId === 'ai'}
                           mobilePage={phoneEditor}
                           generationRequest={collageReturn?.request}
+                          sourceDocumentRequest={sourceDocumentRequest?.actorId === session.user?.id &&
+                            sourceDocumentRequest?.projectId === aiProject?.id ? sourceDocumentRequest : null}
+                          onSourceDocumentUsed={() => setSourceDocumentRequest(null)}
                           returnLabel={collageReturn ? t('返回拼图') : undefined}
                           collageActions={
                             project && ['owner', 'admin', 'editor'].includes(project.role)
@@ -3816,6 +3887,7 @@ export function App({
                           onConfirmPreview={() => editor.commitCurrent(t('确认 AI 调整'))}
                           onCancelPreview={editor.cancelPreview}
                           captureCanvasPreview={editor.file ? async () => (await captureCanvasImage()).imageDataUrl : undefined}
+                          captureProjectCover={coverForProject(aiProject?.id)}
                           canvasSourceId={sourceIdentity}
                           onUseCanvasSource={
                             project && ['owner', 'admin', 'editor'].includes(project.role)
