@@ -4,7 +4,7 @@
 
 用正常工作台路径验证：助手提议 864 × 1536 像素的竖幅插画，报价 3 个测试服务点，点击后数据库出现一个任务。模型适配器收到相同尺寸，私有素材的 PNG 解码也为 864 × 1536。打开该结果继续编辑，在原导出窗口选择长边 1080，实际下载并独立解码的 PNG、JPEG、WebP 均为 608 × 1080。报价还根据引用素材的宽高比、模型开放尺寸、像素步长和整批预算选择尺寸，用户点下的报价与提交的是同一份参数。模型响应使用本地协议样本。[完整浏览器场景](../../scripts/qa/agent-image.browser.mjs) · [尺寸和报价测试](../../apps/web/test/ai-capabilities.test.ts)
 
-导出尺寸按裁切和旋转后的画面计算。默认保留编辑栅格可输出的全部像素，按长边缩小时保持比例；透明像素按 Alpha 加权参与缩放。超过编辑预算的原片和编辑代理分别标尺寸，原件下载保留源字节。浏览器支持 Worker、OffscreenCanvas 和流式压缩时，静态 JPEG/PNG 的全局逐像素调色、裁切、直角旋转和翻转可以重新读取原片、分条带计算并输出原分辨率 PNG。含图层、局部修复、蒙版等空间操作的配方按编辑副本的实际尺寸输出。[导出工作线程](../../apps/web/src/editor/render.worker.ts) · [尺寸和透明边缘测试](../../apps/web/test/export-size.test.ts) · [Adobe Lightroom 长边与禁止放大](https://helpx.adobe.com/lightroom-classic/desktop/export-photos/export-files-disk-or-cd.html) · [libvips 的透明图缩小实现](https://github.com/libvips/libvips/blob/master/libvips/resample/thumbnail.c)
+导出尺寸按裁切和旋转后的画面计算。工具栏下载对可重放的大图配方直接生成原片尺寸的编辑 PNG，复用导出面板显示进度和取消；需要代理的配方先显示可导出的实际尺寸。小图继续一键下载。手动选择长边缩小时保持比例，透明像素按 Alpha 加权参与缩放。超过编辑预算的原片和编辑代理分别标尺寸，原件下载保留源字节。浏览器支持 Worker、OffscreenCanvas 和流式压缩时，静态 JPEG/PNG 的全局逐像素调色、裁切、直角旋转和翻转可以重新读取原片、分条带计算并输出原分辨率 PNG。含图层、局部修复、蒙版等空间操作的配方按编辑副本的实际尺寸输出。[导出工作线程](../../apps/web/src/editor/render.worker.ts) · [尺寸和透明边缘测试](../../apps/web/test/export-size.test.ts) · [Adobe Lightroom 长边与禁止放大](https://helpx.adobe.com/lightroom-classic/desktop/export-photos/export-files-disk-or-cd.html) · [libvips 的透明图缩小实现](https://github.com/libvips/libvips/blob/master/libvips/resample/thumbnail.c)
 
 真实 48 MP Worker 验收对 25,235,741 字节、EXIF 6 的相机片施加 +0.45 EV、色温 −14、90° 旋转和翻转，得到 8000 × 6000 PNG（163,465,937 字节）。四角、相邻像素和条带交界等 12 处的 RGBA 均与同一浏览器从原件独立解码、执行参考算法的结果相同。另用透明 PNG 比对全部像素。PNG 文件尺寸取决于图像内容；实际下载字节数显示在导出面板。[正式 Worker 与参考像素](../../scripts/qa/original-photo-export.browser.mjs) · [四种旋转和全部翻转的像素回归](../../packages/editor/test/original-photo-export.test.ts)
 
@@ -17,6 +17,8 @@
 合并后的复验暴露过一个团队语音状态同步问题。作品产生新版本时，观察者若正在等待数据库重新核对权限，可能错过唯一一次“AI 上下文待更新”的房间状态。回归测试用实际 PostgreSQL 表锁稳定重现。服务端在成功复核后为错过变化的成员补发当前状态一次；已撤权成员断开连接，音频和字幕保持实时传递。[房间状态与权限复核](../../apps/api/src/assistant/team-voice.ts) · [慢查询和成员撤权的 WebSocket 回归](../../apps/api/test/team-voice.test.ts)
 
 窄画布的工具栏允许整组换行，给拼图和布局按钮各自保留可点击区域。在手机上收起顶部导航时，已有的导航按钮使用同一产品标识。浏览器验收同时检查按钮中心的实际点击目标、暗色手机上标识的可见性，以及标识与 favicon 的源文件一致性。[响应式编辑流程](../../scripts/qa/system-redesign.browser.mjs)
+
+同一个 8 MP 作品的工具栏验收覆盖三种结果。获取云端原件过程中取消，浏览器没有开始下载；在水平翻转配方下只点击一次工具栏下载，得到 3200 × 2500 PNG，独立解码后的 32,000,000 个 RGBA 字节均与参考翻转一致（SHA-256 `39f6f2207eb07525710bfcca4d790f21591da320024d63f9177773ce23743391`）。启用局部径向蒙版并设置 +0.5 EV 后，工作台先显示 3200 × 2500 原件和 2317 × 1810 编辑副本。用户选定下载后才生成实际为 2317 × 1810 的 PNG。[工具栏下载回归](../../scripts/qa/large-photo.browser.mjs) · [导出期间切换图片和配方](../../apps/web/test/export-flow.test.ts)
 
 ## 上次开发基线（schema 29）
 

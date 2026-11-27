@@ -148,12 +148,14 @@ export async function prepareBoundImageExport<Recipe>(
 
 export function ExportDialog({
   editor,
+  quickDownload,
   sourcePending,
   onClose,
   onSuccess,
   onRecipeImport,
 }: {
   editor: EditorState;
+  quickDownload?: () => boolean;
   sourcePending: boolean;
   onClose: () => void;
   onSuccess: (message: string) => void;
@@ -239,7 +241,7 @@ export function ExportDialog({
       setError(t('可再次点击分享，或直接下载图片。'));
     }
   }
-  async function save(intent: 'download' | 'share') {
+  async function save(intent: 'download' | 'share', requestedOwner?: () => boolean) {
     if (locked.current || sourcePending || editor.loading || !editor.file) return;
     if (intent === 'share' && preparedRef.current && preparedOwner.current?.isCurrent()) {
       locked.current = true;
@@ -255,7 +257,7 @@ export function ExportDialog({
       context: generation.current,
       source: current.current.editor.getSourceIdentity(),
       recipe: current.current.editor.getRecipe(),
-      live: live.current,
+      live: live.current && (requestedOwner?.() ?? true),
       sourcePending: current.current.sourcePending || current.current.editor.loading,
     });
     const guard = createSourceLoadGuard(read);
@@ -286,7 +288,7 @@ export function ExportDialog({
         if (result) URL.revokeObjectURL(result.url);
         return;
       }
-      if (!result || !guard.isCurrent() || read().sourcePending) {
+      if (!result || !guard.isCurrent() || !read().live || read().sourcePending) {
         if (result) URL.revokeObjectURL(result.url);
         setError('图片或调整在导出期间发生了变化，旧结果已丢弃。请为当前画面重新生成文件。');
         return;
@@ -323,6 +325,18 @@ export function ExportDialog({
       }
     }
   }
+  const startQuickDownload = useRef<() => void>(() => {});
+  startQuickDownload.current = () => {
+    if (quickDownload && renderOriginal && quickDownload()) void save('download', quickDownload);
+  };
+  useEffect(() => {
+    if (!quickDownload) return;
+    // StrictMode may remount effects before the first paint. Only the surviving
+    // dialog can dispatch, and a later recipe change cannot restart a cancelled export.
+    let currentMount = true;
+    queueMicrotask(() => { if (currentMount) startQuickDownload.current(); });
+    return () => { currentMount = false; };
+  }, [quickDownload]);
   const ready =
     prepared && preparedOwner.current?.isCurrent() && !sourcePending && !editor.loading
       ? prepared

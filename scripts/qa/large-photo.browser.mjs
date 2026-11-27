@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { basename, extname, resolve } from 'node:path';
+import { createRecipeV4, photoProxySize } from '@ai-xiutu/editor';
 import { chromium } from 'playwright';
 import sharp from 'sharp';
 import { preview } from 'vite';
@@ -22,7 +23,11 @@ async function sha256(stream) {
   return hash.digest('hex');
 }
 const digest = (file) => sha256(createReadStream(file));
-const pixelDigest = (file) => sha256(sharp(file, { sequentialRead: true }).autoOrient().toColourspace('srgb').ensureAlpha().raw());
+function pixelDigest(file, flip = false) {
+  const image = sharp(file, { sequentialRead: true }).autoOrient();
+  if (flip) image.flop();
+  return sha256(image.toColourspace('srgb').ensureAlpha().raw());
+}
 const fixture = await collaborationFixture(databaseUrl, { origin });
 let server, browser;
 const errors = [];
@@ -75,6 +80,79 @@ async function compareOriginal(page, file, expected, cloud) {
   }
   await dialog.getByRole('button', { name: '关闭窗口', exact: true }).click();
 }
+async function applyRecipe(page, recipe) {
+  const notice = page.getByText('配方已应用到本地编辑。', { exact: true });
+  await notice.waitFor({ state: 'hidden' });
+  await page.getByLabel('选择配方文件', { exact: true }).setInputFiles({
+    name: 'edit.recipe.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(recipe)),
+  });
+  await notice.waitFor();
+  await page.locator('.canvas-stage.has-image[aria-busy="false"] .image-frame canvas:visible').first().waitFor();
+}
+async function checkQuickDownload(page, file, expected) {
+  await showEditorTopbar(page);
+  const direct = page.locator('[data-action="download-photo"]:visible').first();
+  const dialog = page.locator('dialog.export-dialog[open]');
+  const close = dialog.getByRole('button', { name: '关闭窗口', exact: true });
+  const originalPath = /\/v1\/assets\/[^/]+\/media\/original$/;
+  let requests = 0, downloads = 0;
+  page.on('request', (r) => { if (originalPath.test(r.url())) requests++; });
+  page.on('download', () => { downloads++; });
+
+  // Hold the first authorized read so cancel is tested independently of device speed.
+  const held = Promise.withResolvers(), unblock = Promise.withResolvers();
+  await page.route(originalPath, async (route) => {
+    held.resolve();
+    await unblock.promise;
+    await route.abort().catch(() => {});
+  });
+  try {
+    await direct.click();
+    await Promise.race([held.promise, page.waitForTimeout(10_000).then(() => { throw new Error('The large download did not request its original'); })]);
+    await dialog.getByRole('button', { name: '取消导出', exact: true }).click();
+    await dialog.getByRole('button', { name: '取消导出', exact: true }).waitFor({ state: 'hidden' });
+  } finally {
+    unblock.resolve();
+    await page.unroute(originalPath);
+  }
+  assert.equal(downloads, 0);
+  await close.click();
+
+  const recipe = createRecipeV4();
+  recipe.geometry.flipX = true;
+  await applyRecipe(page, recipe);
+  const [edited] = await Promise.all([page.waitForEvent('download', { timeout: 120_000 }), direct.click()]);
+  const output = await edited.path(), decoded = await sharp(output).metadata();
+  assert.deepEqual([decoded.format, decoded.width, decoded.height], ['png', expected.width, expected.height]);
+  const rgbaSha256 = await pixelDigest(output);
+  assert.equal(rgbaSha256, await pixelDigest(file, true));
+  assert.notEqual(rgbaSha256, await pixelDigest(file));
+  assert.equal(downloads, 1);
+  assert.equal(requests, 2);
+  await close.click();
+
+  recipe.local.enabled = true;
+  recipe.local.adjustments.exposure = 0.5;
+  await applyRecipe(page, recipe);
+  await direct.click();
+  await dialog.getByText(new RegExp('原件.*' + expected.width + '.*' + expected.height)).waitFor();
+  const proxy = photoProxySize(expected.width, expected.height);
+  const choice = dialog.getByRole('combobox', { name: '输出尺寸', exact: true });
+  assert.ok((await choice.textContent()).includes('编辑副本 · ' + proxy.width + ' × ' + proxy.height));
+  const confirm = dialog.getByRole('button', { name: '下载 PNG', exact: true });
+  assert.equal(await confirm.isEnabled(), true);
+  assert.equal(downloads, 1);
+  assert.equal(requests, 2);
+  const [copy] = await Promise.all([page.waitForEvent('download', { timeout: 120_000 }), confirm.click()]);
+  const raster = await sharp(await copy.path()).metadata();
+  assert.deepEqual([raster.width, raster.height], [proxy.width, proxy.height]);
+  assert.equal(downloads, 2);
+  assert.equal(requests, 2);
+  console.log(JSON.stringify({ toolbarDownload: basename(file), cancelledWithoutDownload: true,
+    flippedRgbaSha256: rgbaSha256, editedSize: [decoded.width, decoded.height],
+    explicitlySelectedMaskedCopy: [raster.width, raster.height] }));
+  await close.click();
+}
 async function context() {
   // Use a separate browser context to prove that a later session uses the stored original.
   browser = await chromium.launch(process.env.BROWSER_EXECUTABLE
@@ -116,6 +194,7 @@ try {
     await browser.close();
     const later = await context(), reopened = await enterProject(later, work.title);
     await compareOriginal(reopened, file, expected, true);
+    if (extname(file).toLowerCase() === '.png') await checkQuickDownload(reopened, file, expected);
     await browser.close();
     console.log(JSON.stringify({ filename, width, height, originalSha256: expected.hash, artworkId: work.id,
       localDownload: 'matched', cloudDownload: 'matched' }));

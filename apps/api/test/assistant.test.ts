@@ -136,14 +136,23 @@ test('assistant freezes supported turn controls and the exact quote before dispa
       }), { headers: { 'content-type': 'application/json', 'x-request-id': 'local-quote-proof' } });
     },
   });
+  const modelId = 'gpt-5.4-mini';
+  const modelIds = [modelId, 'gpt-5-mini'];
+  type SavedModel = { id: string; config: string; updated_at: string };
+  let originals: SavedModel[] | undefined;
   try {
-    const modelId = 'gpt-5.4-mini';
     const config = { ...f.settings, reasoningEffort: 'none', responseTierUnits: { flex: 8 } };
-    for (const id of [modelId, 'gpt-5-mini'])
-      await f.db.query(
-        'INSERT INTO assistant_model_configs(id,config) VALUES($1,$2) ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config',
-        [id, JSON.stringify(config)],
+    originals = await transaction(f.db, async (tx) => {
+      const saved = await tx.query<SavedModel>(
+        'SELECT id,config::text,updated_at::text FROM assistant_model_configs WHERE id=ANY($1::text[]) FOR UPDATE',
+        [modelIds],
       );
+      await tx.query(
+        'INSERT INTO assistant_model_configs(id,config) SELECT unnest($1::text[]),$2::jsonb ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config',
+        [modelIds, JSON.stringify(config)],
+      );
+      return saved.rows;
+    });
     const catalog = (await f.call('GET', '/v1/assistant/models')).json();
     assert.ok(catalog.models.some((model: { id: string }) => model.id === modelId));
     assert.ok(!catalog.models.some((model: { id: string }) => model.id === 'gpt-5-mini'));
@@ -179,8 +188,27 @@ test('assistant freezes supported turn controls and the exact quote before dispa
     assert.equal((await f.db.query('SELECT h.units FROM quota_holds h JOIN assistant_turns a ON a.hold_id=h.id WHERE a.id=$1', [id])).rows[0]!.units, 8);
     assert.equal((await f.call('POST', endpoint, body)).json().id, id);
     assert.equal(received.length, 1);
-    await f.db.query('DELETE FROM assistant_model_configs WHERE id=$1', ['gpt-5-mini']);
-  } finally { await f.close(); }
+  } finally {
+    try {
+      const saved = originals;
+      if (saved) await transaction(f.db, async (tx) => {
+        for (const id of modelIds) {
+          const row = saved.find((entry) => entry.id === id);
+          if (row) {
+            await tx.query(
+              'INSERT INTO assistant_model_configs(id,config,updated_at) VALUES($1,$2::jsonb,$3::timestamptz) ' +
+                'ON CONFLICT(id) DO UPDATE SET config=EXCLUDED.config,updated_at=EXCLUDED.updated_at',
+              [id, row.config, row.updated_at],
+            );
+          } else {
+            await tx.query('DELETE FROM assistant_model_configs WHERE id=$1', [id]);
+          }
+        }
+      });
+    } finally {
+      await f.close();
+    }
+  }
 });
 
 test(

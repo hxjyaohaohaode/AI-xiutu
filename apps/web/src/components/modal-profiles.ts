@@ -282,6 +282,7 @@ export function modalMotionRoleForDialog(dialog: string | null): `modal-${ModalP
     billing: 'billing',
     quota: 'billing',
     export: 'export',
+    downloadExport: 'export',
     drawing: 'drawing',
     commands: 'command',
     settings: 'settings',

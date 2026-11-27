@@ -266,6 +266,7 @@ type Dialog =
   | 'teamSettings'
   | 'share'
   | 'export'
+  | 'downloadExport'
   | 'conflict'
   | 'help'
   | 'quota'
@@ -1636,11 +1637,10 @@ export function App({
   }
 
   const downloadInProgress = useRef(false);
+  const quickDownloadOwner = useRef<() => boolean>(() => false);
   const [downloading, setDownloading] = useState(false);
   async function downloadCurrentPhoto() {
     if (!editor.file || editor.isLoading() || opening || downloadInProgress.current) return;
-    downloadInProgress.current = true;
-    setDownloading(true);
     const owner = sessionFence.snapshot();
     const name = filenameBase(editor.file.name) + '-编辑.png';
     const guard = createSourceLoadGuard(() => ({
@@ -1648,6 +1648,16 @@ export function App({
       source: editor.getSourceIdentity(),
       recipe: editor.getRecipe(),
     }));
+    if (editor.usingSourceProxy) {
+      // The same dialog drives both explicit export and one-click original rendering.
+      // Bind the click to this source/recipe before the dialog's first effect runs.
+      quickDownloadOwner.current = () => dialogRef.current === 'downloadExport' &&
+        sessionFence.isCurrent(owner) && activeRef.current && guard.isCurrent() && !editor.isLoading();
+      setDialog('downloadExport');
+      return;
+    }
+    downloadInProgress.current = true;
+    setDownloading(true);
     try {
       const pixels = await editor.exportImage('png');
       if (!sessionFence.isCurrent(owner) || !activeRef.current) return;
@@ -4419,8 +4429,10 @@ export function App({
         {renderedDialog === 'share' && project && (
           <ShareDialog project={project} onClose={closeDialog} />
         )}
-        {renderedDialog === 'export' && editor.file && (
+        {(renderedDialog === 'export' || renderedDialog === 'downloadExport') && editor.file && (
           <ExportDialog
+            key={renderedDialog}
+            quickDownload={renderedDialog === 'downloadExport' ? quickDownloadOwner.current : undefined}
             editor={editor}
             sourcePending={opening || editor.loading}
             onClose={closeDialog}
