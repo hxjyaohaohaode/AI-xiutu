@@ -33,7 +33,7 @@ const actions = [
   { command: 'list', label: '项目符号', Icon: ListBullets },
 ] as const;
 
-function DocumentPreview({
+export function DocumentPreview({
   text,
   layout,
   title,

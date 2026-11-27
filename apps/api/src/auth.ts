@@ -299,6 +299,48 @@ export function registerAuth(
     if (!row) throw new HttpError(401, 'AUTH_REQUIRED', '登录已失效，请重新登录');
     return row;
   });
+  app.post('/v1/auth/change-password', async (req, reply) => {
+    const user = requireUser(req);
+    const body = z.object({
+      expectedUserId: z.uuid(),
+      currentPassword: z.string().min(1).max(128),
+      newPassword: passwordSchema,
+    }).strict().parse(req.body);
+    if (user.id !== body.expectedUserId)
+      throw new HttpError(409, 'SESSION_CHANGED', '登录状态已变化，请确认当前账号后继续。');
+    await rateLimit(db, `password-change:${keyed(user.id)}`, 5, 600);
+    const found = (await db.query(
+      "SELECT password_hash FROM users WHERE id=$1 AND status='active'",
+      [user.id],
+    )).rows[0];
+    if (!(await verifyPassword(body.currentPassword, found?.password_hash ?? null)))
+      throw new HttpError(400, 'CURRENT_PASSWORD_INVALID', '当前密码不正确');
+    if (body.currentPassword === body.newPassword)
+      throw new HttpError(400, 'PASSWORD_UNCHANGED', '新密码需要与当前密码不同');
+    const newHash = await hashPassword(body.newPassword);
+    const priorTokenHash = hash(req.cookies.xiutu_session ?? '');
+    const token = await transaction(db, async (tx) => {
+      // Acquire the account fence before taking a session lock. Sign-in and
+      // changes from another device cannot issue a session from the old hash.
+      const current = (await tx.query(
+        "SELECT password_hash FROM users WHERE id=$1 AND status='active' FOR UPDATE",
+        [user.id],
+      )).rows[0];
+      await lockActiveSession(tx, user.id, priorTokenHash);
+      if (!current || current.password_hash !== found?.password_hash)
+        throw new HttpError(409, 'SESSION_CHANGED', '账号已更新，请重新确认当前登录状态');
+      await tx.query(
+        'UPDATE users SET password_hash=$2,updated_at=clock_timestamp() WHERE id=$1',
+        [user.id, newHash],
+      );
+      await tx.query('DELETE FROM sessions WHERE user_id=$1', [user.id]);
+      const replacement = await issueSession(tx, user.id);
+      await audit(tx, user.id, 'account.password_changed', 'user', user.id);
+      return replacement;
+    });
+    setSessionCookie(reply, config, token);
+    return { ok: true };
+  });
   app.post('/v1/auth/logout-others', async (req) => {
     const user = requireUser(req);
     const { expectedUserId } = z.object({ expectedUserId: z.uuid() }).strict().parse(req.body);

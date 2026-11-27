@@ -47,6 +47,7 @@ import { InspectorFamilyNav } from './InspectorFamilyNav';
 import { CurveEditor } from './CurveEditor';
 import type { EditorState } from './useEditor';
 import { Histogram } from './Histogram';
+import { LightSuggestion } from './LightSuggestion';
 import { ColorPicker } from '../components/ColorPicker';
 import { PrecisionRange } from './PrecisionRange';
 import { ParameterShelf } from './ParameterShelf';
@@ -597,6 +598,7 @@ function LegacyToolInspector({
             {['light', 'color', 'curves'].includes(group) && <Histogram image={editor.rendered} />}
             {group === 'light' && (
               <>
+                <LightSuggestion editor={editor} apply={editor.commit} />
                 <div className="control-stack">{sliders(groupIds.light)}</div>
                 <Section title={t('精确色阶')} suffix={t('输入 · 伽马 · 输出')}>
                   {upgradeCard}

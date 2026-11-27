@@ -232,6 +232,7 @@ export function AIPanel({
   generationRequest,
   sourceDocumentRequest,
   onSourceDocumentUsed,
+  onOpenProjectDocuments,
   returnLabel,
   onBeforeArtworkWrite,
   onAfterArtworkWrite,
@@ -282,6 +283,7 @@ export function AIPanel({
   generationRequest?: string;
   sourceDocumentRequest?: SourceDocumentRequest | null;
   onSourceDocumentUsed?: () => void;
+  onOpenProjectDocuments?: () => void;
   returnLabel?: string;
   onBeforeArtworkWrite?: () => void | Promise<void>;
   onAfterArtworkWrite?: () => void | Promise<void>;
@@ -1440,6 +1442,7 @@ export function AIPanel({
             onClose={mobilePage ? undefined : onClose}
             onActivityChange={setAssistantActivity}
             project={project}
+            projectDocuments={documents}
             artwork={artwork}
             recipe={recipe}
             isLoggedIn={isLoggedIn}
@@ -1477,6 +1480,7 @@ export function AIPanel({
               else onClearVisualAttachment?.(attachment);
             }}
             onUseCanvasSource={onUseCanvasSource}
+            onOpenProjectDocuments={onOpenProjectDocuments}
             generationOfferLabel={(refs, draftPrompt) => {
               const offer = candidateOffer(refs, draftPrompt);
               return offer && t('生成 · {model} · {width}×{height} · {units} 点', {

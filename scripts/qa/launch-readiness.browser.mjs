@@ -176,10 +176,20 @@ try {
   await desktop.locator('[data-dock-tool="ai"]:visible').click();
   await desktop.getByLabel('向智能体描述修改需求').waitFor();
   const secondDevice = await pageFor('owner', { width: 390, height: 844 });
+  let releaseBinding;
+  const waitForTyping = new Promise(done => { releaseBinding = done; });
+  await secondDevice.route('**/v1/me/creative-project', async route => {
+    if (route.request().method() === 'PUT') await waitForTyping;
+    await route.continue();
+  });
   await secondDevice.locator('[data-dock-tool="ai"]:visible').click();
   const secondEntry = secondDevice.getByLabel('向智能体描述修改需求');
   await secondEntry.fill('另一设备正在输入的草稿');
   await secondDevice.getByRole('button', { name: '选择助手模型与执行方式', exact: true }).waitFor();
+  const bound = secondDevice.waitForResponse(response => response.ok() &&
+    new URL(response.url()).pathname === '/v1/me/creative-project' && response.request().method() === 'PUT');
+  releaseBinding();
+  await bound;
   const recoveredCatalogs = Promise.all(['/v1/assistant/models', '/v1/models'].map((path) =>
     secondDevice.waitForResponse((response) => new URL(response.url()).pathname === path && response.ok()),
   ));

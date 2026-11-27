@@ -33,6 +33,7 @@ import { DialogMotionContext } from '../components/Ui';
 import { AccountPageFrame } from './AccountPageFrame';
 import { AccountIdentityCard, AccountLanyard } from './AccountIdentityCard';
 import { AccountSessions } from './AccountSessions';
+import { AccountPasswordChange } from './AccountPasswordChange';
 import { PlanCatalog } from './PlanCatalog';
 import { AccountAssistantPreferences } from './AccountAssistantPreferences';
 import { QuotaWallet } from './QuotaWallet';
@@ -149,6 +150,7 @@ export function AccountCenter({
   const [tab, setTab] = useState<AccountTab>(initialTab);
   const [direction, setDirection] = useState(1);
   const [retry, setRetry] = useState(0);
+  const [sessionRevision, setSessionRevision] = useState(0);
   const [entitlements, setEntitlements] = useState<EntitlementState>({
     key: null,
     kind: 'loading',
@@ -520,7 +522,11 @@ export function AccountCenter({
                     </button>
                   </div>
                 </div>
-                <AccountSessions key={user.id} userId={user.id} onSessionExpired={onSessionExpired} />
+                <AccountPasswordChange key={user.id} userId={user.id}
+                  onChanged={() => setSessionRevision(value => value + 1)}
+                  onSessionExpired={onSessionExpired} />
+                <AccountSessions key={user.id + ':' + sessionRevision} userId={user.id}
+                  onSessionExpired={onSessionExpired} />
                 {config && !config.capabilities.smsConfigured && (
                   <div className="account-feedback account-feedback-warning" role="status">
                     <WarningCircle size={18} aria-hidden />

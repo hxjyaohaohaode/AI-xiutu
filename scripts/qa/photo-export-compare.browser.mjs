@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
-import { createRecipeV4, renderEditorRecipeTiled } from '@ai-xiutu/editor';
+import { createColorBlockV3, createRecipeV4, renderEditorRecipeTiled } from '@ai-xiutu/editor';
 import { collaborationFixture } from '../../apps/api/test/collaboration-fixture.ts';
 import { showEditorTopbar } from './studio-navigation.mjs';
 
@@ -171,7 +171,37 @@ try {
           reference.width,
           reference.height,
         );
+        const exportDialog = page.locator('dialog.export-dialog:visible');
+        if (await exportDialog.isVisible()) {
+          await page.keyboard.press('Escape');
+          await exportDialog.waitFor({ state: 'hidden' });
+        }
       }
+      // The original-size strip renderer deliberately gates out source composition.
+      // Use a separate recipe to check the interactive composite scope.
+      await page.getByLabel('选择配方文件', { exact: true }).setInputFiles({
+        name: 'composite-light.recipe.json',
+        mimeType: 'application/json',
+        buffer: Buffer.from(JSON.stringify({
+          ...recipe,
+          compositeGrade: createColorBlockV3({ adjustments: { shadows: -17 } }),
+        })),
+      });
+      const lightTool = page.locator('[data-dock-tool="light"]');
+      if (await lightTool.getAttribute('aria-pressed') !== 'true') await lightTool.click();
+      const balance = page.locator('.editor-light-suggestion:visible');
+      await balance.locator('summary').click();
+      await balance.getByLabel('光线方向').selectOption('open-shadows');
+      await balance.getByRole('button', { name: '分析当前画面' }).click();
+      const apply = balance.getByRole('button', { name: '应用光线建议' });
+      await apply.waitFor();
+      assert.match(await balance.getByRole('list', { name: '建议参数' }).innerText(), /阴影\s+-17 →/);
+      await apply.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: join(out, 'light-' + viewport.width + '.png') });
+      await apply.click();
+      await apply.waitFor({ state: 'hidden' });
+      await canvas.waitFor();
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       console.log('Comparison, keyboard, 241 ms hold and viewport overflow passed', viewport);
     } finally {
       await browser.close();

@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
 export const assetSources = ['upload', 'generated', 'sketch', 'derived', 'unknown'] as const;
+export const assetOrientations = ['portrait', 'landscape', 'square'] as const;
+export type AssetOrientation = typeof assetOrientations[number];
 export type AssetSource = (typeof assetSources)[number];
 
 const assetId = z.string().uuid();

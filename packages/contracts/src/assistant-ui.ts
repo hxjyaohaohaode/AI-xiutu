@@ -1,5 +1,50 @@
 import { z } from 'zod';
 const title = z.string().trim().min(1).max(120);
+
+export const assistantProjectFileSchema = z.object({
+  title,
+  format: z.enum(['docx', 'pptx', 'xlsx']),
+  body: z.string().trim().min(1).max(16000),
+}).strict();
+export type AssistantProjectFile = z.infer<typeof assistantProjectFileSchema>;
+
+export const assistantProjectFileInput = z.object({
+  title,
+  format: assistantProjectFileSchema.shape.format,
+  sections: z.array(z.object({
+    heading: z.string().trim().min(1).max(120).regex(/^[^\r\n]+$/),
+    text: z.string().trim().min(1).max(2500),
+  }).strict()).max(12),
+  table: z.object({
+    columns: z.array(z.string().trim().min(1).max(80).regex(/^[^\r\n]+$/)).min(2).max(12),
+    rows: z.array(z.array(z.union([
+      z.string().max(120).regex(/^[^\r\n]*$/), z.number().finite(),
+    ])).min(2).max(12)).min(1).max(40),
+  }).strict().nullable(),
+}).strict();
+
+export function buildAssistantProjectFile(raw: unknown): AssistantProjectFile {
+  const { title, format, sections, table } = assistantProjectFileInput.parse(raw);
+  if (format === 'xlsx' ? !table || sections.length !== 0 : !sections.length)
+    throw new Error('PROJECT_FILE_STRUCTURE');
+  if (table && table.rows.some(row => row.length !== table.columns.length))
+    throw new Error('PROJECT_FILE_COLUMNS');
+  if (format === 'xlsx' && table) {
+    const rows = [table.columns, ...table.rows].map(row => row.map(cell =>
+      typeof cell === 'number' ? String(cell) : '"' + cell.replaceAll('"', '""') + '"',
+    ).join('\t'));
+    return assistantProjectFileSchema.parse({
+      title, format, body: ['```sheet-tsv', ...rows, '```'].join('\n'),
+    });
+  }
+  const body = sections.map(section => `# ${section.heading}\n\n${section.text}`);
+  if (table) {
+    const line = (cells: (string | number)[]) =>
+      '| ' + cells.map(cell => String(cell).replaceAll('\\', '\\\\').replaceAll('|', '\\|')).join(' | ') + ' |';
+    body.push([line(table.columns), line(table.columns.map(() => '---')), ...table.rows.map(line)].join('\n'));
+  }
+  return assistantProjectFileSchema.parse({ title, format, body: body.join('\n\n') });
+}
 export const assistantWorkspaceSchema = z
   .object({
     title,

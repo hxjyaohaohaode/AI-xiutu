@@ -72,7 +72,8 @@ export interface AssistantBranchEvent {
   parentId: string | null;
   dependsOn: string[];
   kind: 'root' | 'web' | 'cloud' | 'canvas' | 'merge' | 'candidate' | 'pixel-review' | 'nomination'
-    | 'tone-review' | 'composition-review' | 'delivery-review' | 'retoucher' | 'image-designer' | 'editing-lead' | 'colorist';
+    | 'tone-review' | 'composition-review' | 'delivery-review' | 'retoucher' | 'image-designer' | 'editing-lead' | 'colorist'
+    | 'office-writer';
   state: 'running' | 'completed' | 'failed';
   execution: 'provider' | 'server';
   resultCount?: number;
@@ -82,7 +83,7 @@ export interface AssistantBranchEvent {
 /** Only these server tools produce reusable work records. Other offloaded tool
  * output remains private to its original turn. */
 export const assistantRecordTool = z.enum([
-  'consult_specialists', 'delegate_studio_task', 'inspect_candidate', 'propose_scene_balance',
+  'consult_specialists', 'delegate_studio_task', 'inspect_candidate', 'propose_scene_balance', 'draft_project_file',
 ]);
 export const assistantToolRecord = z.object({
   artifactId: z.uuid(),
@@ -171,6 +172,14 @@ export function assistantTurnPrice(
   return extra !== undefined && Number.isSafeInteger(extra) && extra >= 0 && Number.isSafeInteger(units + extra)
     ? units + extra : null;
 }
+export const assistantDocumentSelection = z.object({
+  documentId: z.uuid(),
+  expectedVersion: z.number().int().positive().max(2147483647),
+}).strict();
+export type AssistantDocumentSelection = z.infer<typeof assistantDocumentSelection>;
+export type AssistantDocumentSource = {
+  id: string; version: number; title: string; body: string;
+};
 export const assistantTurnSchema = z
   .object({
     idempotencyKey: z.uuid(),
@@ -178,6 +187,7 @@ export const assistantTurnSchema = z
     prompt: z.string().trim().min(1).max(4000),
     context: assistantContextSchema.optional(),
     visualAttachment: assistantVisualAttachmentSchema.optional(),
+    projectDocument: assistantDocumentSelection.optional(),
     scope: assistantScopeSchema.default({
       spaceIds: [],
       referenceAssetIds: [],

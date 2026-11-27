@@ -14,6 +14,7 @@ import { rgba, hsv } from '../components/color-model';
 import { secureUuid } from '../lib/uuid';
 import { CurveEditor } from './CurveEditor';
 import { Histogram } from './Histogram';
+import { LightSuggestion } from './LightSuggestion';
 import { ParameterShelf } from './ParameterShelf';
 import { editorFlowText } from './flow-copy';
 import {
@@ -288,6 +289,11 @@ export function ColorControls({
         <div className="mobile-adjustment-tools">{compactCategory}{resetScope}</div>
       )}
       {!compact && histogram}
+      {family === 'light' && scope.kind === 'global' && lightTab === 'light' && (
+        <LightSuggestion editor={editor} apply={(next, label) => {
+          if (next.schemaVersion === 3 || next.schemaVersion === 4) apply(next, label, true);
+        }} />
+      )}
       {family === 'light' && !compact && (
         <div className="tonal-tabs color-family-tabs" aria-label={t('明暗类别')}>
           {(

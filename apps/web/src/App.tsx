@@ -521,8 +521,9 @@ export function App({
   const saveLock = useRef(false);
   const personalProjectLoad = useRef<{ actor: string; promise: Promise<Project> } | null>(null);
   const [personalAIProject, setPersonalAIProject] = useState<{ actor: string; project: Project } | null>(null);
-  const aiProject = project && ['owner', 'admin', 'editor'].includes(project.role) ? project
-    : personalAIProject?.actor === session.user?.id ? personalAIProject?.project ?? null : null;
+  const selectedAIProject = project && ['owner', 'admin', 'editor'].includes(project.role) ? project : null;
+  const aiProject = selectedAIProject ??
+    (personalAIProject?.actor === session.user?.id ? personalAIProject?.project ?? null : null);
   const projectIdRef = useRef<string | null>(null);
   projectIdRef.current = project?.id ?? null;
   const notify = useCallback(
@@ -3860,13 +3861,15 @@ export function App({
                         </div>
                       ) : (
                         <AIPanelFeature
-                          key={(session.user?.id ?? 'local') + ':' + (aiProject?.id ?? 'none')}
+                          key={(session.user?.id ?? 'local') + ':' + (selectedAIProject?.id ?? 'personal')}
                           visible={activePanelId === 'ai'}
                           mobilePage={phoneEditor}
                           generationRequest={collageReturn?.request}
                           sourceDocumentRequest={sourceDocumentRequest?.actorId === session.user?.id &&
                             sourceDocumentRequest?.projectId === aiProject?.id ? sourceDocumentRequest : null}
                           onSourceDocumentUsed={() => setSourceDocumentRequest(null)}
+                          onOpenProjectDocuments={project?.id === aiProject?.id
+                            ? () => { void changeView('docs'); } : undefined}
                           returnLabel={collageReturn ? t('返回拼图') : undefined}
                           collageActions={
                             project && ['owner', 'admin', 'editor'].includes(project.role)

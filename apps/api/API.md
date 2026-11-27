@@ -19,6 +19,7 @@ Dates are ISO-8601; business-object IDs are UUIDs, while `modelId` is an exact p
 - `POST /v1/auth/login` `{phone,password}` -> session response.
 - `POST /v1/auth/login-otp` `{phone,code}` -> session response.
 - `POST /v1/auth/reset` `{phone,code,newPassword}` -> `{ok:true}`; invalidates all existing sessions.
+- `POST /v1/auth/change-password` `{expectedUserId,currentPassword,newPassword}` -> `{ok:true}` with a replacement session cookie. Verifies the password and current account, rate limits attempts, and revokes all previous session tokens in the password update transaction.
 - `POST /v1/auth/logout` -> `{ok:true}`.
 - Phone may be a Chinese 11-digit mobile number or E.164. Password: 10–128 characters. SMS requires Tencent credentials/template configuration. The server has no fixed administrator account or bypass code.
 
@@ -154,7 +155,9 @@ Audit metadata contains identifiers and the edited flag, not private body text.
 - `GET /v1/projects/:id/documents` -> `{documents:[{id,title,body,version,authorId,createdAt,updatedAt}]}`.
 - `POST /v1/projects/:id/documents` `{title,body?}` -> 201 `{document}`.
 - `PATCH /v1/documents/:id` `{expectedVersion,title?,body?}` -> `{document}`. Plain text, no raw HTML execution.
-- `GET /v1/events?spaceId=UUID&after=0&waitMs=0` -> `{events:[{seq,type,projectId,entityId,createdAt}],nextCursor}`. Max 20s long-poll, bounded batch, rechecks current membership. Events are persistence notifications, not CRDT/automatic merge.
+- `GET /v1/documents/:id/versions?beforeVersion=N&limit=20` -> `{versions:[{version,title,authorName,createdAt}],nextBeforeVersion}`. Lists descending immutable snapshots for current project editors, admins and owners. `beforeVersion` is exclusive, with a maximum page size of 50.
+- `GET /v1/documents/:id/versions/:version` -> `{document}` with the historical title, body and formatting. Loading a snapshot into a draft lets the user save in the normal compare-and-swap path against the current version.
+- `GET /v1/events?spaceId=UUID&after=0&waitMs=0` -> `{events:[{seq,type,projectId,entityId,createdAt}],nextCursor}`. Max 20s long-poll, bounded batch. Each poll requires a current session and current membership. Events are persistence notifications.
 
 ## Sharing
 

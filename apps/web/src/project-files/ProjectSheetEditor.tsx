@@ -73,9 +73,7 @@ export function ProjectSheetEditor({
   return (
     <section className="project-sheet" aria-label={t('工作表')}>
       <div className="project-sheet-bar">
-        <span>
-          {sheet.filename} · {sheet.range}
-        </span>
+        {sheet.filename && sheet.range && <span>{sheet.filename} · {sheet.range}</span>}
         <button type="button" className="text-button" onClick={onSource}>
           {t('正文')}
         </button>

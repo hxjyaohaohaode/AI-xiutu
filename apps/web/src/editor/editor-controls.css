@@ -1577,3 +1577,38 @@
     transition: none;
   }
 }
+.editor-light-suggestion > summary {
+  min-height: 44px;
+  justify-content: start;
+  gap: 8px;
+}
+
+.editor-light-options,
+.editor-light-result {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-block: 8px;
+}
+
+.editor-light-options select {
+  min-width: 8.5rem;
+  min-height: 40px;
+}
+
+.editor-light-result ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1 1 10rem;
+  display: grid;
+  gap: 5px;
+}
+
+.editor-light-result li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}

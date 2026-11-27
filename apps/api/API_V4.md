@@ -102,7 +102,7 @@ the proof inside its transaction. This is targeted replay with leases, not CRDT.
 
 ## 2. Authorized resource search and private memory
 
-- `GET /v1/resources`: `scope=all|personal|team`, `spaceId?`, `projectId?`, `query?` up to120 characters, `remembered=true|false?`, `source=upload|generated|sketch|derived|unknown?`, `mime?`, `createdFrom?`, `createdTo?`, `limit=1..100` default50, `cursor?`. `groupBy=date|project|source|type` uses the same access checks and filters and returns `{groups:[{key,count}]}` across all matching rows. Date grouping accepts an IANA `timeZone` (UTC by default). Project grouping also returns authorized `{id,title}` labels in `projects`.
+- `GET /v1/resources`: `scope=all|personal|team`, `spaceId?`, `projectId?`, `query?` up to120 characters, `remembered=true|false?`, `source=upload|generated|sketch|derived|unknown?`, `mime?`, `orientation=portrait|landscape|square?`, `createdFrom?`, `createdTo?`, `limit=1..100` default50, `cursor?`. Orientation uses the recorded normalized dimensions. `groupBy=date|project|source|type` uses the same access checks and filters and returns `{groups:[{key,count}]}` across all matching rows. Date grouping accepts an IANA `timeZone` (UTC by default). Project grouping also returns authorized `{id,title}` labels in `projects`.
 - Response `{resources:[{asset,space:{id,name,kind},project:{id,title},memory}],nextCursor}`. Rows require current membership or an unexpired grant permitted by current sharing policy. Operator status adds no private rows. Cursor binds actor/filters; changed filters return400 `CURSOR_SCOPE_MISMATCH`.
 - `GET /v1/assets/:id/memory` -> `{memory:null|{remembered,title,tags,note,version,updatedAt}}`; current asset read access.
 - `PUT /v1/assets/:id/memory` `{expectedVersion,remembered,title:null|string,tags:string[],note:string}` -> `{memory}`. Version0 creates a record; later changes use CAS. Title≤200, ≤30 unique tags of≤40characters each, note≤2000. Unknown fields rejected.
@@ -250,6 +250,15 @@ optional, explicitly submitted composer attachment. It requires a model with
 image input, uses the same decoding and moderation limits, and is bound to the
 turn's idempotency hash. The context manifest keeps its kind and normalized
 image hash. The turn stores the attachment bytes only in memory for dispatch.
+
+`projectDocument={documentId,expectedVersion}` explicitly attaches one saved
+document from this project. The ID and version are part of admission and must
+still match at dispatch and publication. The source has a 16,000-character
+and 48 KiB bound. The context manifest records ID, version and digest. The
+root and office delegate may receive the moderated text. `output.files` may
+contain up to four moderated drafts with `title`, `format` (`docx`, `pptx` or
+`xlsx`) and editable `body`. The user may export them or open them as a project
+draft and save through the normal document endpoint.
 
 `scope={spaceIds:UUID[],referenceAssetIds:UUID[],allowWebSearch,publicSearch?,usePersonalMemory,creativeBrief?,executionGrantId?}`
 defaults to empty resource lists and false flags. There are at most12 spaces and8

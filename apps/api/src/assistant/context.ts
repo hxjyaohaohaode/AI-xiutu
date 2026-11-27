@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { parseEditorRecipe } from '@ai-xiutu/editor';
 import type { Database, Queryable } from '@ai-xiutu/db';
-import type { AssistantContext, AssistantScope, VoiceContext } from '@ai-xiutu/contracts';
+import type { AssistantContext, AssistantDocumentSelection, AssistantDocumentSource, AssistantScope, VoiceContext } from '@ai-xiutu/contracts';
 import type { ImageModerator, TextModerator } from '@ai-xiutu/providers';
 import { HttpError, id, lockActiveSession, projectAccess } from '../core.js';
 import type { LocalPrivateStorage } from '../storage.js';
@@ -16,6 +16,29 @@ export async function assistantAccess(db: Queryable, actorId: string, projectId:
   if (!member.rowCount)
     throw new HttpError(403, 'ASSISTANT_MEMBERSHIP_REQUIRED', 'AI 需要已验证的当前空间成员身份');
   return permission;
+}
+
+/** This loader is used only after current project authorization. It never reads
+ * a document from a second project or silently substitutes a later version. */
+export async function selectedAssistantDocument(
+  tx: Queryable,
+  projectId: string,
+  selection: AssistantDocumentSelection,
+  lock = false,
+): Promise<AssistantDocumentSource> {
+  const { rows } = await tx.query(
+    `SELECT id,version,title,CASE WHEN char_length(body)<=16000 AND octet_length(body)<=48000 THEN body END AS body
+     FROM documents WHERE project_id=$1 AND id=$2${lock ? ' FOR SHARE' : ''}`,
+    [projectId, selection.documentId],
+  );
+  const source = rows[0];
+  if (!source)
+    throw new HttpError(404, 'ASSISTANT_DOCUMENT_NOT_FOUND', '此项目文档不可用');
+  if (source.version !== selection.expectedVersion)
+    throw new HttpError(409, 'ASSISTANT_DOCUMENT_CHANGED', '项目文档已有更新，请重新选择版本');
+  if (typeof source.body !== 'string')
+    throw new HttpError(400, 'ASSISTANT_DOCUMENT_BUDGET', '文档超出本轮上下文范围，请选取需要的段落');
+  return { id: source.id, version: source.version, title: source.title, body: source.body };
 }
 /** Transaction-only authorization fence. Lock order is user → sorted spaces →
  * sorted projects → memberships/assets → paid row → hold. Membership mutations
