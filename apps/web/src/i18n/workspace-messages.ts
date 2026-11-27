@@ -37,6 +37,7 @@ const messages: Record<string, readonly [string, string]> = {
   正在连接共编: ['Connecting to live editing', '正在連線至即時共編'],
   云端已同步: ['Synced to cloud', '已同步至雲端'],
   正在同步修改: ['Syncing changes', '正在同步變更'],
+  正在同步并退出: ['Syncing before leaving', '正在同步後離開'],
   '连接中断，修改保留在此页': ['Offline. Changes are kept in this tab.', '連線中斷，變更保留在此分頁。'],
   共编已暂停: ['Live editing paused', '即時共編已暫停'],
   '云端正文已重置，可取回本机修改': ['The cloud document was reset. Your local changes are available to recover.', '雲端內文已重設，可取回本機變更。'],

@@ -88,8 +88,8 @@ async function getDocument(title) {
   return result.json().documents.find((item) => item.title === title);
 }
 
-async function download(page, extension) {
-  const menu = page.getByRole('combobox', { name: '下载文件', exact: true });
+async function download(page, extension, root = page) {
+  const menu = root.getByRole('combobox', { name: '下载文件', exact: true });
   await menu.click();
   const [file] = await Promise.all([
     page.waitForEvent('download'),
@@ -286,11 +286,19 @@ try {
   };
 
   const deckTitle = '自由排版验收';
-  await worksheet.getByRole('textbox', { name: 'C4', exact: true }).fill('=B4+15');
+  await worksheet.getByRole('textbox', { name: 'C4', exact: true }).focus();
+  const formulaBar = worksheet.getByRole('textbox', { name: '公式栏', exact: true });
+  await until(
+    () => formulaBar.inputValue(),
+    (value) => value === '=SUM(B3:B4)',
+    'Formula bar loaded the selected cell',
+  );
+  await formulaBar.fill('=B4+15');
+  assert.equal(await formulaBar.inputValue(), '=B4+15');
   await owner.getByRole('button', { name: '新建演示', exact: true }).click();
   const slides = owner.getByRole('region', { name: '演示编辑器', exact: true });
   await slides.waitFor();
-  assert.match((await getDocument(sheetTitle)).body, /B4\+15/);
+  assert.match((await getDocument(sheetTitle)).body, /"C4":"=B4\+15"/);
   report.sheet.savedOnSwitch = true;
   await owner.getByLabel('文档标题', { exact: true }).fill(deckTitle);
   await slides.getByRole('button', { name: '插入文字', exact: true }).click();
@@ -311,6 +319,7 @@ try {
   await slides.getByLabel('选择数据文档', { exact: true }).selectOption(savedSheet.id);
   await slides.getByLabel('图表类型', { exact: true }).selectOption('stream');
   await slides.getByRole('button', { name: '插入', exact: true }).click();
+  await slides.getByRole('button', { name: sheetTitle, exact: true }).waitFor();
   await slides.getByRole('button', { name: '添加幻灯片', exact: true }).click();
   const savedDeck = await until(
     () => getDocument(deckTitle),
@@ -344,28 +353,26 @@ try {
 
   await openDocument(owner, proseTitle);
   await owner.getByRole('button', { name: '实时共编', exact: true }).click();
-  await owner.locator('.office-live-status[data-state="ready"]').waitFor();
-  const picker = owner.getByLabel('插入文档内容', { exact: true });
-  const insert = owner.getByRole('button', { name: '插入到文档', exact: true });
+  const liveEditor = owner.getByRole('region', { name: '实时共编', exact: true });
+  await liveEditor.locator('.office-live-status[data-state="ready"]').waitFor();
+  const picker = liveEditor.getByLabel('插入文档内容', { exact: true });
+  const insert = liveEditor.getByRole('button', { name: '插入到文档', exact: true });
   await picker.selectOption('audio');
-  await owner
+  await liveEditor
     .getByLabel('上传音频', { exact: true })
     .setInputFiles({ name: '会议音频.wav', mimeType: 'audio/wav', buffer: pcmWave() });
   await insert.click();
-  const src = await owner.locator('.office-live audio').getAttribute('src');
+  const src = await liveEditor.locator('audio').getAttribute('src');
   const audio = await owner.request.get(origin + src, { headers: { range: 'bytes=0-31' } });
   assert.equal(audio.status(), 206);
   assert.deepEqual(await audio.body(), pcmWave().subarray(0, 32));
   assert.equal((await fixture.call('GET', src, undefined, 'outsider')).statusCode, 404);
   await picker.selectOption('reference');
-  await owner.getByLabel('选择项目内容', { exact: true }).selectOption(savedDeck.id);
+  await liveEditor.getByLabel('选择项目内容', { exact: true }).selectOption(savedDeck.id);
   await insert.click();
   await picker.selectOption('chart');
-  await owner.getByLabel('选择项目内容', { exact: true }).selectOption(savedSheet.id);
-  await owner
-    .locator('.office-live')
-    .getByLabel('图表类型', { exact: true })
-    .selectOption('stream');
+  await liveEditor.getByLabel('选择项目内容', { exact: true }).selectOption(savedSheet.id);
+  await liveEditor.getByLabel('图表类型', { exact: true }).selectOption('stream');
   await insert.click();
   const blocks = (doc) => doc?.body.split('\n').map(readOfficeBlock).filter(Boolean) ?? [];
   const rich = await until(
@@ -377,12 +384,16 @@ try {
     blocks(rich).map((block) => block.kind),
     ['audio', 'reference', 'chart'],
   );
-  const document = await download(owner, '.docx');
+  await liveEditor.locator('.office-live-status[data-state="ready"]').waitFor();
+  const document = await download(owner, '.docx', liveEditor);
   const relationships = strFromU8(document['word/_rels/document.xml.rels']);
   assert.ok(Object.keys(document).some((key) => /^word\/media\/.+\.png$/.test(key)));
   assert.match(relationships, /office-audio/);
   assert.match(relationships, /documents/);
-  await owner.getByRole('button', { name: '退出共编', exact: true }).click();
+  await type(owner, '退出前最后一句');
+  await liveEditor.getByRole('button', { name: '退出共编', exact: true }).click();
+  await liveEditor.waitFor({ state: 'hidden' });
+  assert.match((await getDocument(proseTitle)).body, /退出前最后一句/);
   await openDocument(owner, deckTitle);
   await slides.getByLabel('画布图层', { exact: true }).selectOption({ label: '1 · 画布位置保留' });
   assert.equal(
@@ -399,6 +410,7 @@ try {
     audioRangeStatus: audio.status(),
     externalProjectAccessDenied: true,
     crossReferenceAndChartInDocument: true,
+    savedOnLiveExit: true,
   };
 
   assert.deepEqual(report.pageErrors, []);
@@ -406,7 +418,9 @@ try {
   process.stdout.write(JSON.stringify(report, null, 2) + '\n');
 } catch (error) {
   if (owner)
-    await owner.screenshot({ path: resolve(artifacts, 'failure.png'), animations: 'disabled' }).catch(() => {});
+    await owner
+      .screenshot({ path: resolve(artifacts, 'failure.png'), animations: 'disabled' })
+      .catch(() => {});
   throw error;
 } finally {
   await writeFile(resolve(artifacts, 'report.json'), JSON.stringify(report, null, 2));

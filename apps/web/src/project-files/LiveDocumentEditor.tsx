@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { EditorView } from 'prosemirror-view';
 import { getVersion, receiveTransaction, sendableSteps } from 'prosemirror-collab';
 import {
@@ -87,6 +87,7 @@ export function LiveDocumentEditor(props: {
   const [content, setContent] = useState<RichDocumentContent>(props.document);
   const [state, setState] = useState<SaveState>('connecting');
   const [notice, setNotice] = useState('');
+  const [exitDeadline, setExitDeadline] = useState(0);
   const key =
     'xiutu-document-live:' + [props.actorId, props.projectId, props.document.id].join('/');
   const [recovery, setRecovery] = useState(() => readRecovery(key));
@@ -281,16 +282,30 @@ export function LiveDocumentEditor(props: {
     return () => window.removeEventListener('beforeunload', guard);
   }, []);
 
-  function leave(saved?: RichDocumentContent) {
-    if (!latest.current.onClose(saved ?? (pending.current ? lastContent.current : undefined)))
-      return;
-    pending.current = false;
-    try {
-      sessionStorage.removeItem(key);
-    } catch {
-      /* browser privacy mode */
-    }
-  }
+  const leave = useCallback(
+    (saved?: RichDocumentContent) => {
+      setExitDeadline(0);
+      if (
+        !latest.current.onClose(
+          saved ?? (pending.current ? lastContent.current : (recovery ?? undefined)),
+        )
+      )
+        return;
+      pending.current = false;
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        /* browser privacy mode */
+      }
+    },
+    [key, recovery],
+  );
+  useEffect(() => {
+    if (!exitDeadline) return;
+    const canContinue = pending.current && (state === 'ready' || state === 'sending');
+    const timer = setTimeout(leave, canContinue ? Math.max(0, exitDeadline - Date.now()) : 0);
+    return () => clearTimeout(timer);
+  }, [exitDeadline, state, leave]);
   function insertBlock(block: OfficeBlock) {
     const editor = view.current;
     if (!editor || !editor.editable) return false;
@@ -303,12 +318,22 @@ export function LiveDocumentEditor(props: {
     );
     return before !== editor.state.doc;
   }
-  const readOnly = props.readOnly || state === 'blocked' || state === 'reset' || !!recovery;
+  const readOnly =
+    props.readOnly || state === 'blocked' || state === 'reset' || !!recovery || !!exitDeadline;
   return (
     <section className="office-live" aria-label={t('实时共编')}>
       <div className="office-live-status" data-state={state}>
-        <span role="status">{t(stateText[state])}</span>
-        <button type="button" className="text-button" onClick={() => leave()}>
+        <span role="status">{exitDeadline ? t('正在同步并退出') : t(stateText[state])}</span>
+        <button
+          type="button"
+          className="text-button"
+          disabled={!!exitDeadline}
+          onClick={() => {
+            if (pending.current && (state === 'ready' || state === 'sending'))
+              setExitDeadline(Date.now() + 5000);
+            else leave();
+          }}
+        >
           {t('退出共编')}
         </button>
         {state === 'blocked' && !pending.current && !props.readOnly && (
