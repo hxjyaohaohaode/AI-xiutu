@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { Sparkle } from '@phosphor-icons/react';
 import {
   measureSceneTone, sceneBalanceChanges, sceneBalanceStrategies,
-  type EditorRecipe, type SceneBalanceStrategy,
+  type Adjustments, type EditorRecipe, type SceneBalanceStrategy,
 } from '@ai-xiutu/editor';
 import { t } from '../i18n';
 import { MotionDetails } from '../motion/Presence';
+import { scopeColor, withScopeColor } from './advanced-model';
 import type { EditorState } from './useEditor';
 
 const strategies: Record<SceneBalanceStrategy, string> = {
@@ -15,6 +16,7 @@ const strategies: Record<SceneBalanceStrategy, string> = {
   'preserve-night': '保留夜景',
 };
 const controlLabel = { exposure: '曝光', shadows: '阴影', highlights: '高光' } as const;
+const globalScope = { kind: 'global' } as const;
 
 export function LightSuggestion({
   editor,
@@ -26,6 +28,7 @@ export function LightSuggestion({
   const [strategy, setStrategy] = useState<SceneBalanceStrategy>('balanced');
   const [plan, setPlan] = useState<{
     recipe: EditorRecipe;
+    adjustments: Adjustments;
     source: number;
     changes: ReturnType<typeof sceneBalanceChanges>;
   } | null>(null);
@@ -39,17 +42,23 @@ export function LightSuggestion({
     if (!ready || !editor.rendered || editor.renderedRecipe !== base || editor.isLoading()) return;
     const stride = Math.ceil(editor.rendered.width * editor.rendered.height / 65_536);
     const tone = measureSceneTone(editor.rendered, stride);
-    const changes = sceneBalanceChanges(base.adjustments, tone, strategy, 0.75);
-    setPlan({ recipe: base, source: editor.getSourceIdentity(), changes });
+    const adjustments = base.schemaVersion === 3 || base.schemaVersion === 4
+      ? scopeColor(base, globalScope).adjustments : base.adjustments;
+    const changes = sceneBalanceChanges(adjustments, tone, strategy, 0.75);
+    setPlan({ recipe: base, adjustments, source: editor.getSourceIdentity(), changes });
   }
 
   function commit() {
     if (!currentPlan || !currentPlan.changes.length || editor.isLoading() ||
       currentPlan.recipe !== editor.getRecipe() || currentPlan.source !== editor.getSourceIdentity())
       return;
-    const adjustments = { ...currentPlan.recipe.adjustments };
+    const base = currentPlan.recipe;
+    const adjustments = { ...currentPlan.adjustments };
     for (const { id, value } of currentPlan.changes) adjustments[id] = value;
-    apply({ ...currentPlan.recipe, adjustments }, t('应用光线建议'));
+    const next = base.schemaVersion === 3 || base.schemaVersion === 4
+      ? withScopeColor(base, globalScope, { ...scopeColor(base, globalScope), adjustments })
+      : { ...base, adjustments };
+    apply(next, t('应用光线建议'));
     setPlan(null);
   }
 
@@ -76,7 +85,7 @@ export function LightSuggestion({
           <ul aria-label={t('建议参数')}>
             {currentPlan.changes.map(({ id, value }) => (
               <li key={id}>
-                {t(controlLabel[id])} <strong>{currentPlan.recipe.adjustments[id]} → {value}{id === 'exposure' ? ' EV' : ''}</strong>
+                {t(controlLabel[id])} <strong>{currentPlan.adjustments[id]} → {value}{id === 'exposure' ? ' EV' : ''}</strong>
               </li>
             ))}
           </ul>

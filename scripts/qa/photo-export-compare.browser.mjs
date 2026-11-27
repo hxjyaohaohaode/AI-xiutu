@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import sharp from 'sharp';
 import { chromium } from 'playwright';
 import { preview } from 'vite';
-import { createRecipeV4, renderEditorRecipeTiled } from '@ai-xiutu/editor';
+import { createColorBlockV3, createRecipeV4, renderEditorRecipeTiled } from '@ai-xiutu/editor';
 import { collaborationFixture } from '../../apps/api/test/collaboration-fixture.ts';
 import { showEditorTopbar } from './studio-navigation.mjs';
 
@@ -41,6 +41,7 @@ try {
   const recipe = createRecipeV4({
     geometry: { crop: { x: 0.1, y: 0.1, width: 0.47, height: 0.49 }, rotation: 90, flipX: true },
     adjustments: { exposure: 0.2, sharpness: 35 },
+    compositeGrade: createColorBlockV3({ adjustments: { shadows: -17 } }),
     detail: { clarity: -17 },
     effects: { grain: { amount: 16, colored: true }, vignette: { amount: 12 } },
   });
@@ -185,7 +186,8 @@ try {
       await balance.getByRole('button', { name: '分析当前画面' }).click();
       const apply = balance.getByRole('button', { name: '应用光线建议' });
       await apply.waitFor();
-      assert.match(await balance.getByRole('list', { name: '建议参数' }).innerText(), /→/);
+      assert.match(await balance.getByRole('list', { name: '建议参数' }).innerText(), /阴影\s+-17 →/);
+      await apply.scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(out, 'light-' + viewport.width + '.png') });
       await apply.click();
       await apply.waitFor({ state: 'hidden' });

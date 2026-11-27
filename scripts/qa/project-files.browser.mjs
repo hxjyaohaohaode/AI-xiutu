@@ -319,7 +319,8 @@ try {
     const dialog = page.getByRole('dialog', { name: '版本历史', exact: true });
     await dialog.getByRole('button', { name: /^版本 1 ·/ }).click();
     await dialog.getByRole('button', { name: '载入为草稿', exact: true }).waitFor();
-    assert.equal(await dialog.locator('pre').textContent(), body);
+    const historicalRow = dialog.getByRole('row').filter({ hasText: '武汉' });
+    assert.deepEqual(await historicalRow.getByRole('cell').allTextContents(), ['武汉', '12', '50%']);
     assert.ok(await dialog.evaluate(element => element.getBoundingClientRect().width <= innerWidth));
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: resolve(artifacts, 'history-' + width + '.png') });

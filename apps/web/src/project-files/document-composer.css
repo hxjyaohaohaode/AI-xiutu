@@ -141,14 +141,10 @@
   min-width: 0;
 }
 
-.document-history-preview pre {
+.document-history-preview .office-prose {
+  min-height: 0;
   max-height: min(42dvh, 24rem);
   overflow: auto;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  font: inherit;
-  line-height: 1.65;
-  padding: 12px 0;
 }
 
 .document-history-actions {
