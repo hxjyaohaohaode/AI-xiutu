@@ -29,6 +29,8 @@ import {
 import {
   chartLayouts,
   chartLegendPositions,
+  chartCurves,
+  chartAnimations,
   chartNumberFormats,
   chartThemes,
   officeCharts,
@@ -98,6 +100,8 @@ const formatNames: Record<(typeof chartNumberFormats)[number], string> = {
   compact: '万 / 亿',
   plain: '不分组',
 };
+const curveNames: Record<(typeof chartCurves)[number], string> = { linear: '折线', smooth: '平滑', step: '阶梯' };
+const animationNames: Record<(typeof chartAnimations)[number], string> = { auto: '生长', fade: '淡入', none: '无' };
 const legendNames: Record<(typeof chartLegendPositions)[number], string> = {
   top: '顶部',
   bottom: '底部',
@@ -174,6 +178,7 @@ export function ChartDesigner({ table, initial, source, confirmLabel, onCancel, 
         layout: capability.layout,
         orientation: capability.orientation,
         smooth: capability.smooth,
+        curve: capability.smooth,
         labels: capability.labels,
         xTitle: capability.axes,
         yTitle: capability.axes,
@@ -372,11 +377,15 @@ export function ChartDesigner({ table, initial, source, confirmLabel, onCancel, 
               <div className="designer-toggles">
                 {capability.labels && toggle('数据标签', !!options.labels, (value) => set('labels', value || undefined))}
                 {toggle('网格线', options.grid !== false, (value) => set('grid', value ? undefined : false))}
-                {capability.smooth &&
-                  toggle('平滑曲线', kind === 'area' ? options.smooth !== false : !!options.smooth, (value) =>
-                    set('smooth', kind === 'area' ? (value ? undefined : false) : value || undefined),
-                  )}
               </div>
+              {capability.smooth &&
+                segmented('线形', chartCurves, curveNames, options.curve ?? ((options.smooth ?? kind === 'area') ? 'smooth' : 'linear'), (value) => {
+                  set('smooth', undefined);
+                  set('curve', value);
+                })}
+              {segmented('入场动画', chartAnimations, animationNames, options.animation ?? 'auto', (value) =>
+                set('animation', value === 'auto' ? undefined : value),
+              )}
               <label className="designer-field">
                 <span>{t('小数位')}</span>
                 <select

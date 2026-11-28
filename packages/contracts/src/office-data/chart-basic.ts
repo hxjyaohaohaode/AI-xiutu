@@ -1,4 +1,4 @@
-import { curveLinear, curveMonotoneX, line as lineShape, area as areaShape } from 'd3-shape';
+import { line as lineShape, area as areaShape } from 'd3-shape';
 import {
   chartOptions,
   label,
@@ -13,6 +13,7 @@ import {
   short,
   unitText,
   yAxis,
+  chartCurve,
 } from './chart-common.js';
 import { xml, type DataTable } from './table.js';
 
@@ -196,7 +197,7 @@ export function lineChart(table: DataTable) {
   const left = options.yTitle ? 84 : 70;
   const { y, grid, lo } = yAxis(Math.min(0, ...all), Math.max(...all), 92, 410, series[0]!.percent, { left });
   const x = (i: number) => (n === 1 ? (left + R) / 2 : left + 16 + ((R - left - 32) * i) / (n - 1));
-  const curve = options.smooth ? curveMonotoneX : curveLinear;
+  const curve = chartCurve();
   const path = lineShape<number>()
     .curve(curve)
     .x((_, i) => x(i))
@@ -215,7 +216,7 @@ export function lineChart(table: DataTable) {
         (series.length === 1 || options.gradient
           ? `<path d="${fill(s.values) ?? ''}" fill="${paintFill(j)}" fill-opacity="${options.gradient ? 0.35 : 0.08}"/>`
           : '') +
-        `<path d="${path(s.values) ?? ''}" fill="none" stroke="${paint(j)}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"/>` +
+        `<path d="${path(s.values) ?? ''}" class="trace" pathLength="1" fill="none" stroke="${paint(j)}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"/>` +
         s.values
           .map(
             (v, i) =>
@@ -292,7 +293,7 @@ export function comboChart(table: DataTable) {
         `<text x="${cx(i)}" y="${top + 16}" text-anchor="middle" font-size="11" class="on">${xml(unitText(v, bars.percent))}</text>`,
       );
   });
-  const curve = options.smooth ? curveMonotoneX : curveLinear;
+  const curve = chartCurve();
   lines.forEach((s, k) => {
     const j = k + 1;
     const path = lineShape<number>()
@@ -300,7 +301,7 @@ export function comboChart(table: DataTable) {
       .x((_, i) => cx(i))
       .y((v) => rightAxis.y(v));
     marks.push(
-      `<g${seriesAttr(j)} class="mark"><path d="${path(s.values) ?? ''}" fill="none" stroke="${paint(j)}" stroke-width="${options.lineWidth ?? 2.6}" stroke-linejoin="round"/>` +
+      `<g${seriesAttr(j)} class="mark"><path d="${path(s.values) ?? ''}" class="trace" pathLength="1" fill="none" stroke="${paint(j)}" stroke-width="${options.lineWidth ?? 2.6}" stroke-linejoin="round"/>` +
         s.values
           .map(
             (v, i) =>

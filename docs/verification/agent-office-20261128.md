@@ -47,3 +47,13 @@
 | `scripts/qa/office-studio.browser.mjs`、`project-files.browser.mjs`、`assistant.browser.mjs`、`agent-image.browser.mjs` | 本机通过。本容器的无头浏览器版本较旧，下载的文件名统一显示为 `download`（未改动的 `main` 也一样），所以本机运行时临时放宽了文件名断言；CI 使用 Chrome，不受影响 |
 | GitHub Actions `Baseline checks` | 59b9285、d7ce6b5、b210d71 三次提交均通过 |
 | 演示排列（浏览器） | Shift 多选 3 个对象后顶端对齐 y 都为 150，等距分布后间距都是 260 px；单个对象居中后中心 x 为 800 |
+
+## 第四轮补充（文件中心、分享页、跨文档链接、字体、图表线形与动画）
+
+| 检查 | 结果 |
+| --- | --- |
+| `apps/web` 单元测试 | 583 / 583 通过。新增 `file-center.test.ts`（格式识别、DOCX/PPTX 往返、文本编码、压缩包上限和目录树）和 `document-links.test.ts`（链接校验与渲染、字体回退、线形与动画选项） |
+| 文件中心（浏览器，组件级临时页面） | 依次打开 DOCX、Markdown、HTML、透明 PNG、CSV、PPTX、ZIP，均正确呈现。HTML 沙箱没有改动页面标题，外部请求数为 0；透明 PNG 显示“240 × 160 含透明区域”；ZIP 目录树完整。在 1280×860、820×1100、390×844、844×390 四种视口下横向溢出都是 0，控制台没有错误。修复了一个问题：没有提示条时，预览区高度没有填满对话框 |
+| 跨文档链接（浏览器） | 链接到本文标题后，点“打开”滚动到目标标题；按名称搜索项目文档后插入链接，Ctrl+单击触发打开回调；保存的格式里出现 `#下周计划` 和 `doc:<id>`；手机宽度下链接面板没有超出屏幕，横向溢出为 0 |
+| 图表设计器（浏览器） | 选“阶梯”和“淡入”后预览即时更新，保存的选项是 `{curve:"step", animation:"fade"}` |
+| 分享页（`scripts/qa/document-sharing.browser.mjs`） | 重做后本机通过，桌面和手机截图已人工查看 |

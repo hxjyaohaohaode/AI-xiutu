@@ -66,7 +66,9 @@ export function mountChart(
       const name = item.querySelector('text')?.textContent ?? '';
       item.setAttribute('aria-label', hooks.label?.(pressed ? 'hide' : 'show', name) ?? name);
     });
-    if (animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const motion = chart.options?.animation ?? 'auto';
+    host.dataset.motion = motion;
+    if (animate && motion !== 'none' && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
       host.classList.remove('chart-enter');
       void host.offsetWidth;
       host.classList.add('chart-enter');

@@ -76,6 +76,14 @@
     transform-box: fill-box;
     transform-origin: 50% 100%;
   }
+  /* Lines draw in along their length (pathLength="1" normalises the dash maths). */
+  .chart-view.chart-enter:not([data-motion='fade']) .plot path.trace {
+    stroke-dasharray: 1;
+    animation: chart-draw 900ms cubic-bezier(0.33, 0, 0.2, 1) both;
+  }
+  .chart-view.chart-enter[data-motion='fade'] .plot rect.mark {
+    animation-name: chart-fade;
+  }
   .chart-view.chart-enter .plot [data-series='1'] {
     animation-delay: 60ms;
   }
@@ -92,6 +100,14 @@
 @keyframes chart-fade {
   from {
     opacity: 0;
+  }
+}
+@keyframes chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
   }
 }
 @keyframes chart-rise {

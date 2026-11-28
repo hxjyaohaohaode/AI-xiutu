@@ -2,7 +2,6 @@ import type { DocumentLayout } from '../document-format.js';
 import {
   arc,
   area,
-  curveLinear,
   curveMonotoneX,
   pie,
   stack,
@@ -33,6 +32,7 @@ import {
   short,
   unitText,
   yAxis,
+  chartCurve,
 } from './chart-common.js';
 
 function seriesData(table: DataTable) {
@@ -281,7 +281,7 @@ function areaChart(table: DataTable) {
   const x = (i: number) => 70 + ((right - 70) * i) / (values.length - 1);
   const { y, grid } = yAxis(0, max, 86, 414, layout === 'percent' || percent);
   const shape = area<[number, number]>()
-    .curve(options.smooth === false ? curveLinear : curveMonotoneX)
+    .curve(chartCurve(true))
     .x((_, i) => x(i))
     .y0((p) => y(p[0]))
     .y1((p) => y(p[1]));

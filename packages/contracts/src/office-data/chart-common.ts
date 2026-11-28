@@ -1,3 +1,4 @@
+import { curveLinear, curveMonotoneX, curveStep, type CurveFactory } from 'd3-shape';
 import type { OfficeChartOptions } from '../office-content.js';
 import { numericCell, xml, type DataTable } from './table.js';
 
@@ -305,4 +306,15 @@ export function referenceLines(
     draw(mean, '平均 ' + unitText(mean, percent), '2 4', false);
   }
   return lines.join('');
+}
+
+/**
+ * Line interpolation for line, combo and area marks. An explicit `curve` wins;
+ * otherwise the legacy `smooth` flag applies with the kind's historic default.
+ * Monotone smoothing is used (not cardinal) so curves never overshoot data.
+ */
+export function chartCurve(defaultSmooth = false): CurveFactory {
+  const options = chartOptions();
+  const shape = options.curve ?? ((options.smooth ?? defaultSmooth) ? 'smooth' : 'linear');
+  return shape === 'step' ? curveStep : shape === 'smooth' ? curveMonotoneX : curveLinear;
 }

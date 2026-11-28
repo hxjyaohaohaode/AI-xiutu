@@ -1,4 +1,5 @@
-import { defaultLayout, documentHighlightCss, readOfficeBlock, type OfficeBlock } from '@ai-xiutu/contracts';
+import { defaultLayout, documentHighlightCss,
+  documentLinkPattern, readOfficeBlock, type OfficeBlock } from '@ai-xiutu/contracts';
 import { headingScales } from './formatting';
 import type { OfficeLayout } from './office-layout';
 import type { IParagraphOptions } from 'docx';
@@ -55,7 +56,7 @@ export async function wordDocument(title: string, blocks: MessageBlock[], layout
         font: face(style.font ?? (code ? 'Courier New' : pageStyle.font)), size: style.size == null ? undefined : style.size * 2,
       });
       // Links stay editable hyperlinks in Word; only validated http(s)/mailto targets reach here.
-      return style.link ? new ExternalHyperlink({ link: style.link, children: [run] }) : run;
+      return style.link && documentLinkPattern.test(style.link) ? new ExternalHyperlink({ link: style.link, children: [run] }) : run;
     });
     const spacing = {
       ...(extra.spacing ?? {}),
@@ -215,7 +216,7 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
       strike: style.strike ? 'sngStrike' : undefined, color: style.color?.slice(1) ?? (style.link ? '175CD3' : undefined),
       highlight: style.highlight ? documentHighlightCss[style.highlight].slice(1) : undefined,
       superscript: style.script === 'super', subscript: style.script === 'sub',
-      ...(style.link ? { hyperlink: { url: style.link } } : {})}}));
+      ...(style.link && documentLinkPattern.test(style.link) ? { hyperlink: { url: style.link } } : {})}}));
   }
   function paragraph(text: string, line: number, prefix = '', code = false) {
     text.split('\n').forEach((source, i) => {

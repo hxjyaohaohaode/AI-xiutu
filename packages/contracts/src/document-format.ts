@@ -7,7 +7,43 @@ export const documentFonts = [
   'Courier New',
   'Microsoft YaHei',
   'SimSun',
+  // Appended in round 4. Order is append-only: stored documents reference names.
+  'PingFang SC',
+  'Noto Sans SC',
+  'Noto Serif SC',
+  'KaiTi',
+  'FangSong',
+  'SimHei',
+  'Times New Roman',
+  'Helvetica',
+  'Verdana',
+  'Calibri',
+  'Cambria',
+  'Consolas',
 ] as const;
+/**
+ * CSS fallback chain per family class, so a face missing on the reader's device
+ * degrades to the nearest installed equivalent instead of the browser default.
+ * Export (DOCX/PPTX) keeps the stored name: Office applies its own substitution.
+ */
+const sans = '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", "Noto Sans CJK SC", system-ui, sans-serif';
+const serif = '"Songti SC", SimSun, "Noto Serif SC", "Noto Serif CJK SC", serif';
+const mono = 'ui-monospace, Menlo, Consolas, "Courier New", monospace';
+const fontClass: Record<string, string> = {
+  Georgia: serif,
+  SimSun: serif,
+  'Noto Serif SC': serif,
+  'Times New Roman': serif,
+  Cambria: serif,
+  KaiTi: '"Kaiti SC", STKaiti, KaiTi, ' + serif,
+  FangSong: 'STFangsong, FangSong, ' + serif,
+  'Courier New': mono,
+  Consolas: mono,
+};
+export function documentFontCss(font: string): string {
+  const safe = (documentFonts as readonly string[]).includes(font) ? font : 'Aptos';
+  return `"${safe}", ${fontClass[safe] ?? sans}`;
+}
 export const documentSizes = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48] as const;
 export const documentGaps = [0, 6, 12, 18] as const;
 export const documentAlignments = ['left', 'center', 'right', 'justify'] as const;
@@ -35,10 +71,36 @@ export const documentScripts = ['super', 'sub'] as const;
 /** Paragraph indent levels (0.5 inch / 36pt each) and per-paragraph line spacing. */
 export const documentIndents = [1, 2, 3, 4] as const;
 export const documentLineSpacing = [1, 1.15, 1.5, 2] as const;
-/** Only web and mail links. Script, data and relative URLs are rejected. */
+/** External links: web and mail only. Script, data and relative URLs are rejected. */
 export const documentLinkPattern = /^(?:https:\/\/|http:\/\/|mailto:)[^\s<>"'\u0000-\u001f]{1,2000}$/;
+/**
+ * Internal links (round 4): `#<heading text>` jumps within the document and
+ * `doc:<uuid>` or `doc:<uuid>#<heading text>` opens another project document.
+ * The id is only a pointer: opening it goes through the scoped document API,
+ * so a link never grants access the reader does not already have.
+ */
+const headingPart = '[^<>"\\u0000-\\u001f]{1,200}';
+export const documentInternalLinkPattern = new RegExp(
+  `^(?:#${headingPart}|doc:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:#${headingPart})?)$`,
+  'i',
+);
 export const isDocumentLink = (value: unknown): value is string =>
-  typeof value === 'string' && value.length <= 2048 && documentLinkPattern.test(value);
+  typeof value === 'string' &&
+  value.length <= 2048 &&
+  (documentLinkPattern.test(value) || documentInternalLinkPattern.test(value));
+export type DocumentLinkTarget =
+  | { kind: 'external'; href: string }
+  | { kind: 'heading'; heading: string }
+  | { kind: 'document'; id: string; heading?: string };
+export function documentLinkTarget(href: string): DocumentLinkTarget | null {
+  if (!isDocumentLink(href)) return null;
+  if (href.startsWith('#')) return { kind: 'heading', heading: href.slice(1) };
+  if (/^doc:/i.test(href)) {
+    const [id, heading] = [href.slice(4, 40).toLowerCase(), href.slice(41)];
+    return heading ? { kind: 'document', id, heading } : { kind: 'document', id };
+  }
+  return { kind: 'external', href };
+}
 export const officeSizes = [10, 11.5, 12, 14, 16, 18] as const;
 export const officeSpacing = [1, 1.15, 1.5, 2] as const;
 export const officeCharts = [

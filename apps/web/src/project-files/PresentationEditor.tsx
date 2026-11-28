@@ -29,6 +29,7 @@ import {
 } from '@phosphor-icons/react';
 import {
   documentFonts,
+  documentFontCss,
   slideSize,
   writePresentation,
   type OfficeChartSnapshot,
@@ -111,7 +112,7 @@ export function SlideContent({ element }: { element: SlideElement }) {
       style={{
         ...rotation,
         color: element.color,
-        fontFamily: element.font,
+        fontFamily: documentFontCss(element.font),
         fontWeight: element.bold ? 700 : 400,
         fontSize: percent(element.size, 960).replace('%', 'cqw'),
         textAlign: element.align,

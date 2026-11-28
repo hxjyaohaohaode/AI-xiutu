@@ -1133,3 +1133,30 @@
     transition: none;
   }
 }
+
+/* Backlinks: documents in this project whose links point here. */
+.studio-view .document-backlinks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin: -6px 0 12px;
+  font-size: 13px;
+  color: var(--view-muted, #5e625a);
+}
+.studio-view .document-backlinks button {
+  max-width: 16rem;
+  padding: 3px 10px;
+  overflow: hidden;
+  color: var(--view-ink);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--view-ink, #22241f) 6%, transparent);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.studio-view .document-backlinks button:hover {
+  background: color-mix(in srgb, var(--view-ink, #22241f) 11%, transparent);
+}

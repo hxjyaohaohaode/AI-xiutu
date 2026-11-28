@@ -6,12 +6,14 @@ import {
   documentAlignments,
   documentColors,
   documentFonts,
+  documentFontCss,
   documentHighlightCss,
   documentHighlights,
   documentIndents,
   documentLineSpacing,
   documentScripts,
   isDocumentLink,
+  documentLinkPattern,
   documentFormatSchema,
   documentGaps,
   documentSizes,
@@ -149,15 +151,16 @@ export const documentSchema = new Schema({
         },
       },
       inclusive: false,
-      toDOM: (mark) => [
-        'a',
-        { href: mark.attrs.href, rel: 'noopener noreferrer nofollow', target: '_blank' },
-        0,
-      ],
+      // Internal links carry no href: the app uses hash routing, so navigation is
+      // handled by the editor (heading scroll, scoped document open) instead.
+      toDOM: (mark) =>
+        documentLinkPattern.test(mark.attrs.href)
+          ? ['a', { href: mark.attrs.href, rel: 'noopener noreferrer nofollow', target: '_blank' }, 0]
+          : ['a', { 'data-doc-link': mark.attrs.href, class: 'doc-xref', role: 'link', tabindex: '0' }, 0],
     },
     font: {
       attrs: { value: { validate: values(documentFonts) } },
-      toDOM: (mark) => ['span', { style: 'font-family:' + mark.attrs.value }, 0],
+      toDOM: (mark) => ['span', { style: 'font-family:' + documentFontCss(mark.attrs.value) }, 0],
     },
     size: {
       attrs: { value: { validate: values(documentSizes) } },

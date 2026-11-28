@@ -39,6 +39,7 @@ import {
   defaultLayout,
   withDocumentLayout,
   documentFonts,
+  documentFontCss,
   documentSizes,
   documentAlignments,
   documentColors,
@@ -47,6 +48,7 @@ import {
   documentLineSpacing,
   documentGaps,
   isDocumentLink,
+  documentLinkTarget,
   sameDocumentFormat,
   readOfficeBlock,
   writeOfficeBlock,
@@ -82,6 +84,12 @@ export type RichDocumentContent = { body: string; formatting?: DocumentFormat | 
 type Content = RichDocumentContent;
 type Props = Content & { readOnly: boolean; onChange: (next: Content) => boolean;
   onReference?: (id: string, version: number) => void;
+  /** Project documents offered as internal link targets (titles only; opening is scoped by the API). */
+  documents?: readonly { id: string; title: string }[];
+  /** Follows a `doc:` link. Absent (e.g. the public share viewer): such links are shown but inert. */
+  onOpenDocument?: (id: string, heading?: string) => void;
+  /** Scrolls to this heading once it exists (arrival from a `doc:<id>#heading` link). */
+  focusHeading?: string;
   /** Overrides embedded image URLs (the public share viewer). */
   assetUrl?: (assetId: string) => string;
   live?: {
@@ -125,6 +133,7 @@ const highlightNames: Record<(typeof documentHighlights)[number], string> = {
   lightGray: '浅灰',
 };
 type Panel = 'color' | 'highlight' | 'link' | null;
+type LinkMode = 'web' | 'heading' | 'document';
 
 export function RichDocumentEditor(props: Props) {
   const locale = useLocale();
@@ -153,6 +162,9 @@ export function RichDocumentEditor(props: Props) {
     setPanelState(next);
   };
   const [linkDraft, setLinkDraft] = useState('');
+  const [linkMode, setLinkMode] = useState<LinkMode>('web');
+  const [linkQuery, setLinkQuery] = useState('');
+  const follow = useRef<(href: string) => void>(() => undefined);
   const [finding, setFinding] = useState(false);
   const [query, setQuery] = useState('');
   const [replacement, setReplacement] = useState('');
@@ -255,12 +267,27 @@ export function RichDocumentEditor(props: Props) {
           return toggleCheck(editor.state, Number(box.dataset.paragraph), editor.dispatch);
         },
         click(_, event) {
+          // Links: read-only views follow on click; editors follow on Ctrl/Cmd+click (as in Docs and Word).
+          const link = event.target instanceof Element ? event.target.closest<HTMLElement>('a[data-doc-link], a[href]') : null;
+          if (link) {
+            if (!latest.current.readOnly && !event.metaKey && !event.ctrlKey) return false;
+            event.preventDefault();
+            follow.current(link.dataset.docLink ?? link.getAttribute('href') ?? '');
+            return true;
+          }
           const target = event.target instanceof Element
             ? event.target.closest<HTMLElement>('[data-office-reference]') : null;
           const id = target?.dataset.officeReference, version = Number(target?.dataset.officeVersion);
           if (!id || !version || !latest.current.onReference) return false;
           event.preventDefault();
           latest.current.onReference(id, version);
+          return true;
+        },
+        keydown(_, event) {
+          const link = event.target instanceof Element ? event.target.closest<HTMLElement>('a[data-doc-link]') : null;
+          if (!link || event.key !== 'Enter' || !latest.current.readOnly) return false;
+          event.preventDefault();
+          follow.current(link.dataset.docLink ?? '');
           return true;
         },
         paste(editor, event) {
@@ -356,6 +383,10 @@ export function RichDocumentEditor(props: Props) {
       },
     });
   }, [props.readOnly, locale]);
+  useEffect(() => {
+    if (props.focusHeading) scrollToHeading(props.focusHeading);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.focusHeading]);
 
   const v = view.current,
     state = v?.state,
@@ -458,12 +489,41 @@ export function RichDocumentEditor(props: Props) {
     v.focus();
   }
   function openLink() {
-    setLinkDraft(markValue('link')?.href ?? 'https://');
+    const existing = markValue('link')?.href as string | undefined;
+    const target = existing ? documentLinkTarget(existing) : null;
+    setLinkMode(target?.kind === 'heading' ? 'heading' : target?.kind === 'document' ? 'document' : 'web');
+    setLinkQuery('');
+    setLinkDraft(target?.kind === 'external' ? existing! : 'https://');
     setPanel(panel === 'link' ? null : 'link');
   }
-  function applyLink(remove = false) {
+  function linkLabel(href: string) {
+    const target = documentLinkTarget(href);
+    if (!target) return href;
+    if (target.kind === 'heading') return t('本文') + ' · ' + target.heading;
+    if (target.kind === 'document') {
+      const title = props.documents?.find((d) => d.id === target.id)?.title ?? t('项目文档');
+      return target.heading ? title + ' · ' + target.heading : title;
+    }
+    return target.href.replace(/^mailto:/, '').replace(/^https?:\/\//, '');
+  }
+  function scrollToHeading(text: string) {
+    const editor = view.current;
+    const item = editor && documentOutline(editor.state.doc).find((h) => h.text === text);
+    if (!editor || !item) return false;
+    editor.dispatch(editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(item.pos + 1))).scrollIntoView());
+    (editor.nodeDOM(item.pos) as HTMLElement | null)?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    return true;
+  }
+  follow.current = (href: string) => {
+    const target = documentLinkTarget(href);
+    if (!target) return;
+    if (target.kind === 'external') window.open(target.href, '_blank', 'noopener,noreferrer');
+    else if (target.kind === 'heading') scrollToHeading(target.heading);
+    else latest.current.onOpenDocument?.(target.id, target.heading);
+  };
+  function applyLink(remove = false, explicit?: { href: string; label: string }) {
     if (!v || props.readOnly) return;
-    const href = linkDraft.trim();
+    const href = explicit?.href ?? linkDraft.trim();
     if (!remove && !isDocumentLink(href)) return;
     let { from, to, empty } = v.state.selection;
     const type = documentSchema.marks.link!;
@@ -474,7 +534,8 @@ export function RichDocumentEditor(props: Props) {
       const markHere = linked?.marks.find((m) => m.type === type);
       if (!markHere) {
         if (remove) return setPanel(null);
-        const tr = v.state.tr.insertText(href, from).addMark(from, from + href.length, type.create({ href }));
+        const text = explicit?.label || href;
+        const tr = v.state.tr.insertText(text, from).addMark(from, from + text.length, type.create({ href }));
         v.dispatch(tr);
         setPanel(null);
         return v.focus();
@@ -565,7 +626,7 @@ export function RichDocumentEditor(props: Props) {
             >
               <option value="">{t('默认字体')}</option>
               {documentFonts.map((f) => (
-                <option key={f} style={{ fontFamily: f }}>{f}</option>
+                <option key={f} style={{ fontFamily: documentFontCss(f) }}>{f}</option>
               ))}
             </select>
             {tool(t('减小字号'), <Minus size={15} />, () => stepSize(-1))}
@@ -696,6 +757,39 @@ export function RichDocumentEditor(props: Props) {
               )}
               {panel === 'link' && (
                 <form className="format-popover format-link" style={panelAt} onSubmit={(e) => { e.preventDefault(); applyLink(); }}>
+                  <div className="format-link-tabs" role="tablist" aria-label={t('链接类型')}>
+                    {(['web', 'heading', 'document'] as const).map((mode) => (
+                      <button key={mode} type="button" role="tab" aria-selected={linkMode === mode} onClick={() => { setLinkMode(mode); setLinkQuery(''); }}>
+                        {t(mode === 'web' ? '网址' : mode === 'heading' ? '本文标题' : '项目文档')}
+                      </button>
+                    ))}
+                  </div>
+                  {linkMode === 'heading' && (
+                    <ul className="format-link-list" aria-label={t('本文标题')}>
+                      {headings.length ? headings.map((item) => (
+                        <li key={item.pos}>
+                          <button type="button" data-level={item.level} onClick={() => applyLink(false, { href: '#' + item.text.slice(0, 200), label: item.text })}>
+                            {item.text}
+                          </button>
+                        </li>
+                      )) : <li className="format-link-empty">{t('添加标题后会显示在这里。')}</li>}
+                    </ul>
+                  )}
+                  {linkMode === 'document' && (
+                    <>
+                      <input type="search" aria-label={t('搜索文档')} placeholder={t('搜索文档')} value={linkQuery} onChange={(e) => setLinkQuery(e.target.value)} autoFocus />
+                      <ul className="format-link-list" aria-label={t('项目文档')}>
+                        {(props.documents ?? []).filter((d) => d.title.toLocaleLowerCase().includes(linkQuery.trim().toLocaleLowerCase())).slice(0, 50).map((d) => (
+                          <li key={d.id}>
+                            <button type="button" onClick={() => applyLink(false, { href: 'doc:' + d.id, label: d.title })}>{d.title}</button>
+                          </li>
+                        ))}
+                        {!props.documents?.length && <li className="format-link-empty">{t('项目中还没有其他文档。')}</li>}
+                      </ul>
+                    </>
+                  )}
+                  {linkMode !== 'web' && has('link') && <button type="button" className="text-button" onClick={() => applyLink(true)}>{t('移除链接')}</button>}
+                  {linkMode === 'web' && <>
                   <input
                     autoFocus
                     type="url"
@@ -711,6 +805,7 @@ export function RichDocumentEditor(props: Props) {
                   {linkDraft.trim() && !isDocumentLink(linkDraft.trim()) && (
                     <small role="status">{t('仅支持 https、http 或 mailto 链接。')}</small>
                   )}
+                  </>}
                 </form>
               )}
       {finding && (
@@ -767,7 +862,7 @@ export function RichDocumentEditor(props: Props) {
           className="doc-page"
           ref={target}
           style={{
-            fontFamily: page.font,
+            fontFamily: documentFontCss(page.font),
             fontSize: page.size + 'pt',
             lineHeight: page.line,
             textAlign: page.align,
@@ -782,6 +877,24 @@ export function RichDocumentEditor(props: Props) {
           {selectedWords > 0 && <span>{t('已选 {v0} 字', { v0: selectedWords })}</span>}
         </div>
       )}
+      {!props.readOnly && v && selection?.empty && !panel && markValue('link')?.href && (() => {
+        const href = markValue('link')!.href as string;
+        const frame = root.current?.getBoundingClientRect();
+        let at = { left: 0, top: 0 };
+        try {
+          const c = v.coordsAtPos(selection.from);
+          if (frame) at = { left: Math.max(0, Math.min(c.left - frame.left, frame.width - 280)), top: c.bottom - frame.top + 6 };
+        } catch { /* position unavailable during reconfiguration */ }
+        const kind = documentLinkTarget(href)?.kind;
+        return (
+          <div className="doc-link-bubble" style={at} role="group" aria-label={t('链接')} onMouseDown={(e) => e.preventDefault()}>
+            <span className="doc-link-bubble-target" data-kind={kind}>{linkLabel(href)}</span>
+            <button type="button" disabled={kind === 'document' && !props.onOpenDocument} onClick={() => follow.current(href)}>{t('打开')}</button>
+            <button type="button" onClick={openLink}>{t('编辑')}</button>
+            <button type="button" onClick={() => applyLink(true)}>{t('移除')}</button>
+          </div>
+        );
+      })()}
       {pasteError && <p role="alert">{pasteError}</p>}
       {designing && (
         <Suspense fallback={null}>

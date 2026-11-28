@@ -17,6 +17,7 @@ import { editSelection, headingScales, type FormatCommand } from './formatting';
 import { officeLayout } from './office-layout';
 import {
   documentFonts as officeFonts,
+  documentFontCss,
   officeSizes,
   officeSpacing,
   documentAlignments as officeAlignment,
@@ -74,7 +75,7 @@ export function DocumentPreview({
       <span
         key={i}
         style={{
-          fontFamily: style.font,
+          fontFamily: style.font && documentFontCss(style.font),
           textDecoration:
             [style.underline || style.link ? 'underline' : '', style.strike ? 'line-through' : '']
               .filter(Boolean)
@@ -121,7 +122,7 @@ export function DocumentPreview({
       className="office-prose"
       aria-label={t('排版预览')}
       style={{
-        fontFamily: `"${layout.font}", sans-serif`,
+        fontFamily: documentFontCss(layout.font),
         fontSize: layout.size + 'pt',
         lineHeight: layout.line,
         textAlign: layout.align,

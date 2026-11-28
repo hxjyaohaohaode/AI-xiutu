@@ -30,6 +30,10 @@ const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
 const shortText = (max: number) => z.string().max(max).regex(/^[^<>\u0000-\u001f]*$/);
 export const chartLegendPositions = ['top', 'bottom', 'right', 'none'] as const;
 export const chartLayouts = ['grouped', 'stacked', 'percent'] as const;
+/** linear: straight segments; smooth: monotone (never overshoots the data); step: value holds until the next category. */
+export const chartCurves = ['linear', 'smooth', 'step'] as const;
+/** auto: staggered fade, bars grow, lines draw in; fade: opacity only; none: static. Screen only, never exported. */
+export const chartAnimations = ['auto', 'fade', 'none'] as const;
 /**
  * Presentation options saved with a chart. Every field is optional so older
  * snapshots render unchanged; values are bounded and never contain markup.
@@ -69,6 +73,9 @@ export const officeChartOptionsSchema = z
     gradient: z.boolean().optional(),
     gaugeMax: z.number().positive().finite().optional(),
     bins: z.number().int().min(3).max(40).optional(),
+    // v4: line shape and on-screen entrance. `curve` wins over the legacy `smooth`.
+    curve: z.enum(chartCurves).optional(),
+    animation: z.enum(chartAnimations).optional(),
   })
   .strict()
   .refine((o) => o.axisMin === undefined || o.axisMax === undefined || o.axisMin < o.axisMax, {

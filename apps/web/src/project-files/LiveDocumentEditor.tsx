@@ -76,6 +76,7 @@ export function LiveDocumentEditor(props: {
   projectId: string;
   readOnly: boolean;
   sources: ProjectDocument[];
+  onOpenDocument?: (id: string, heading?: string) => void;
   onReference: (id: string, version: number) => void;
   onCloud: (document: ProjectDocument) => void;
   onPending: (pending: boolean) => void;
@@ -379,6 +380,8 @@ export function LiveDocumentEditor(props: {
           onChange={() => true}
           readOnly={readOnly}
           onReference={props.onReference}
+          documents={props.sources.filter((doc) => doc.id !== props.document.id).map((doc) => ({ id: doc.id, title: doc.title }))}
+          onOpenDocument={props.onOpenDocument}
           live={{
             version: snapshot.version,
             clientId: props.actorId + '/' + tag.current,

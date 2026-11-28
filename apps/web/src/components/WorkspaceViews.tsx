@@ -1146,6 +1146,7 @@ export function DocumentsView({
   const [livePending, setLivePending] = useState(false);
   const [autoSave, setAutoSave] = useState(false);
   const [reference, setReference] = useState<{ id: string; version: number } | null>(null);
+  const [jumpHeading, setJumpHeading] = useState<string | undefined>();
   const live = !!selected && selected.id === liveId;
   const [creating, setCreating] = useState(false);
   const [mobileList, setMobileList] = useState(true);
@@ -1612,6 +1613,25 @@ export function DocumentsView({
   function openReference(id: string, version: number) {
     setReference({ id, version });
   }
+  // Internal `doc:` links resolve only against this project's scoped document list.
+  async function openLinkedDocument(id: string, heading?: string) {
+    if (selected?.id === id) {
+      setJumpHeading(undefined);
+      queueMicrotask(() => setJumpHeading(heading));
+      return;
+    }
+    const doc = docs.find((item) => item.id === id);
+    if (!doc) {
+      setError('链接的文档不存在，或你没有访问权限。');
+      return;
+    }
+    setJumpHeading(undefined);
+    if (await choose(doc)) setJumpHeading(heading);
+  }
+  const backlinks = selected
+    ? docs.filter((doc) => doc.id !== selected.id && !!doc.formatting && JSON.stringify(doc.formatting).includes('"doc:' + selected.id))
+    : [];
+  const linkTargets = docs.filter((doc) => doc.id !== selected?.id).map((doc) => ({ id: doc.id, title: doc.title }));
   function insertOfficeBlock(block: OfficeBlock) {
     const current = currentDraft.current;
     const body = current.body + (current.body ? '\n\n' : '') + writeOfficeBlock(block) + '\n';
@@ -1920,9 +1940,17 @@ export function DocumentsView({
               maxLength={120}
               required
             />
+            {backlinks.length > 0 && (
+              <nav className="document-backlinks" aria-label={t('反向链接')}>
+                <span>{t('{v0} 份文档链接到这里', { v0: backlinks.length })}</span>
+                {backlinks.slice(0, 8).map((doc) => (
+                  <button key={doc.id} type="button" onClick={() => void choose(doc)}>{doc.title}</button>
+                ))}
+              </nav>
+            )}
             {live && selected ? <Suspense fallback={<Busy label={t('正在连接共编')} />}>
               <LiveDocumentEditor key={ownerKey + selected.id} document={selected} actorId={actorId} projectId={project.id}
-                sources={docs} onReference={openReference}
+                sources={docs} onReference={openReference} onOpenDocument={(id, heading) => void openLinkedDocument(id, heading)}
                 readOnly={!canEdit} onCloud={updateLiveDocument} onPending={setLivePending}
                 onClose={recovery => {
                   if (recovery && !updateDraft({ ...recovery, title: currentDraft.current.title })) return false;
@@ -1953,6 +1981,7 @@ export function DocumentsView({
                 onRich={!showFormatting && !formatting?.paragraphs.length && !projectSheet ? () => setShowFormatting(true) : undefined}
                 richEditor={(showFormatting || !!formatting?.paragraphs.length) && <Suspense fallback={<Busy label={t('读取中')} />}>
                   <RichDocumentEditor body={body} formatting={formatting} readOnly={!canEdit || pending === 'read'} onReference={openReference}
+                    documents={linkTargets} onOpenDocument={(id, heading) => void openLinkedDocument(id, heading)} focusHeading={jumpHeading}
                     onChange={next => updateDraft({...next, title:currentDraft.current.title})}/>
                 </Suspense> || undefined}
               />
