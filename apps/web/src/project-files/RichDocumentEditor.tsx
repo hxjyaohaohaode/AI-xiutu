@@ -1,25 +1,51 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   TextB,
   TextItalic,
   TextUnderline,
+  TextStrikethrough,
+  TextSuperscript,
+  TextSubscript,
+  LinkSimple,
+  TextAlignLeft,
+  TextAlignCenter,
+  TextAlignRight,
+  TextAlignJustify,
+  ListBullets,
+  ListNumbers,
+  ListChecks,
+  TextIndent,
+  TextOutdent,
+  Eraser,
+  MagnifyingGlass,
+  SidebarSimple,
+  HighlighterCircle,
+  Minus,
+  Plus,
+  ArrowUp,
+  ArrowDown,
+  X,
   ArrowCounterClockwise,
   ArrowClockwise,
 } from '@phosphor-icons/react';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { baseKeymap, toggleMark } from 'prosemirror-commands';
+import { baseKeymap, toggleMark, chainCommands } from 'prosemirror-commands';
 import { keymap } from 'prosemirror-keymap';
 import { history, undo, redo } from 'prosemirror-history';
-import { Slice, Fragment, DOMSerializer } from 'prosemirror-model';
+import { Slice, Fragment, DOMSerializer, type Mark } from 'prosemirror-model';
 import { collab } from 'prosemirror-collab';
 import {
   defaultLayout,
   withDocumentLayout,
   documentFonts,
   documentSizes,
-  documentGaps,
   documentAlignments,
+  documentColors,
+  documentHighlights,
+  documentHighlightCss,
+  documentLineSpacing,
+  isDocumentLink,
   sameDocumentFormat,
   readOfficeBlock,
   type DocumentFormat,
@@ -27,6 +53,24 @@ import {
 import { documentSchema, readRichDocument, validatedRichContent } from '@ai-xiutu/contracts/rich-document';
 import { t, useLocale } from '../i18n';
 import { chartDataUrl, snapshotSvg } from '@ai-xiutu/contracts/office-data';
+import {
+  blockStyleOf,
+  blockStyles,
+  changeIndent,
+  clearFormatting,
+  continueList,
+  documentOutline,
+  documentStats,
+  findKey,
+  findMatches,
+  listIndent,
+  replaceMatches,
+  richDecorations,
+  selectMatch,
+  setBlockStyle,
+  toggleCheck,
+  type BlockStyle,
+} from './rich-commands';
 import 'prosemirror-view/style/prosemirror.css';
 import './rich-document.css';
 
@@ -40,7 +84,41 @@ type Props = Content & { readOnly: boolean; onChange: (next: Content) => boolean
   onTransaction: (view: EditorView, content: Content) => void;
 } };
 export const receivedDocumentStep = 'xiutu-received-document-step';
-const alignLabels = { left: '左对齐', center: '居中', right: '右对齐', justify: '两端对齐' };
+const alignOptions = [
+  ['left', '左对齐', TextAlignLeft],
+  ['center', '居中', TextAlignCenter],
+  ['right', '右对齐', TextAlignRight],
+  ['justify', '两端对齐', TextAlignJustify],
+] as const;
+const styleLabels: Record<BlockStyle, string> = {
+  paragraph: '正文',
+  h1: '标题 1',
+  h2: '标题 2',
+  h3: '标题 3',
+  quote: '引用',
+  bullet: '项目符号列表',
+  ordered: '编号列表',
+  check: '清单',
+};
+const colorNames: Record<(typeof documentColors)[number], string> = {
+  '#1F2937': '墨黑',
+  '#6B7280': '灰色',
+  '#B42318': '红色',
+  '#B54708': '橙色',
+  '#027A48': '绿色',
+  '#175CD3': '蓝色',
+  '#6941C6': '紫色',
+  '#C11574': '洋红',
+};
+const highlightNames: Record<(typeof documentHighlights)[number], string> = {
+  yellow: '黄色',
+  green: '绿色',
+  cyan: '青色',
+  magenta: '粉色',
+  lightGray: '浅灰',
+};
+type Panel = 'color' | 'highlight' | 'link' | null;
+
 export function RichDocumentEditor(props: Props) {
   const locale = useLocale();
   const page = props.formatting?.layout ?? defaultLayout;
@@ -51,20 +129,66 @@ export function RichDocumentEditor(props: Props) {
   const last = useRef<Content>(props);
   const [, redraw] = useState(0);
   const [pasteError, setPasteError] = useState('');
+  const [panel, setPanelState] = useState<Panel>(null);
+  const [panelAt, setPanelAt] = useState({ left: 0, top: 0 });
+  const root = useRef<HTMLDivElement>(null);
+  // Popovers live outside the scrolling toolbar and are placed under their button.
+  const setPanel = (next: Panel) => {
+    const anchor = next && root.current?.querySelector<HTMLElement>(`[data-panel="${next}"]`);
+    if (anchor && root.current) {
+      const box = anchor.getBoundingClientRect(), frame = root.current.getBoundingClientRect();
+      const width = next === 'link' ? 300 : 200;
+      setPanelAt({
+        left: Math.max(0, Math.min(box.left - frame.left, frame.width - width)),
+        top: box.bottom - frame.top + 6,
+      });
+    }
+    setPanelState(next);
+  };
+  const [linkDraft, setLinkDraft] = useState('');
+  const [finding, setFinding] = useState(false);
+  const [query, setQuery] = useState('');
+  const [replacement, setReplacement] = useState('');
+  const [caseSensitive, setCaseSensitive] = useState(false);
+  const [active, setActive] = useState(0);
+  const [outline, setOutline] = useState(false);
+  const openFind = useRef<() => void>(() => {});
+  openFind.current = () => setFinding(true);
   useLayoutEffect(() => {
     if (!target.current) return;
-    const mark = (name: string) =>
-      toggleMark(documentSchema.marks[name]!, null, { removeWhenPresent: false });
+    const mark = (name: string, attrs?: Record<string, unknown>) =>
+      toggleMark(documentSchema.marks[name]!, attrs ?? null, { removeWhenPresent: false });
     const v = new EditorView(target.current, {
       state: EditorState.create({
         doc: readRichDocument(latest.current.body, latest.current.formatting),
         plugins: [
           history(),
+          richDecorations(),
           ...(latest.current.live ? [collab({ version: latest.current.live.version, clientID: latest.current.live.clientId })] : []),
           keymap({
             'Mod-b': mark('bold'),
             'Mod-i': mark('italic'),
             'Mod-u': mark('underline'),
+            'Mod-Shift-x': mark('strike'),
+            'Mod-.': mark('script', { value: 'super' }),
+            'Mod-,': mark('script', { value: 'sub' }),
+            'Mod-Alt-0': setBlockStyle('paragraph'),
+            'Mod-Alt-1': setBlockStyle('h1'),
+            'Mod-Alt-2': setBlockStyle('h2'),
+            'Mod-Alt-3': setBlockStyle('h3'),
+            'Mod-Shift-7': setBlockStyle('ordered'),
+            'Mod-Shift-8': setBlockStyle('bullet'),
+            'Mod-Shift-9': setBlockStyle('check'),
+            'Mod-]': changeIndent(1),
+            'Mod-[': changeIndent(-1),
+            'Mod-\\': clearFormatting,
+            Tab: listIndent(1),
+            'Shift-Tab': listIndent(-1),
+            Enter: chainCommands(continueList, baseKeymap.Enter!),
+            'Mod-f': () => {
+              openFind.current();
+              return true;
+            },
             'Mod-z': undo,
             'Mod-y': redo,
             'Shift-Mod-z': redo,
@@ -91,6 +215,12 @@ export function RichDocumentEditor(props: Props) {
       },
       // Intercept before the default HTML clipboard parser touches external markup.
       handleDOMEvents: {
+        mousedown(editor, event) {
+          const box = event.target instanceof Element ? event.target.closest<HTMLElement>('.doc-checkbox') : null;
+          if (!box || latest.current.readOnly) return false;
+          event.preventDefault();
+          return toggleCheck(editor.state, Number(box.dataset.paragraph), editor.dispatch);
+        },
         click(_, event) {
           const target = event.target instanceof Element
             ? event.target.closest<HTMLElement>('[data-office-reference]') : null;
@@ -197,7 +327,20 @@ export function RichDocumentEditor(props: Props) {
   const v = view.current,
     state = v?.state,
     selection = state?.selection;
-  let activeMarks = state?.storedMarks ?? selection?.$from.marks() ?? [];
+  // Find highlights are view-only plugin state; publishing them is a meta-only transaction.
+  const matches = state && finding ? findMatches(state.doc, query, caseSensitive) : [];
+  const current = matches.length ? Math.min(active, matches.length - 1) : -1;
+  const findState = state ? findKey.getState(state) : undefined;
+  useEffect(() => {
+    const editor = view.current;
+    if (!editor) return;
+    const next = { query: finding ? query : '', active: current, caseSensitive };
+    if (findState && findState.query === next.query && findState.active === next.active && findState.caseSensitive === next.caseSensitive)
+      return;
+    editor.dispatch(editor.state.tr.setMeta(findKey, next).setMeta('addToHistory', false));
+  });
+
+  let activeMarks: readonly Mark[] = state?.storedMarks ?? selection?.$from.marks() ?? [];
   if (state && selection && !selection.empty) {
     let first = true;
     state.doc.nodesBetween(selection.from, selection.to, (node) => {
@@ -208,12 +351,38 @@ export function RichDocumentEditor(props: Props) {
       first = false;
     });
   }
-  function inline(name: 'font' | 'size', value: string) {
+  const markValue = (name: string) => activeMarks.find((m) => m.type.name === name)?.attrs;
+  const has = (name: string, value?: string) =>
+    activeMarks.some((m) => m.type.name === name && (value === undefined || m.attrs.value === value));
+  const parent = selection?.$from.parent;
+  const block = parent?.type.name === 'paragraph' ? blockStyleOf(parent.textContent) : null;
+  const stats = state ? documentStats(state.doc) : null;
+  const selectedWords =
+    state && selection && !selection.empty
+      ? documentStats(
+          documentSchema.nodes.doc!.create(null, [
+            documentSchema.nodes.paragraph!.create(
+              null,
+              state.doc.textBetween(selection.from, selection.to, ' ')
+                ? documentSchema.text(state.doc.textBetween(selection.from, selection.to, ' '))
+                : undefined,
+            ),
+          ]),
+        ).words
+      : 0;
+  const headings = state ? documentOutline(state.doc) : [];
+
+  function run(command: (s: EditorState, d?: EditorView['dispatch']) => boolean) {
+    if (!v || props.readOnly) return;
+    command(v.state, v.dispatch);
+    v.focus();
+  }
+  function inline(name: 'font' | 'size' | 'color' | 'highlight', value: string | number | null) {
     if (!v || props.readOnly) return;
     const { from, to, empty } = v.state.selection,
       tr = v.state.tr,
       type = documentSchema.marks[name]!;
-    const mark = value ? type.create({ value: name === 'size' ? Number(value) : value }) : null;
+    const mark = value !== null && value !== '' ? type.create({ value }) : null;
     if (empty) {
       tr.removeStoredMark(type);
       if (mark) tr.addStoredMark(mark);
@@ -224,7 +393,16 @@ export function RichDocumentEditor(props: Props) {
     v.dispatch(tr);
     v.focus();
   }
-  function paragraph(name: 'align' | 'after', value: string) {
+  function stepSize(direction: 1 | -1) {
+    const now = Number(markValue('size')?.value ?? page.size);
+    const sizes = [...documentSizes];
+    const next = direction > 0 ? sizes.find((s) => s > now) : [...sizes].reverse().find((s) => s < now);
+    if (next) inline('size', next);
+  }
+  function script(value: 'super' | 'sub') {
+    run(toggleMark(documentSchema.marks.script!, { value }, { removeWhenPresent: false }));
+  }
+  function paragraph(name: 'align' | 'spacing', value: string) {
     if (!v || props.readOnly) return;
     const { from, to, $from, empty } = v.state.selection,
       tr = v.state.tr;
@@ -232,7 +410,7 @@ export function RichDocumentEditor(props: Props) {
       const node = tr.doc.nodeAt(pos)!;
       tr.setNodeMarkup(pos, undefined, {
         ...node.attrs,
-        [name]: value === '' ? null : name === 'after' ? Number(value) : value,
+        [name]: value === '' ? null : name === 'spacing' ? Number(value) : value,
       });
     };
     if (empty) update($from.before());
@@ -246,120 +424,320 @@ export function RichDocumentEditor(props: Props) {
     v.dispatch(tr);
     v.focus();
   }
+  function openLink() {
+    setLinkDraft(markValue('link')?.href ?? 'https://');
+    setPanel(panel === 'link' ? null : 'link');
+  }
+  function applyLink(remove = false) {
+    if (!v || props.readOnly) return;
+    const href = linkDraft.trim();
+    if (!remove && !isDocumentLink(href)) return;
+    let { from, to, empty } = v.state.selection;
+    const type = documentSchema.marks.link!;
+    if (empty) {
+      // Extend to the existing link around the caret, as Docs does when editing a link.
+      const $pos = v.state.selection.$from;
+      const linked = $pos.parent.childAfter($pos.parentOffset).node ?? $pos.parent.childBefore($pos.parentOffset).node;
+      const markHere = linked?.marks.find((m) => m.type === type);
+      if (!markHere) {
+        if (remove) return setPanel(null);
+        const tr = v.state.tr.insertText(href, from).addMark(from, from + href.length, type.create({ href }));
+        v.dispatch(tr);
+        setPanel(null);
+        return v.focus();
+      }
+      const start = $pos.start();
+      let pos = 0;
+      $pos.parent.forEach((child, offset) => {
+        if (child === linked) pos = offset;
+      });
+      from = start + pos;
+      to = from + linked!.nodeSize;
+      empty = false;
+    }
+    const tr = v.state.tr.removeMark(from, to, type);
+    if (!remove) tr.addMark(from, to, type.create({ href }));
+    v.dispatch(tr);
+    setPanel(null);
+    v.focus();
+  }
+  function moveMatch(direction: 1 | -1) {
+    if (!v || !matches.length) return;
+    const next = (current + direction + matches.length) % matches.length;
+    setActive(next);
+    v.dispatch(selectMatch(v.state, matches[next]!));
+  }
+  function replace(all: boolean) {
+    if (!v || props.readOnly || !matches.length) return;
+    v.dispatch(replaceMatches(v.state, all ? matches : [matches[current]!], replacement));
+  }
+  function jump(pos: number) {
+    if (!v) return;
+    v.dispatch(v.state.tr.setSelection(TextSelection.near(v.state.doc.resolve(pos + 1))).scrollIntoView());
+    v.focus();
+  }
+  const tool = (
+    label: string,
+    icon: ReactNode,
+    onClick: () => void,
+    options: { pressed?: boolean; disabled?: boolean; shortcut?: string; panel?: Panel } = {},
+  ) => (
+    <button
+      type="button"
+      data-panel={options.panel ?? undefined}
+      aria-expanded={options.panel ? panel === options.panel : undefined}
+      aria-label={label}
+      title={options.shortcut ? `${label} (${options.shortcut})` : label}
+      aria-pressed={options.pressed}
+      disabled={options.disabled}
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+    >
+      {icon}
+    </button>
+  );
+  const colorValue = markValue('color')?.value as string | undefined;
+  const highlightValue = markValue('highlight')?.value as (typeof documentHighlights)[number] | undefined;
   return (
-    <div className="project-rich-document">
+    <div ref={root} className={'project-rich-document' + (outline ? ' with-outline' : '')}
+      onKeyDown={(e) => { if (e.key === 'Escape' && panel) { setPanel(null); v?.focus(); } }}>
       {!props.readOnly && (
         <div className="project-format-tools" role="toolbar" aria-label={t('文字排版')}>
-          {(
-            [
-              ['bold', '加粗', TextB],
-              ['italic', '斜体', TextItalic],
-              ['underline', '下划线', TextUnderline],
-            ] as const
-          ).map(([name, label, Icon]) => (
-            <button
-              key={name}
-              type="button"
-              aria-label={t(label)}
-              title={t(label)}
-              aria-pressed={activeMarks.some((m) => m.type.name === name)}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                if (v) {
-                  toggleMark(documentSchema.marks[name]!, null, { removeWhenPresent: false })(
-                    v.state,
-                    v.dispatch,
-                  );
-                  v.focus();
-                }
-              }}
+          <div className="format-group">
+            {tool(t('撤销'), <ArrowCounterClockwise size={17} />, () => run(undo), { disabled: !state || !undo(state), shortcut: 'Ctrl+Z' })}
+            {tool(t('重做'), <ArrowClockwise size={17} />, () => run(redo), { disabled: !state || !redo(state), shortcut: 'Ctrl+Y' })}
+          </div>
+          <div className="format-group">
+            <select
+              className="format-style"
+              aria-label={t('段落样式')}
+              title={t('段落样式')}
+              value={block?.style ?? 'paragraph'}
+              onChange={(e) => run(setBlockStyle(e.target.value as BlockStyle))}
             >
-              <Icon size={17} />
-            </button>
-          ))}
-          <select
-            aria-label={t('字体')}
-            title={t('字体')}
-            value={activeMarks.find((m) => m.type.name === 'font')?.attrs.value ?? ''}
-            onChange={(e) => inline('font', e.target.value)}
-          >
-            <option value="">{t('默认字体')}</option>
-            {documentFonts.map((f) => (
-              <option key={f}>{f}</option>
-            ))}
-          </select>
-          <select
-            aria-label={t('字号')}
-            title={t('字号')}
-            value={activeMarks.find((m) => m.type.name === 'size')?.attrs.value ?? ''}
-            onChange={(e) => inline('size', e.target.value)}
-          >
-            <option value="">{t('字号')}</option>
-            {documentSizes.map((s) => (
-              <option key={s} value={s}>
-                {s} pt
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label={t('段落对齐')}
-            title={t('段落对齐')}
-            value={selection?.$from.parent.attrs.align ?? 'left'}
-            onChange={(e) => paragraph('align', e.target.value === 'left' ? '' : e.target.value)}
-          >
-            {documentAlignments.map((a) => (
-              <option value={a} key={a}>
-                {t(alignLabels[a])}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label={t('段后间距')}
-            title={t('段后间距')}
-            value={selection?.$from.parent.attrs.after ?? ''}
-            onChange={(e) => paragraph('after', e.target.value)}
-          >
-            <option value="">{t('段后间距')}</option>
-            {documentGaps.map((g) => (
-              <option value={g} key={g}>
-                {g} pt
-              </option>
-            ))}
-          </select>
-          {(
-            [
-              [undo, '撤销', ArrowCounterClockwise],
-              [redo, '重做', ArrowClockwise],
-            ] as const
-          ).map(([command, label, Icon]) => (
-            <button
-              key={label}
-              type="button"
-              aria-label={t(label)}
-              title={t(label)}
-              disabled={!state || !command(state)}
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                if (v) {
-                  command(v.state, v.dispatch);
-                  v.focus();
-                }
-              }}
+              {blockStyles.map((style) => (
+                <option key={style} value={style}>
+                  {t(styleLabels[style])}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="format-group">
+            <select
+              className="format-font"
+              aria-label={t('字体')}
+              title={t('字体')}
+              value={markValue('font')?.value ?? ''}
+              onChange={(e) => inline('font', e.target.value)}
             >
-              <Icon size={17} />
-            </button>
-          ))}
+              <option value="">{t('默认字体')}</option>
+              {documentFonts.map((f) => (
+                <option key={f} style={{ fontFamily: f }}>{f}</option>
+              ))}
+            </select>
+            {tool(t('减小字号'), <Minus size={15} />, () => stepSize(-1))}
+            <select
+              className="format-size"
+              aria-label={t('字号')}
+              title={t('字号')}
+              value={markValue('size')?.value ?? ''}
+              onChange={(e) => inline('size', e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">{page.size}</option>
+              {documentSizes.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            {tool(t('增大字号'), <Plus size={15} />, () => stepSize(1))}
+          </div>
+          <div className="format-group">
+            {(
+              [
+                ['bold', '加粗', TextB, 'Ctrl+B'],
+                ['italic', '斜体', TextItalic, 'Ctrl+I'],
+                ['underline', '下划线', TextUnderline, 'Ctrl+U'],
+                ['strike', '删除线', TextStrikethrough, 'Ctrl+Shift+X'],
+              ] as const
+            ).map(([name, label, Icon, shortcut]) => (
+              <span key={name}>
+                {tool(t(label), <Icon size={17} />, () => run(toggleMark(documentSchema.marks[name]!, null, { removeWhenPresent: false })), {
+                  pressed: has(name),
+                  shortcut,
+                })}
+              </span>
+            ))}
+            <div className="format-popover-anchor">
+              {tool(
+                t('文字颜色'),
+                <span className="format-color-glyph" style={{ borderColor: colorValue ?? 'currentColor' }}>A</span>,
+                () => setPanel(panel === 'color' ? null : 'color'),
+                { pressed: panel === 'color', panel: 'color' },
+              )}
+            </div>
+            <div className="format-popover-anchor">
+              {tool(
+                t('突出显示'),
+                <HighlighterCircle size={17} weight={highlightValue ? 'fill' : 'regular'}
+                  color={highlightValue ? documentHighlightCss[highlightValue] : undefined} />,
+                () => setPanel(panel === 'highlight' ? null : 'highlight'),
+                { pressed: panel === 'highlight', panel: 'highlight' },
+              )}
+            </div>
+            {tool(t('上标'), <TextSuperscript size={17} />, () => script('super'), { pressed: has('script', 'super'), shortcut: 'Ctrl+.' })}
+            {tool(t('下标'), <TextSubscript size={17} />, () => script('sub'), { pressed: has('script', 'sub'), shortcut: 'Ctrl+,' })}
+            <div className="format-popover-anchor">
+              {tool(t('插入链接'), <LinkSimple size={17} />, openLink, { pressed: has('link') || panel === 'link', panel: 'link' })}
+            </div>
+          </div>
+          <div className="format-group" role="radiogroup" aria-label={t('段落对齐')}>
+            {alignOptions.map(([value, label, Icon]) => (
+              <span key={value}>
+                {tool(t(label), <Icon size={17} />, () => paragraph('align', value === 'left' ? '' : value), {
+                  pressed: (parent?.attrs.align ?? 'left') === value,
+                })}
+              </span>
+            ))}
+            <select
+              aria-label={t('行距')}
+              title={t('行距')}
+              value={parent?.attrs.spacing ?? ''}
+              onChange={(e) => paragraph('spacing', e.target.value)}
+            >
+              <option value="">{t('行距')}</option>
+              {documentLineSpacing.map((n) => (
+                <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+          </div>
+          <div className="format-group">
+            {tool(t('项目符号列表'), <ListBullets size={17} />, () => run(setBlockStyle('bullet')), { pressed: block?.style === 'bullet', shortcut: 'Ctrl+Shift+8' })}
+            {tool(t('编号列表'), <ListNumbers size={17} />, () => run(setBlockStyle('ordered')), { pressed: block?.style === 'ordered', shortcut: 'Ctrl+Shift+7' })}
+            {tool(t('清单'), <ListChecks size={17} />, () => run(setBlockStyle('check')), { pressed: block?.style === 'check', shortcut: 'Ctrl+Shift+9' })}
+            {tool(t('减少缩进'), <TextOutdent size={17} />, () => run(changeIndent(-1)), { disabled: !state || !changeIndent(-1)(state), shortcut: 'Ctrl+[' })}
+            {tool(t('增加缩进'), <TextIndent size={17} />, () => run(changeIndent(1)), { disabled: !state || !changeIndent(1)(state), shortcut: 'Ctrl+]' })}
+          </div>
+          <div className="format-group">
+            {tool(t('清除格式'), <Eraser size={17} />, () => run(clearFormatting), { shortcut: 'Ctrl+\\' })}
+            {tool(t('查找和替换'), <MagnifyingGlass size={17} />, () => setFinding(!finding), { pressed: finding, shortcut: 'Ctrl+F' })}
+            {tool(t('文档大纲'), <SidebarSimple size={17} />, () => setOutline(!outline), { pressed: outline })}
+          </div>
         </div>
       )}
-      <div
-        ref={target}
-        style={{
-          fontFamily: page.font,
-          fontSize: page.size + 'pt',
-          lineHeight: page.line,
-          textAlign: page.align,
-        }}
-      />
+              {panel === 'color' && (
+                <div className="format-popover" style={panelAt} role="menu" aria-label={t('文字颜色')}>
+                  <button type="button" role="menuitem" className="format-swatch-reset" onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { inline('color', null); setPanel(null); }}>{t('默认颜色')}</button>
+                  <div className="format-swatches">
+                    {documentColors.map((color) => (
+                      <button key={color} type="button" role="menuitemradio" aria-checked={colorValue === color}
+                        aria-label={t(colorNames[color])} title={t(colorNames[color])} style={{ background: color }}
+                        onMouseDown={(e) => e.preventDefault()} onClick={() => { inline('color', color); setPanel(null); }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {panel === 'highlight' && (
+                <div className="format-popover" style={panelAt} role="menu" aria-label={t('突出显示')}>
+                  <button type="button" role="menuitem" className="format-swatch-reset" onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => { inline('highlight', null); setPanel(null); }}>{t('无')}</button>
+                  <div className="format-swatches">
+                    {documentHighlights.map((name) => (
+                      <button key={name} type="button" role="menuitemradio" aria-checked={highlightValue === name}
+                        aria-label={t(highlightNames[name])} title={t(highlightNames[name])}
+                        style={{ background: documentHighlightCss[name] }}
+                        onMouseDown={(e) => e.preventDefault()} onClick={() => { inline('highlight', name); setPanel(null); }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {panel === 'link' && (
+                <form className="format-popover format-link" style={panelAt} onSubmit={(e) => { e.preventDefault(); applyLink(); }}>
+                  <input
+                    autoFocus
+                    type="url"
+                    inputMode="url"
+                    aria-label={t('链接地址')}
+                    placeholder="https://"
+                    value={linkDraft}
+                    onChange={(e) => setLinkDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Escape') { setPanel(null); v?.focus(); } }}
+                  />
+                  <button type="submit" className="text-button" disabled={!isDocumentLink(linkDraft.trim())}>{t('应用')}</button>
+                  {has('link') && <button type="button" className="text-button" onClick={() => applyLink(true)}>{t('移除链接')}</button>}
+                  {linkDraft.trim() && !isDocumentLink(linkDraft.trim()) && (
+                    <small role="status">{t('仅支持 https、http 或 mailto 链接。')}</small>
+                  )}
+                </form>
+              )}
+      {finding && (
+        <div className="doc-find-bar" role="search" aria-label={t('查找和替换')}>
+          <input
+            autoFocus
+            aria-label={t('查找')}
+            placeholder={t('查找')}
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setActive(0); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); moveMatch(e.shiftKey ? -1 : 1); }
+              if (e.key === 'Escape') { setFinding(false); v?.focus(); }
+            }}
+          />
+          <span className="doc-find-count" aria-live="polite">
+            {query ? t('{v0}/{v1}', { v0: matches.length ? current + 1 : 0, v1: matches.length }) : ''}
+          </span>
+          {tool(t('上一个'), <ArrowUp size={15} />, () => moveMatch(-1), { disabled: !matches.length })}
+          {tool(t('下一个'), <ArrowDown size={15} />, () => moveMatch(1), { disabled: !matches.length })}
+          <label className="doc-find-case">
+            <input type="checkbox" checked={caseSensitive} onChange={(e) => setCaseSensitive(e.target.checked)} />
+            {t('区分大小写')}
+          </label>
+          {!props.readOnly && (
+            <>
+              <input aria-label={t('替换为')} placeholder={t('替换为')} value={replacement}
+                onChange={(e) => setReplacement(e.target.value)} />
+              <button type="button" className="text-button" disabled={!matches.length} onClick={() => replace(false)}>{t('替换')}</button>
+              <button type="button" className="text-button" disabled={!matches.length} onClick={() => replace(true)}>{t('全部替换')}</button>
+            </>
+          )}
+          {tool(t('关闭查找'), <X size={15} />, () => { setFinding(false); v?.focus(); })}
+        </div>
+      )}
+      <div className="doc-body">
+        {outline && (
+          <nav className="doc-outline" aria-label={t('文档大纲')}>
+            <h3>{t('大纲')}</h3>
+            {headings.length ? (
+              <ol>
+                {headings.map((item) => (
+                  <li key={item.pos} data-level={item.level}>
+                    <button type="button" onClick={() => jump(item.pos)}>{item.text}</button>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p>{t('添加标题后会显示在这里。')}</p>
+            )}
+          </nav>
+        )}
+        <div
+          className="doc-page"
+          ref={target}
+          style={{
+            fontFamily: page.font,
+            fontSize: page.size + 'pt',
+            lineHeight: page.line,
+            textAlign: page.align,
+          }}
+        />
+      </div>
+      {stats && (
+        <div className="doc-status" aria-live="polite">
+          <span>{t('{v0} 字', { v0: stats.words })}</span>
+          <span>{t('{v0} 个字符', { v0: stats.characters })}</span>
+          <span>{t('约 {v0} 分钟阅读', { v0: stats.readingMinutes })}</span>
+          {selectedWords > 0 && <span>{t('已选 {v0} 字', { v0: selectedWords })}</span>}
+        </div>
+      )}
       {pasteError && <p role="alert">{pasteError}</p>}
     </div>
   );

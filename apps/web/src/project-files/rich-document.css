@@ -1,35 +1,316 @@
+/* Rich document editor: grouped toolbar, paper page, styles, find, outline and status. */
 .project-format-tools {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.15rem;
   margin: 0.4rem 0;
+  padding: 0.25rem 0.35rem;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  background: color-mix(in srgb, var(--color-raised, #fff) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(14px);
+  -webkit-backdrop-filter: saturate(1.4) blur(14px);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 0.85rem;
+  box-shadow: 0 1px 2px rgb(var(--color-shadow, 35 45 27) / 6%);
+}
+.project-format-tools .format-group {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.1rem;
+  padding-inline: 0.2rem;
+}
+.project-format-tools .format-group + .format-group {
+  border-inline-start: 1px solid var(--color-line, #dddfd7);
+}
+.project-format-tools .format-group > span {
+  display: contents;
 }
 .project-format-tools :is(button, select) {
-  min-height: 34px;
+  min-height: 32px;
   color: inherit;
   background: transparent;
   border: 0;
-  border-radius: 0.4rem;
-  padding: 0.3rem 0.45rem;
+  border-radius: 0.45rem;
+  padding: 0.25rem 0.4rem;
   font: inherit;
   font-size: 0.82rem;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 .project-format-tools button {
   display: grid;
   place-items: center;
-  min-width: 34px;
+  min-width: 32px;
+}
+.project-format-tools select {
+  max-width: 8.5rem;
+  cursor: pointer;
+}
+.project-format-tools .format-style {
+  min-width: 6.4rem;
+}
+.project-format-tools .format-size {
+  min-width: 3.2rem;
+  text-align: center;
 }
 .project-format-tools option {
   color: CanvasText;
   background: Canvas;
 }
-.project-format-tools button[aria-pressed='true'],
-.project-format-tools :is(button, select):hover {
-  background: color-mix(in srgb, currentColor 9%, transparent);
+.project-format-tools button[aria-pressed='true'] {
+  color: var(--color-accent-ink, #795713);
+  background: var(--color-accent-soft, #f7edcf);
+}
+.project-format-tools :is(button, select):hover:not(:disabled) {
+  background: var(--color-surface-hover, #e8e9e4);
+}
+.project-format-tools :is(button, select):focus-visible {
+  outline: 2px solid var(--color-focus, #856213);
+  outline-offset: 1px;
 }
 .project-format-tools button:disabled {
   opacity: 0.38;
+}
+.format-color-glyph {
+  display: inline-block;
+  min-width: 1em;
+  font-weight: 700;
+  line-height: 1.05;
+  border-bottom: 3px solid currentColor;
+}
+.format-popover-anchor {
+  position: relative;
+  display: flex;
+}
+.project-rich-document {
+  position: relative;
+}
+.format-popover {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  gap: 0.5rem;
+  min-width: 11rem;
+  padding: 0.6rem;
+  color: var(--color-ink, #22241f);
+  background: var(--color-raised, #fff);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 0.75rem;
+  box-shadow: 0 12px 32px rgb(var(--color-shadow, 35 45 27) / 18%);
+  animation: format-pop 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes format-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+.format-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1.8rem);
+  gap: 0.35rem;
+}
+.format-popover .format-swatches button {
+  min-width: 0;
+  min-height: 0;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 12%);
+}
+.format-popover .format-swatches button[aria-checked='true'] {
+  outline: 2px solid var(--color-focus, #856213);
+  outline-offset: 2px;
+}
+.format-popover button {
+  color: inherit;
+  font: inherit;
+  font-size: 0.82rem;
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+.format-popover .format-swatch-reset {
+  min-height: 32px;
+  padding: 0.25rem 0.5rem;
+  text-align: start;
+  width: 100%;
+}
+.format-popover .format-swatch-reset:hover,
+.format-popover .text-button:hover {
+  background: var(--color-surface-hover, #e8e9e4);
+}
+.format-popover .text-button {
+  min-height: 34px;
+  padding: 0.25rem 0.6rem;
+  font-weight: 600;
+}
+.format-popover .text-button:disabled {
+  opacity: 0.4;
+}
+.format-link {
+  width: min(300px, 100%);
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.format-link input {
+  min-height: 34px;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--color-surface, #fcfcfb);
+  border: 1px solid var(--color-line-strong, #a9afa0);
+  border-radius: 0.45rem;
+}
+.format-link small {
+  grid-column: 1 / -1;
+  color: var(--color-danger, #a33c35);
+}
+
+/* Find and replace */
+.doc-find-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--color-surface-secondary, #f0f0ed);
+  border-radius: 0.7rem;
+}
+.doc-find-bar input:not([type='checkbox']) {
+  flex: 1 1 9rem;
+  min-width: 7rem;
+  min-height: 32px;
+  padding: 0.25rem 0.5rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: inherit;
+  background: var(--color-raised, #fff);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 0.45rem;
+}
+.doc-find-bar button {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  min-height: 32px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem;
+}
+.doc-find-bar button:hover:not(:disabled) {
+  background: var(--color-surface-hover, #e8e9e4);
+}
+.doc-find-bar button:disabled {
+  opacity: 0.38;
+}
+.doc-find-count {
+  min-width: 3rem;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted, #5d6057);
+}
+.doc-find-case {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  font-size: 0.8rem;
+}
+.doc-find {
+  background: color-mix(in srgb, var(--color-accent, #edbc41) 38%, transparent);
+  border-radius: 2px;
+}
+.doc-find-active {
+  background: var(--color-accent, #edbc41);
+  color: var(--color-on-accent, #29261b);
+}
+
+/* Body: optional outline beside a paper page */
+.project-rich-document .doc-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+.project-rich-document.with-outline .doc-body {
+  grid-template-columns: minmax(9rem, 13rem) minmax(0, 1fr);
+}
+.doc-outline {
+  position: sticky;
+  top: 3.6rem;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 0.4rem 0.2rem;
+  font-size: 0.85rem;
+}
+.doc-outline h3 {
+  margin: 0 0 0.4rem 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--color-muted, #5d6057);
+}
+.doc-outline ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.doc-outline li[data-level='2'] {
+  padding-inline-start: 0.8rem;
+}
+.doc-outline li[data-level='3'] {
+  padding-inline-start: 1.6rem;
+}
+.doc-outline button {
+  display: block;
+  width: 100%;
+  padding: 0.3rem 0.45rem;
+  overflow: hidden;
+  text-align: start;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0.4rem;
+  font: inherit;
+}
+.doc-outline button:hover {
+  background: var(--color-surface-hover, #e8e9e4);
+}
+.doc-outline p {
+  margin: 0.3rem 0.45rem;
+  color: var(--color-muted, #5d6057);
+}
+.project-rich-document .doc-page {
+  max-width: 52rem;
+  margin-inline: auto;
+  width: 100%;
+  padding: clamp(0.5rem, 3vw, 2.4rem) clamp(0.6rem, 4vw, 3.2rem);
+  background: var(--color-raised, #fff);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 0.9rem;
+  box-shadow: 0 1px 3px rgb(var(--color-shadow, 35 45 27) / 7%);
+  transition: box-shadow 160ms ease, border-color 160ms ease;
+}
+.project-rich-document .doc-page:focus-within {
+  border-color: color-mix(in srgb, var(--color-focus, #856213) 45%, var(--color-line, #dddfd7));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent, #edbc41) 22%, transparent);
+}
+.project-rich-document .ProseMirror:focus {
+  outline: none;
 }
 .project-rich-document .ProseMirror {
   min-height: 14rem;
@@ -39,13 +320,182 @@
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   outline-offset: 2px;
+  caret-color: var(--color-accent-ink, #795713);
 }
 .studio-view.documents-view .project-rich-document .ProseMirror p {
-  font: inherit; color: inherit;
+  font: inherit;
+  color: inherit;
   margin: 0 0 6pt;
+}
+.project-rich-document .ProseMirror a {
+  color: #175cd3;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.project-rich-document .ProseMirror mark {
+  /* Highlights are light pastels; keep ink dark on them in every theme. */
+  color: #1f2937;
+  border-radius: 2px;
+  padding-inline: 1px;
+}
+
+/* Block styles rendered from their stored Markdown prefixes */
+.studio-view.documents-view .project-rich-document .ProseMirror p.doc-block,
+.project-rich-document .ProseMirror p.doc-block {
+  position: relative;
+}
+.project-rich-document .ProseMirror .doc-syntax {
+  color: var(--color-disabled, #909185);
+  font-size: 0.72em;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.studio-view.documents-view .project-rich-document .ProseMirror p.doc-h1,
+.project-rich-document .ProseMirror p.doc-h1 {
+  margin: 1.1em 0 0.35em;
+  font-size: 1.85em;
+  font-weight: 700;
+  line-height: 1.22;
+  letter-spacing: -0.01em;
+}
+.studio-view.documents-view .project-rich-document .ProseMirror p.doc-h2,
+.project-rich-document .ProseMirror p.doc-h2 {
+  margin: 1em 0 0.3em;
+  font-size: 1.42em;
+  font-weight: 650;
+  line-height: 1.28;
+}
+.studio-view.documents-view .project-rich-document .ProseMirror p.doc-h3,
+.project-rich-document .ProseMirror p.doc-h3 {
+  margin: 0.9em 0 0.25em;
+  font-size: 1.16em;
+  font-weight: 650;
+  line-height: 1.35;
+}
+.studio-view.documents-view .project-rich-document .ProseMirror p.doc-quote,
+.project-rich-document .ProseMirror p.doc-quote {
+  padding-inline-start: 0.9em;
+  color: var(--color-muted, #5d6057);
+  border-inline-start: 3px solid var(--color-line-strong, #a9afa0);
+}
+.studio-view.documents-view .project-rich-document .ProseMirror p:is(.doc-bullet, .doc-ordered, .doc-check),
+.project-rich-document .ProseMirror p:is(.doc-bullet, .doc-ordered, .doc-check) {
+  margin-block-end: 3pt;
+  padding-inline-start: 0.3em;
+}
+.project-rich-document .ProseMirror .doc-number {
+  display: inline-block;
+  min-width: 1.6em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted, #5d6057);
+}
+/* The stored "- " / "- [ ] " prefix stays in the text but is drawn as a glyph:
+   fixed-width, clipped, transparent text with the glyph painted on top. */
+.project-rich-document .ProseMirror :is(.doc-bullet-mark, .doc-checkbox) {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  white-space: nowrap;
+  vertical-align: bottom;
+  color: transparent;
+}
+.project-rich-document .ProseMirror .doc-bullet-mark {
+  width: 1.4em;
+}
+.project-rich-document .ProseMirror .doc-bullet-mark::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 0.4em;
+  width: 0.36em;
+  height: 0.36em;
+  background: var(--color-ink, #22241f);
+  border-radius: 50%;
+  transform: translateY(-50%);
+}
+.project-rich-document .ProseMirror .doc-checkbox {
+  width: 1.15em;
+  height: 1.15em;
+  margin-inline-end: 0.45em;
+  vertical-align: -0.2em;
+  cursor: pointer;
+  border: 1.6px solid var(--color-line-strong, #a9afa0);
+  border-radius: 0.3em;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+.project-rich-document .ProseMirror .doc-checkbox:hover {
+  border-color: var(--color-success, #366b4c);
+}
+.project-rich-document .ProseMirror p.doc-checked .doc-checkbox {
+  background: var(--color-success, #366b4c)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 80% no-repeat;
+  border-color: var(--color-success, #366b4c);
+}
+.project-rich-document .ProseMirror p.doc-checked {
+  color: var(--color-muted, #5d6057);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, currentColor 50%, transparent);
+}
+
+/* Status bar */
+.doc-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  justify-content: flex-end;
+  margin-top: 0.4rem;
+  padding: 0.35rem 0.4rem 0;
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-muted, #5d6057);
+  border-top: 1px solid var(--color-line, #dddfd7);
+}
+
+@media (max-width: 760px) {
+  .project-rich-document.with-outline .doc-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .doc-outline {
+    position: static;
+    max-height: 14rem;
+    background: var(--color-surface-secondary, #f0f0ed);
+    border-radius: 0.7rem;
+  }
+  .doc-status {
+    justify-content: flex-start;
+  }
 }
 @media (pointer: coarse) {
   .project-format-tools :is(button, select) {
     min-height: 44px;
+    min-width: 44px;
   }
 }
+@media (prefers-reduced-motion: reduce) {
+  .format-popover {
+    animation: none;
+  }
+  .project-format-tools :is(button, select),
+  .project-rich-document .ProseMirror .doc-checkbox {
+    transition: none;
+  }
+}
+
+/* Dark theme: remap the fixed palette for contrast on dark paper. */
+:root[data-theme='dark'] .project-rich-document .ProseMirror a {
+  color: #84adff;
+}
+:root[data-theme='dark'] .project-rich-document .ProseMirror mark a {
+  color: #175cd3;
+}
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#1F2937'] { color: #e5e7eb !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#6B7280'] { color: #b4bac4 !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#B42318'] { color: #fda29b !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#B54708'] { color: #fec84b !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#027A48'] { color: #6ce9a6 !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#175CD3'] { color: #84adff !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#6941C6'] { color: #bdb4fe !important; }
+:root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#C11574'] { color: #faa7e0 !important; }

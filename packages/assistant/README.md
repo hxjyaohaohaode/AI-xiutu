@@ -128,3 +128,16 @@ Responses 文本增量经累积审核写入持久序号事件，完成时校验�
 [子任务协议测试](test/assistant.test.ts)覆盖两级委派、并行修图与生成、MCP 工具回合、历史与素材隔离、越权工具和撤权。[PostgreSQL 集成测试](../../apps/api/test/assistant.test.ts)覆盖共享画面经真实渲染、提名、自动保存新版本、幂等重放和未知回执。[浏览器生图回归](../../scripts/qa/agent-image.browser.mjs)通过普通工作台接收生图子任务的草稿，按固定报价提交、解码产物并导出。供应商在上述测试中为本地协议样本。
 
 原生集成测试在团队项目内实际创建协调员与调色助手。调色助手提交 −1.5 EV 候选，服务器渲染真实画面后把审核过的像素预览交还主助手，主助手在第四次派发内提名，并由已有自动执行授权写入不可变版本。分工图保留直接上级与像素依据两种关系。[分工展示与端到端浏览器回归](../../scripts/qa/assistant.browser.mjs)
+
+### 分节提示与运行时约束（策略 `editor-agent-v12`）
+
+`prompt.ts` 按“静态策略在前、本轮事实在后”构建系统提示，并只纳入本轮实际可用工具对应的章节。Responses 提示缓存要求前缀完全一致，因此执行模式、是否共享画面等本轮事实只出现在最后的 `Run context` 一节。同一轮次的多次请求使用字节一致的 `instructions`。最后一次请求的提醒通过运行台账传递；只有在没有任何工具结果可以携带台账时，才回退为追加到 `instructions`。
+
+`harness.ts` 负责宿主侧的确定性控制，不依赖模型自觉：
+
+- **工具失败**：保留 `TOOL_INPUT_OR_ACCESS_REJECTED`，并附上 `reason`（白名单原因码，例如 `PARAMETER_RANGE`、`CANDIDATE_REVIEW_REQUIRED`）、`hint`（修复方法），以及 zod 校验失败时最多 6 条 `issues`（字段路径 + 问题类型）。不在白名单里的错误，包括权限、存储和外部文本，一律归为 `REJECTED`，不透出原文。
+- **重复失败拦截**：参数规范化（键排序）后完全相同、且在本轮已经失败过的调用，不再执行，直接返回 `REPEATED_FAILED_CALL`。
+- **运行台账**：每轮最后一个 `function_call_output` 追加 `harness` 对象（`modelRequestsRemaining`、`candidates[{index,kind,summary,inspected}]`、`inspectionsRemaining`、`nominated`、`projectFiles`、`next`）。台账只进入模型输入，不写入 `storeToolResult` 归档、工具记录或重放缓存，因此团队交接重放和历史读取的内容不变。
+- **收敛**：连续两轮所有调用都失败时，下一次请求设置 `tool_choice: "none"`。
+
+依据：[OpenAI Codex 智能体循环](https://openai.com/index/unrolling-the-codex-agent-loop)（前缀缓存与追加式上下文），[Anthropic 上下文工程](https://www.anthropic.com/engineering/effective-context-engineering-for-ai-agents)（分节、最小高信号上下文、结构化笔记）。回归测试见 [`test/harness.test.ts`](test/harness.test.ts)。调研与取舍见 [对标记录](../../docs/research/AGENT-OFFICE-REFERENCES-20261128.md)。

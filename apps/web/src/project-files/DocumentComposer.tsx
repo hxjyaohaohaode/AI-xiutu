@@ -21,6 +21,7 @@ import {
   officeSpacing,
   documentAlignments as officeAlignment,
   officeCharts,
+  documentHighlightCss,
   defaultLayout,
   withDocumentLayout,
   readOfficeBlock,
@@ -61,7 +62,12 @@ export function DocumentPreview({
   );
   const paragraphStyle = (line: number) => {
     const p = rich.paragraph(line, '');
-    return { textAlign: p.align, marginBlockEnd: p.after != null ? p.after + 'pt' : undefined };
+    return {
+      textAlign: p.align,
+      marginBlockEnd: p.after != null ? p.after + 'pt' : undefined,
+      marginInlineStart: p.indent ? p.indent * 36 + 'pt' : undefined,
+      lineHeight: p.spacing,
+    };
   };
   function inline(value: string, line: number) {
     return rich.paragraph(line, value).runs.map(({ text, style }, i) => (
@@ -69,8 +75,14 @@ export function DocumentPreview({
         key={i}
         style={{
           fontFamily: style.font,
-          fontSize: style.size && style.size + 'pt',
-          textDecoration: style.underline ? 'underline' : undefined,
+          textDecoration:
+            [style.underline || style.link ? 'underline' : '', style.strike ? 'line-through' : '']
+              .filter(Boolean)
+              .join(' ') || undefined,
+          color: style.color ?? (style.link ? '#175CD3' : undefined),
+          backgroundColor: style.highlight ? documentHighlightCss[style.highlight] : undefined,
+          verticalAlign: style.script === 'super' ? 'super' : style.script === 'sub' ? 'sub' : undefined,
+          fontSize: style.script ? '0.75em' : style.size && style.size + 'pt',
         }}
       >
         {style.bold ? (

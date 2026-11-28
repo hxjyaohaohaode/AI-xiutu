@@ -13,6 +13,7 @@ import { registryEnglish } from './registry-messages';
 import { aiEnglish, openAIEnglish } from './ai-messages';
 import { usageEnglish } from './usage-messages';
 import { workspaceEnglish } from './workspace-messages';
+import { officeEditorEnglish } from './office-editor-messages';
 import { accountEnglish } from './account-messages';
 import { operationsEnglish } from './operations-messages';
 import { coreEnglish } from './core-messages';
@@ -21,6 +22,7 @@ import { editorEnglish } from './editor-messages';
 
 /** Application-authored copy only. Source keys keep migration reviewable. */
 export const english: Readonly<Record<string, string>> = {
+  ...officeEditorEnglish,
   "返回编辑工具": "Back to editing tools",
   "显示顶部导航": "Show top bar",
   "隐藏顶部导航": "Hide top bar",

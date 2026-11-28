@@ -11,9 +11,52 @@ export const documentFonts = [
 export const documentSizes = [9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 48] as const;
 export const documentGaps = [0, 6, 12, 18] as const;
 export const documentAlignments = ['left', 'center', 'right', 'justify'] as const;
+/** Text colors: an accessible fixed palette (contrast ≥ 4.5:1 on white). */
+export const documentColors = [
+  '#1F2937',
+  '#6B7280',
+  '#B42318',
+  '#B54708',
+  '#027A48',
+  '#175CD3',
+  '#6941C6',
+  '#C11574',
+] as const;
+/** Highlight names match the Word highlight set so DOCX export is lossless. */
+export const documentHighlights = ['yellow', 'green', 'cyan', 'magenta', 'lightGray'] as const;
+export const documentHighlightCss: Record<(typeof documentHighlights)[number], string> = {
+  yellow: '#FEF3B5',
+  green: '#D1FADF',
+  cyan: '#CFF9FE',
+  magenta: '#FCE7F6',
+  lightGray: '#EAECF0',
+};
+export const documentScripts = ['super', 'sub'] as const;
+/** Paragraph indent levels (0.5 inch / 36pt each) and per-paragraph line spacing. */
+export const documentIndents = [1, 2, 3, 4] as const;
+export const documentLineSpacing = [1, 1.15, 1.5, 2] as const;
+/** Only web and mail links. Script, data and relative URLs are rejected. */
+export const documentLinkPattern = /^(?:https:\/\/|http:\/\/|mailto:)[^\s<>"'\u0000-\u001f]{1,2000}$/;
+export const isDocumentLink = (value: unknown): value is string =>
+  typeof value === 'string' && value.length <= 2048 && documentLinkPattern.test(value);
 export const officeSizes = [10, 11.5, 12, 14, 16, 18] as const;
 export const officeSpacing = [1, 1.15, 1.5, 2] as const;
-export const officeCharts = ['bar', 'line', 'stream', 'sankey', 'radar', 'scatter3d'] as const;
+export const officeCharts = [
+  'bar',
+  'line',
+  'stream',
+  'sankey',
+  'radar',
+  'scatter3d',
+  // Appended only: persisted documents index into this list by value, never by position.
+  'area',
+  'donut',
+  'heatmap',
+  'treemap',
+  'funnel',
+  'waterfall',
+  'bar3d',
+] as const;
 const pageLayout = z
   .object({
     font: z.enum(documentFonts),
@@ -54,6 +97,11 @@ const style = z
     bold: z.literal(true).optional(),
     italic: z.literal(true).optional(),
     underline: z.literal(true).optional(),
+    strike: z.literal(true).optional(),
+    color: z.enum(documentColors).optional(),
+    highlight: z.enum(documentHighlights).optional(),
+    script: z.enum(documentScripts).optional(),
+    link: z.string().max(2048).refine(isDocumentLink).optional(),
     font: z.enum(documentFonts).optional(),
     size: z
       .number()
@@ -72,6 +120,15 @@ const paragraph = z
       .int()
       .refine((n) => documentGaps.some((s) => s === n))
       .optional(),
+    indent: z
+      .number()
+      .int()
+      .refine((n) => documentIndents.some((s) => s === n))
+      .optional(),
+    spacing: z
+      .number()
+      .refine((n) => documentLineSpacing.some((s) => s === n))
+      .optional(),
     runs: z.array(run).max(2048),
   })
   .strict();
@@ -87,7 +144,10 @@ export const documentFormatSchema = z
       lastLine = -1;
     for (const p of format.paragraphs) {
       totalRuns += p.runs.length;
-      if (p.line <= lastLine || (!p.align && p.after === undefined && !p.runs.length)) {
+      if (
+        p.line <= lastLine ||
+        (!p.align && p.after === undefined && !p.indent && !p.spacing && !p.runs.length)
+      ) {
         ctx.addIssue({ code: 'custom', message: 'Invalid paragraph format' });
         return;
       }
@@ -159,6 +219,8 @@ export function sameDocumentFormat(a?: DocumentFormat | null, b?: DocumentFormat
         p.line === other.line &&
         p.align === other.align &&
         p.after === other.after &&
+        p.indent === other.indent &&
+        p.spacing === other.spacing &&
         p.runs.length === other.runs.length &&
         p.runs.every((r, j) => {
           const o = other.runs[j]!;
@@ -168,6 +230,11 @@ export function sameDocumentFormat(a?: DocumentFormat | null, b?: DocumentFormat
             r.bold === o.bold &&
             r.italic === o.italic &&
             r.underline === o.underline &&
+            r.strike === o.strike &&
+            r.color === o.color &&
+            r.highlight === o.highlight &&
+            r.script === o.script &&
+            r.link === o.link &&
             r.font === o.font &&
             r.size === o.size
           );

@@ -10,6 +10,13 @@ export const chartNames: Record<DocumentLayout['chart'], string> = {
   sankey: '桑基图',
   radar: '雷达图',
   scatter3d: '三维散点图',
+  area: '堆叠面积图',
+  donut: '环形图',
+  heatmap: '热力图',
+  treemap: '矩形树图',
+  funnel: '漏斗图',
+  waterfall: '瀑布图',
+  bar3d: '三维柱状图',
 };
 
 export function snapshotTable(chart: OfficeChartSnapshot): DataTable {

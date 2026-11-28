@@ -1558,7 +1558,10 @@ test('renumbered team calls reuse the original handoff without another paid work
         outputs.map((entry: any) => entry.call_id),
         ['team-1', 'team-2'],
       );
-      assert.equal(outputs[0].output, outputs[1].output);
+      // The replay reuses the original payload; only the newest output carries run state.
+      const { harness, ...replayed } = JSON.parse(outputs[1].output);
+      assert.deepEqual(JSON.parse(outputs[0].output), replayed);
+      assert.equal(harness.modelRequestsRemaining, 2);
       return response([text('已准备候选。')]);
     },
   );

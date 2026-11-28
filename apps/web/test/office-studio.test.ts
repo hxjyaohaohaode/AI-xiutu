@@ -122,3 +122,29 @@ test('slide objects serialise as editable text and geometry in PPTX rather than 
   deck.slides[0]!.elements[0]!.x = 1590;
   assert.equal(writePresentation(deck), null);
 });
+
+test('extended chart kinds validate their data shape and escape every label', () => {
+  const table = (headers: string[], rows: string[][]) => ({ kind: 'table' as const, line: 0, headers, rows });
+  const series = table(['Month', 'North', 'South'], [['Jan', '12', '7'], ['Feb', '15', '9'], ['<b>Mar</b>', '11', '13']]);
+  const share = table(['Channel', 'Users'], [['Search', '420'], ['Social', '260'], ['<img>', '120']]);
+  const area = chartSvg('Area', [series], 'area');
+  assert.match(area, /<path fill=/);
+  assert.doesNotMatch(area, /<b>Mar/);
+  const donut = chartSvg('Share', [share], 'donut');
+  assert.match(donut, /Search · 420 · 52\.5%/);
+  assert.match(donut, />800</); // centre total
+  assert.doesNotMatch(donut, /<img>/);
+  assert.throws(() => chartSvg('Bad', [table(['A', 'B'], [['x', '-1'], ['y', '2']])], 'donut'), /正/);
+  const heat = chartSvg('Heat', [table(['Day', 'AM', 'PM'], [['Mon', '-3', '4'], ['Tue', '2', '-1']])], 'heatmap');
+  assert.match(heat, /Mon · AM · -3/);
+  const tree = chartSvg('Tree', [share], 'treemap');
+  assert.equal(tree.match(/<rect x=/g)!.length, 3); // one tile per item
+  const funnel = chartSvg('Funnel', [table(['Stage', 'Count'], [['Visit', '1000'], ['Signup', '250'], ['Pay', '50']])], 'funnel');
+  assert.match(funnel, /Pay · 50 · 较上一步 20%/);
+  const fall = chartSvg('Delta', [table(['Item', 'Change'], [['Start', '100'], ['Cost', '-30'], ['Bonus', '5']])], 'waterfall');
+  assert.match(fall, /Cost · -30/);
+  assert.match(fall, /合计 · 75/);
+  const bars = chartSvg('3D', [series], 'bar3d');
+  assert.match(bars, /Feb · South · 9/);
+  assert.throws(() => chartSvg('Wide', [table(['A', ...'BCDEFGH'.split('')], [['x', ...Array(7).fill('1')], ['y', ...Array(7).fill('1')], ['z', ...Array(7).fill('1')]])], 'bar3d'), /最多/);
+});

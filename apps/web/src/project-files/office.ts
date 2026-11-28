@@ -1,4 +1,4 @@
-import { defaultLayout, readOfficeBlock, type OfficeBlock } from '@ai-xiutu/contracts';
+import { defaultLayout, documentHighlightCss, readOfficeBlock, type OfficeBlock } from '@ai-xiutu/contracts';
 import { headingScales } from './formatting';
 import type { OfficeLayout } from './office-layout';
 import type { IParagraphOptions } from 'docx';
@@ -47,12 +47,24 @@ export async function wordDocument(title: string, blocks: MessageBlock[], layout
     text.split('\n').map((line, index) => new TextRun({ text: line, break: index ? 1 : 0 }));
   function formatted(text: string, line: number, extra: IParagraphOptions = {}, prefix = '', code = false) {
     const p = layout?.paragraph(line, text, undefined, code);
-    const runs = (p?.runs ?? [{text,style:{}}]).map(({text, style}) => new TextRun({
-      text, bold: style.bold, italics: style.italic, underline: style.underline ? {} : undefined,
-      font: face(style.font ?? (code ? 'Courier New' : pageStyle.font)), size: style.size == null ? undefined : style.size * 2,
-    }));
+    const runs = (p?.runs ?? [{text,style:{}}]).map(({text, style}) => {
+      const run = new TextRun({
+        text, bold: style.bold, italics: style.italic, underline: style.underline || style.link ? {} : undefined,
+        strike: style.strike, color: style.color?.slice(1) ?? (style.link ? '175CD3' : undefined),
+        highlight: style.highlight, superScript: style.script === 'super', subScript: style.script === 'sub',
+        font: face(style.font ?? (code ? 'Courier New' : pageStyle.font)), size: style.size == null ? undefined : style.size * 2,
+      });
+      // Links stay editable hyperlinks in Word; only validated http(s)/mailto targets reach here.
+      return style.link ? new ExternalHyperlink({ link: style.link, children: [run] }) : run;
+    });
+    const spacing = {
+      ...(extra.spacing ?? {}),
+      ...(p?.after !== undefined ? { after: p.after * 20 } : {}),
+      ...(p?.spacing ? { line: Math.round(240 * p.spacing), lineRule: LineRuleType.AUTO } : {}),
+    };
     return new Paragraph({ ...extra, ...(p?.align ? {alignment: p.align === 'justify' ? 'both' : p.align} : {}),
-      ...(p?.after !== undefined ? {spacing:{after:p.after * 20}} : {}),
+      ...(Object.keys(spacing).length ? { spacing } : {}),
+      ...(p?.indent ? { indent: { left: 720 * p.indent } } : {}),
       children: [...(prefix ? [new TextRun(prefix)] : []), ...runs] });
   }
   let media = 0;
@@ -199,7 +211,11 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
   }
   function slideRuns(runs: ReturnType<OfficeLayout['paragraph']>['runs']): pptxgen.TextProps[] {
     return runs.map(({ text, style }) => ({text, options: {bold:style.bold,italic:style.italic,
-      underline:style.underline ? {style:'sng'} : undefined, fontFace:style.font, fontSize:style.size}}));
+      underline:style.underline || style.link ? {style:'sng'} : undefined, fontFace:style.font, fontSize:style.size,
+      strike: style.strike ? 'sngStrike' : undefined, color: style.color?.slice(1) ?? (style.link ? '175CD3' : undefined),
+      highlight: style.highlight ? documentHighlightCss[style.highlight].slice(1) : undefined,
+      superscript: style.script === 'super', subscript: style.script === 'sub',
+      ...(style.link ? { hyperlink: { url: style.link } } : {})}}));
   }
   function paragraph(text: string, line: number, prefix = '', code = false) {
     text.split('\n').forEach((source, i) => {
@@ -297,8 +313,12 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
       if (block.rows.length >= 2 && block.rows.length <= 20) {
         for (const series of chartSeries(block)) {
           const slide = newPage();
+          // Native, editable PowerPoint charts where the series maps 1:1; other kinds use bars.
+          const native = pageStyle.chart === 'line' ? deck.ChartType.line
+            : pageStyle.chart === 'area' ? deck.ChartType.area
+            : pageStyle.chart === 'donut' ? deck.ChartType.doughnut : deck.ChartType.bar;
           slide.addChart(
-            pageStyle.chart === 'line' ? deck.ChartType.line : deck.ChartType.bar,
+            native,
             [{ name: series.name, labels: block.rows.map((r) => r[0]), values: series.values }],
             {
               x: 0.7,
@@ -309,7 +329,10 @@ export async function presentation(title: string, blocks: MessageBlock[], cover?
               showTitle: true,
               title: series.name,
               showLegend: false,
-              chartColors: ['267A77'],
+              chartColors: pageStyle.chart === 'donut'
+                ? ['237973', '447BC2', 'BA684A', '6C63A8', '9E7584', '607747', 'A37721', '437E95']
+                : ['267A77'],
+              ...(pageStyle.chart === 'donut' ? { holeSize: 58, showPercent: true, showLegend: true } : {}),
               catAxisLabelFontSize: 12,
               valAxisLabelFontSize: 12,
               valAxisLabelFormatCode: series.percent ? '0.##%' : 'General',

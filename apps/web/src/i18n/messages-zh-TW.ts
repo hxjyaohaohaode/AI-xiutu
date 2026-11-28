@@ -8,12 +8,14 @@ import { aiRedesignTraditionalChinese } from './ai-redesign-messages';
 import { libraryTraditional } from './library-messages';
 import { usageTraditional } from './usage-messages';
 import { workspaceTraditional } from './workspace-messages';
+import { officeEditorTraditional } from './office-editor-messages';
 import { accountTraditional } from './account-messages';
 import { traditionalGenerated } from './traditional-generated';
 import { openAITraditional } from './ai-messages';
 
 /** Traditional Chinese copy; user content is never passed through this catalog. */
 export const traditional: Readonly<Record<string, string>> = {
+  ...officeEditorTraditional,
   "返回编辑工具": "返回編輯工具",
   "显示顶部导航": "顯示頂部導覽",
   "隐藏顶部导航": "隱藏頂部導覽",

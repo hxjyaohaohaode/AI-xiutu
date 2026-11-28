@@ -25,6 +25,8 @@ export function officeLayout(body: string, formatting: DocumentFormat) {
       return {
         align: p?.align,
         after: p?.after,
+        indent: p?.indent,
+        spacing: p?.spacing,
         runs,
       };
     },
