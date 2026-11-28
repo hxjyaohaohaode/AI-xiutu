@@ -35,3 +35,15 @@
 - 原生 PostgreSQL 上的完整测试（本环境只有 WASM 后端）。
 - 在完整应用中带账号走一遍（登录、项目、实时协作保存）的端到端测试。上面的浏览器检查用的是组件级临时页面。
 - 真实模型的提示效果：分节提示和运行台账只验证了请求格式与循环控制，模型实际表现需要用付费模型另做验收。
+
+## 第三轮补充（图表 v3、文档分享、演示排列、工作表函数）
+
+| 检查 | 结果 |
+| --- | --- |
+| 原生 PostgreSQL 18（本机嵌入式二进制，非 WASM）上的 `npm test` | 第二轮代码：1246 项，1239 通过，0 失败，7 跳过。第一轮在 WASM 后端失败的 16 项在原生库上全部通过 |
+| `apps/web` 单元测试 | 574 / 574 通过：新增 10 种图表与 v3 选项、24 个函数、演示排列的测试 |
+| `apps/api/test/document-sharing.test.ts`（原生 PostgreSQL） | 通过：策略开关、角色限制、匿名只读、仅限文中图片、策略关闭后立即失效、过期、停用、审计 |
+| `scripts/qa/document-sharing.browser.mjs`（已加入 CI） | 本机通过：分享对话框、成员列表、7 天可下载链接、无 Cookie 访客在四种视口下打开且横向溢出为 0、图片加载、下载、停用后链接失效 |
+| `scripts/qa/office-studio.browser.mjs`、`project-files.browser.mjs`、`assistant.browser.mjs`、`agent-image.browser.mjs` | 本机通过。本容器的无头浏览器版本较旧，下载的文件名统一显示为 `download`（未改动的 `main` 也一样），所以本机运行时临时放宽了文件名断言；CI 使用 Chrome，不受影响 |
+| GitHub Actions `Baseline checks` | 59b9285、d7ce6b5、b210d71 三次提交均通过 |
+| 演示排列（浏览器） | Shift 多选 3 个对象后顶端对齐 y 都为 150，等距分布后间距都是 260 px；单个对象居中后中心 x 为 800 |

@@ -86,3 +86,19 @@
 | --- | --- | --- | --- |
 | [HIG Materials](https://developer.apple.com/design/human-interface-guidelines/materials)，[Liquid Glass 概览](https://developer.apple.com/documentation/technologyoverviews/liquid-glass) | 一手 | Liquid Glass 用于浮在内容之上的控件和导航层，内容层用标准材质；越厚的材质对比度越好；用户可以开启“降低透明度”或“减弱动态效果” | 文档工具栏作为浮层，使用半透明背景加模糊，正文“纸张”保持不透明 |
 | [HIG Motion](https://developer.apple.com/design/human-interface-guidelines/motion) | 一手 | 不为动效而加动效；动效响应直接操作 | 只给弹出层加 140ms 出现动画；开启“减弱动态效果”时关闭全部过渡 |
+
+## 6. 第三轮：用户指定的四个来源（2026-11-28）
+
+| 来源 | 实际读到的内容 | 本轮采纳 |
+| --- | --- | --- |
+| [github.com/storytold](https://github.com/storytold)（ArtCraft） | 一组 Rust 开源创作工具：PhotoCraft（无损重写的照片编辑器，图层/蒙版/调整层/PSD，500+ 命令注册表，CLI/JSON/MCP 控制通道）、ArtCraft（文生图、提示词改图、画布编辑、抠图）、LightCraft、FilmCraft 等 | 记录为图像编辑方向的参考实现。“命令注册表 + 机器可控通道”与本项目已有的编辑器 MCP 工具和配方协议思路一致；本轮没有移植其 Rust 代码 |
+| [oppo.com/en/coloros17](https://www.oppo.com/en/coloros17/) | AI Mind Space（把图片、笔记、地点整理成结构化集合）、AI Mind Pilot、AI Photo Agent（色调、光线、构图、修饰建议，可按模板或参考图复刻风格）、OSee 等；页面没有单独列出相册管理、AI 笔记、录音或导图功能 | AI Photo Agent 的“建议 → 预览 → 确认”与本项目三档执行模式一致，运行时改进（可执行错误、运行台账、收敛控制）直接作用于这条流程。页面未列出的笔记/导图功能不作为已对标项 |
+| [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness)（含 docs/architecture.md） | 一切皆插件：模型适配器、工具注册表、会话日志和智能体循环本身都是插件；“一步”= 一次模型请求加其工具调用；`agent/turn-stopping` 停止钩子；失败步骤记录缺失的工具结果；追加式会话事件日志 | 宿主侧确定性控制已落地：失败调用返回结构化结果（不丢失），重复失败拦截，连续失败强制收敛，运行台账以追加方式写入 |
+| [meituxiuxiu.com](https://www.meituxiuxiu.com/) | 人像：面部精修、美颜风格、身形；编辑：贴纸、100+ AI 滤镜、模板、拼图；AI：消除、抠图、扩图、AI 滤镜、AI 写真、AI 艺术；视频编辑与美颜 | 本项目已有人像精修、局部修复、扩展与生图链路；本轮把投入放在用户反馈最强烈的文档、图表、演示与分享上，相片侧没有新增功能 |
+
+### 本轮交付
+
+- **图表 v3**：在 v2 的 14 种基础上新增饼图、南丁格尔玫瑰图、散点/气泡图、仪表盘、箱线图、直方图、棒棒糖图、径向柱图、哑铃图、金字塔图，共 24 种；新增极光、糖果、大地、商务 4 套主题，共 10 套。新增的高级样式有：自定义系列颜色、标题对齐、背景（主题/白/透明）、数字格式（千分位、万/亿、不分组）加前缀/后缀、坐标范围、目标线与平均线、柱子圆角与宽度、线宽与数据点、渐变填充、仪表最大值、直方图分组数。设计器只显示所选图表支持的选项。
+- **文档分享与权限**：对应 Google Docs 的“知道链接的任何人可查看”。新增 schema v33 和空间级开关（默认关闭），分享对话框列出按角色区分的成员权限，可创建带有效期、是否允许下载的只读链接，可复制、停用；另有公开只读阅读页，支持文档、演示和工作表，图片走链接自身的授权。
+- **演示**：Shift/⌘/Ctrl 多选；左/中/右/上/中/下对齐（单个对象对齐到幻灯片，多个对象对齐到选区），横向/纵向等距分布，统一宽高。
+- **工作表**：新增 24 个与 Excel 同名的函数（MEDIAN、STDEV、VAR、LARGE、SMALL、COUNTBLANK、AVERAGEIF、SUMPRODUCT、INT、TRUNC、SIGN、EXP、LN、LOG10、PI、UPPER、LOWER、TRIM、MID、ISNUMBER、ISBLANK、ISTEXT、CHOOSE、TEXTJOIN），导出 `.xlsx` 时保留原生公式。
