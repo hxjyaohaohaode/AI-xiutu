@@ -45,6 +45,7 @@ import {
   documentHighlights,
   documentHighlightCss,
   documentLineSpacing,
+  documentGaps,
   isDocumentLink,
   sameDocumentFormat,
   readOfficeBlock,
@@ -428,7 +429,7 @@ export function RichDocumentEditor(props: Props) {
   function script(value: 'super' | 'sub') {
     run(toggleMark(documentSchema.marks.script!, { value }, { removeWhenPresent: false }));
   }
-  function paragraph(name: 'align' | 'spacing', value: string) {
+  function paragraph(name: 'align' | 'spacing' | 'after', value: string) {
     if (!v || props.readOnly) return;
     const { from, to, $from, empty } = v.state.selection,
       tr = v.state.tr;
@@ -436,7 +437,7 @@ export function RichDocumentEditor(props: Props) {
       const node = tr.doc.nodeAt(pos)!;
       tr.setNodeMarkup(pos, undefined, {
         ...node.attrs,
-        [name]: value === '' ? null : name === 'spacing' ? Number(value) : value,
+        [name]: value === '' ? null : name === 'spacing' || name === 'after' ? Number(value) : value,
       });
     };
     if (empty) update($from.before());
@@ -632,6 +633,17 @@ export function RichDocumentEditor(props: Props) {
               <option value="">{t('行距')}</option>
               {documentLineSpacing.map((n) => (
                 <option key={n} value={n}>{n}</option>
+              ))}
+            </select>
+            <select
+              aria-label={t('段后间距')}
+              title={t('段后间距')}
+              value={parent?.attrs.after ?? ''}
+              onChange={(e) => paragraph('after', e.target.value)}
+            >
+              <option value="">{t('段后间距')}</option>
+              {documentGaps.map((g) => (
+                <option value={g} key={g}>{g} pt</option>
               ))}
             </select>
           </div>

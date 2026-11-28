@@ -95,7 +95,7 @@ async function download(page, extension, root = page) {
     page.waitForEvent('download'),
     page.getByRole('option').filter({ hasText: extension }).click(),
   ]);
-  assert.ok(file.suggestedFilename().endsWith(extension));
+  assert.ok(file.suggestedFilename().endsWith(extension), `Expected ${extension}, got ${file.suggestedFilename()}`);
   const path = resolve(artifacts, file.suggestedFilename());
   await file.saveAs(path);
   const bytes = await readFile(path);
@@ -317,8 +317,12 @@ try {
   await slides.getByLabel('旋转', { exact: true }).fill('12');
   await slides.getByRole('button', { name: '插入图表', exact: true }).click();
   await slides.getByLabel('选择数据文档', { exact: true }).selectOption(savedSheet.id);
-  await slides.getByLabel('图表类型', { exact: true }).selectOption('stream');
-  await slides.getByRole('button', { name: '插入', exact: true }).click();
+  await slides.getByRole('button', { name: '设计图表', exact: true }).click();
+  const slideDesigner = owner.getByRole('dialog', { name: '图表设计', exact: true });
+  await slideDesigner.getByRole('button', { name: '河流图', exact: true }).click();
+  await slideDesigner.locator('.chart-view svg[data-chart-kind="stream"]').waitFor();
+  await slideDesigner.getByRole('button', { name: '插入到幻灯片', exact: true }).click();
+  await slideDesigner.waitFor({ state: 'detached' });
   await slides.getByRole('button', { name: sheetTitle, exact: true }).waitFor();
   await slides.getByRole('button', { name: '添加幻灯片', exact: true }).click();
   const savedDeck = await until(
@@ -372,8 +376,12 @@ try {
   await insert.click();
   await picker.selectOption('chart');
   await liveEditor.getByLabel('选择项目内容', { exact: true }).selectOption(savedSheet.id);
-  await liveEditor.getByLabel('图表类型', { exact: true }).selectOption('stream');
-  await insert.click();
+  await liveEditor.getByRole('button', { name: '设计图表', exact: true }).click();
+  const docDesigner = owner.getByRole('dialog', { name: '图表设计', exact: true });
+  await docDesigner.getByRole('button', { name: '河流图', exact: true }).click();
+  await docDesigner.locator('.chart-view svg[data-chart-kind="stream"]').waitFor();
+  await docDesigner.getByRole('button', { name: '插入到文档', exact: true }).click();
+  await docDesigner.waitFor({ state: 'detached' });
   const blocks = (doc) => doc?.body.split('\n').map(readOfficeBlock).filter(Boolean) ?? [];
   const rich = await until(
     () => getDocument(proseTitle),

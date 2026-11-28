@@ -98,7 +98,7 @@ async function checkFormattedDocument(page, fixture) {
   await editor.getByRole('button',{name:'下划线',exact:true}).click();
   await editor.getByRole('combobox',{name:'字体',exact:true}).selectOption('Georgia');
   await editor.getByRole('combobox',{name:'字号',exact:true}).selectOption('24');
-  await editor.getByRole('combobox',{name:'段落对齐',exact:true}).selectOption('center');
+  await editor.getByRole('radiogroup',{name:'段落对齐',exact:true}).getByRole('button',{name:'居中',exact:true}).click();
   await editor.getByRole('combobox',{name:'段后间距',exact:true}).selectOption('12');
   const [created] = await Promise.all([page.waitForResponse(r =>
     r.request().method()==='POST' && r.url().endsWith('/documents')), editor.getByRole('button',{name:'保存文档',exact:true}).click()]);
@@ -245,7 +245,8 @@ try {
   await composer.getByRole('button', { name: '图表预览' }).click();
   const graph = composer.getByRole('img', { name: '图表预览' });
   await graph.evaluate(image => image.decode());
-  assert.ok(decodeURIComponent(await graph.getAttribute('src')).includes('<polyline '));
+  // Single-unit tables use the themed engine; mixed units keep the per-series layout.
+  assert.match(decodeURIComponent(await graph.getAttribute('src')), /<polyline |data-chart-kind="line"/);
   const [styledSave] = await Promise.all([page.waitForResponse(response =>
     response.request().method() === 'POST' && response.url().endsWith('/documents')),
     page.getByRole('button', { name: '保存文档', exact: true }).click()]);
@@ -258,7 +259,7 @@ try {
   for (const format of ['docx','pptx','xlsx','svg']) {
     const path = await downloadFrom(formattedMenu, '.' + format, '排版验收.' + format);
     const bytes = await readFile(path);
-    if (format === 'svg') assert.match(bytes.toString(), /<polyline /);
+    if (format === 'svg') assert.match(bytes.toString(), /<polyline |data-chart-kind="line"/);
     else {
       const contents = unzipSync(bytes);
       if (format === 'docx') {
