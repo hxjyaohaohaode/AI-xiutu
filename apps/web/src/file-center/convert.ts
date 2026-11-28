@@ -5,95 +5,37 @@ import {
   type DocumentFormat,
   type PresentationDoc,
 } from '@ai-xiutu/contracts';
+import { readZip } from './archives';
+import { LIMITS, baseName, codeLanguages, extensionOf, fileKind } from './kinds';
+
+export { LIMITS, baseName, codeLanguages, extensionOf, fileKind, formatBytes, type FileKind } from './kinds';
 
 /**
  * Pure file conversion for the file center. Everything runs in the browser on
  * bytes the user chose; nothing is uploaded until they save the result as a
- * project document. Archive reading is bounded so a crafted zip cannot exhaust
- * memory (entry count, per-file and total uncompressed size, compression ratio).
+ * project document. Office packages are read part by part from the archive's
+ * central directory, so a 500 MB deck full of media only costs its XML.
  */
 
-export type FileKind =
-  | 'image'
-  | 'svg'
-  | 'markdown'
-  | 'text'
-  | 'code'
-  | 'html'
-  | 'docx'
-  | 'sheet'
-  | 'pptx'
-  | 'pdf'
-  | 'audio'
-  | 'video'
-  | 'zip'
-  | 'unknown';
+export type Parts = Record<string, Uint8Array>;
 
-const extensionKinds: Record<string, FileKind> = {
-  png: 'image', jpg: 'image', jpeg: 'image', gif: 'image', webp: 'image', avif: 'image', bmp: 'image', ico: 'image',
-  svg: 'svg',
-  md: 'markdown', markdown: 'markdown', mdx: 'markdown',
-  txt: 'text', log: 'text', text: 'text', rtf: 'text',
-  json: 'code', js: 'code', mjs: 'code', ts: 'code', tsx: 'code', jsx: 'code', css: 'code', scss: 'code',
-  py: 'code', java: 'code', c: 'code', h: 'code', cpp: 'code', hpp: 'code', go: 'code', rs: 'code',
-  rb: 'code', php: 'code', sh: 'code', sql: 'code', xml: 'code', yaml: 'code', yml: 'code', toml: 'code', ini: 'code',
-  html: 'html', htm: 'html',
-  docx: 'docx',
-  xlsx: 'sheet', xls: 'sheet', xlsm: 'sheet', ods: 'sheet', csv: 'sheet', tsv: 'sheet',
-  pptx: 'pptx',
-  pdf: 'pdf',
-  mp3: 'audio', wav: 'audio', ogg: 'audio', oga: 'audio', m4a: 'audio', flac: 'audio', aac: 'audio',
-  mp4: 'video', webm: 'video', mov: 'video', m4v: 'video',
-  zip: 'zip',
-};
-export const codeLanguages: Record<string, string> = {
-  js: 'javascript', mjs: 'javascript', ts: 'typescript', tsx: 'tsx', jsx: 'jsx', py: 'python', rb: 'ruby',
-  sh: 'bash', yml: 'yaml', md: 'markdown',
-};
-
-export const extensionOf = (name: string) => /\.([A-Za-z0-9]{1,8})$/.exec(name)?.[1]?.toLowerCase() ?? '';
-export const fileKind = (name: string): FileKind => extensionKinds[extensionOf(name)] ?? 'unknown';
-export const baseName = (name: string) => (name.split('/').pop() ?? name).replace(/\.[^.]+$/, '').slice(0, 120) || '未命名';
-
-export const LIMITS = {
-  previewBytes: 64 * 1024 * 1024,
-  zipEntries: 2000,
-  zipEntryBytes: 64 * 1024 * 1024,
-  zipTotalBytes: 256 * 1024 * 1024,
-  zipRatio: 200,
-  textChars: 100_000,
-};
-
-export interface ArchiveEntry {
-  path: string;
-  bytes: Uint8Array;
+/** Reads the named parts of a ZIP-based package (DOCX, PPTX, ODF, EPUB) from a Blob. */
+export async function zipParts(blob: Blob, wanted: (path: string) => boolean, maxPart = 48 * 1024 * 1024): Promise<Parts> {
+  const { items } = await readZip(blob, '');
+  const parts: Parts = {};
+  for (const item of items) {
+    const path = item.path.replace(/^\//, '');
+    if (!wanted(path) || item.size > maxPart || item.unavailable) continue;
+    parts[path] = new Uint8Array(await (await item.blob()).arrayBuffer());
+  }
+  return parts;
 }
+const syncParts = (bytes: Uint8Array, wanted: (path: string) => boolean, maxPart = 48 * 1024 * 1024): Parts =>
+  unzipSync(bytes, { filter: (f) => wanted(f.name) && f.originalSize <= maxPart });
 
-/** Lists and extracts a zip within the limits; directories are implied by paths. */
-export function readZip(bytes: Uint8Array): { entries: ArchiveEntry[]; skipped: number } {
-  let total = 0,
-    count = 0,
-    skipped = 0;
-  const files = unzipSync(bytes, {
-    filter(file) {
-      const unsafe = file.name.includes('..') || file.name.startsWith('/') || file.name.endsWith('/');
-      if (unsafe) return false;
-      if (++count > LIMITS.zipEntries) throw new Error(`压缩包超过 ${LIMITS.zipEntries} 个文件，无法预览。`);
-      const ratio = file.size ? file.originalSize / file.size : 1;
-      if (file.originalSize > LIMITS.zipEntryBytes || ratio > LIMITS.zipRatio) {
-        skipped++;
-        return false;
-      }
-      total += file.originalSize;
-      if (total > LIMITS.zipTotalBytes) throw new Error('压缩包解压后过大，无法预览。');
-      return true;
-    },
-  });
-  const entries = Object.entries(files)
-    .filter(([path]) => !/(^|\/)(__MACOSX|\.DS_Store)(\/|$)/.test(path))
-    .map(([path, data]) => ({ path, bytes: data }))
-    .sort((a, b) => a.path.localeCompare(b.path));
-  return { entries, skipped };
+/** Paths of a ZIP-based package without reading any part (to count media, find thumbnails). */
+export async function zipPaths(blob: Blob) {
+  return (await readZip(blob, '')).items.map((i) => i.path.replace(/^\//, ''));
 }
 
 export interface TreeNode {
@@ -156,7 +98,7 @@ export interface DocumentDraft {
 export function textDocument(name: string, bytes: Uint8Array): DocumentDraft {
   const kind = fileKind(name);
   const text = cleanText(decodeText(bytes));
-  if (kind === 'code') {
+  if (kind === 'code' || kind === 'json') {
     const language = codeLanguages[extensionOf(name)] ?? extensionOf(name);
     const fence = text.includes('```') ? '~~~~' : '```';
     return { title: baseName(name), body: cleanText(`${fence}${language}\n${text}\n${fence}`), notes: [] };
@@ -213,8 +155,16 @@ function headingLevel(paragraphXml: string, styles: Map<string, number>) {
  * (as Markdown tables), and bold/italic/underline/strikethrough runs. Images,
  * comments, tracked changes and complex layout are listed as notes.
  */
+const docxWanted = (path: string) => /^word\/(document|styles|numbering)\.xml$/.test(path);
 export function docxDocument(name: string, bytes: Uint8Array): DocumentDraft {
-  const files = unzipSync(bytes, { filter: (f) => /^word\/(document|styles|numbering)\.xml$|^word\/media\//.test(f.name) && f.originalSize < 32 * 1024 * 1024 });
+  const files = syncParts(bytes, (p) => docxWanted(p) || p.startsWith('word/media/'));
+  return docxFromParts(name, files, Object.keys(files).filter((f) => f.startsWith('word/media/')).length);
+}
+export async function docxFromBlob(name: string, blob: Blob): Promise<DocumentDraft> {
+  const [files, paths] = await Promise.all([zipParts(blob, docxWanted), zipPaths(blob)]);
+  return docxFromParts(name, files, paths.filter((f) => f.startsWith('word/media/')).length);
+}
+function docxFromParts(name: string, files: Parts, images: number): DocumentDraft {
   const documentXml = files['word/document.xml'];
   if (!documentXml) throw new Error('这不是有效的 Word 文档。');
   const xml = strFromU8(documentXml);
@@ -238,7 +188,6 @@ export function docxDocument(name: string, bytes: Uint8Array): DocumentDraft {
   const lines: string[] = [];
   const paragraphs: DocumentFormat['paragraphs'] = [];
   const notes: string[] = [];
-  const images = Object.keys(files).filter((f) => f.startsWith('word/media/')).length;
   if (images) notes.push(`文档中有 ${images} 张图片未导入，可另存后作为项目图片插入。`);
   let ordered = 0;
   const pushParagraph = (prefix: string, runs: Run[]) => {
@@ -304,8 +253,11 @@ export function docxDocument(name: string, bytes: Uint8Array): DocumentDraft {
 
 // ---------- PowerPoint (.pptx) ----------
 
-export function pptxSlides(bytes: Uint8Array): { title: string; lines: string[] }[] {
-  const files = unzipSync(bytes, { filter: (f) => /^ppt\/slides\/slide\d+\.xml$/.test(f.name) && f.originalSize < 8 * 1024 * 1024 });
+const slideWanted = (path: string) => /^ppt\/slides\/slide\d+\.xml$/.test(path);
+export function pptxSlides(bytes: Uint8Array) {
+  return slidesFromParts(syncParts(bytes, slideWanted, 8 * 1024 * 1024));
+}
+function slidesFromParts(files: Parts): { title: string; lines: string[] }[] {
   return Object.keys(files)
     .sort((a, b) => Number(/(\d+)\.xml$/.exec(a)![1]) - Number(/(\d+)\.xml$/.exec(b)![1]))
     .map((path) => {
@@ -325,7 +277,14 @@ export function pptxSlides(bytes: Uint8Array): { title: string; lines: string[] 
 
 /** Rebuilds a .pptx as an editable deck: one title and one body text box per slide. */
 export function pptxPresentation(name: string, bytes: Uint8Array): DocumentDraft {
-  const slides = pptxSlides(bytes).slice(0, 50);
+  return deckDraft(name, pptxSlides(bytes), ['已导入每页标题与文字；图片、图表和动画需在编辑器中重新添加。']);
+}
+export async function pptxFromBlob(name: string, blob: Blob): Promise<DocumentDraft> {
+  return deckDraft(name, slidesFromParts(await zipParts(blob, slideWanted, 8 * 1024 * 1024)), ['已导入每页标题与文字；图片、图表和动画需在编辑器中重新添加。']);
+}
+/** Builds an editable deck: one title and one body text box per slide (max 50). */
+export function deckDraft(name: string, all: { title: string; lines: string[] }[], notes: string[]): DocumentDraft {
+  const slides = all.slice(0, 50);
   if (!slides.length) throw new Error('没有在演示文稿中找到幻灯片。');
   const box = (y: number, height: number, text: string, size: number, bold: boolean) => ({
     id: crypto.randomUUID(), kind: 'text' as const, x: 100, y, width: 1400, height, rotation: 0,
@@ -345,13 +304,260 @@ export function pptxPresentation(name: string, bytes: Uint8Array): DocumentDraft
   };
   const body = writePresentation(deck);
   if (!body) throw new Error('演示文稿内容超出可编辑范围。');
-  const notes = ['已导入每页标题与文字；图片、图表和动画需在编辑器中重新添加。'];
+  if (all.length > 50) notes = [...notes, `共 ${all.length} 页，已导入前 50 页。`];
   return { title: baseName(name), body, notes };
 }
 
-export function formatBytes(n: number) {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 ** 2) return `${(n / 1024).toFixed(1)} KB`;
-  if (n < 1024 ** 3) return `${(n / 1024 ** 2).toFixed(1)} MB`;
-  return `${(n / 1024 ** 3).toFixed(2)} GB`;
+// ---------- OpenDocument (.odt / .odp) ----------
+
+function odfText(xml: string) {
+  return xmlText(
+    xml
+      .replace(/<text:s(?: text:c="(\d+)")?\s*\/>/g, (_, n) => ' '.repeat(Number(n ?? 1)))
+      .replace(/<text:tab\s*\/>/g, '\t')
+      .replace(/<text:line-break\s*\/>/g, ' ')
+      .replace(/<text:note\b[\s\S]*?<\/text:note>/g, '')
+      .replace(/<[^>]+>/g, ''),
+  );
+}
+
+/** OpenDocument text: headings by outline level, list items, tables and paragraphs. */
+export async function odtFromBlob(name: string, blob: Blob): Promise<DocumentDraft> {
+  const parts = await zipParts(blob, (p) => p === 'content.xml');
+  if (!parts['content.xml']) throw new Error('这不是有效的 OpenDocument 文本。');
+  const xml = /<office:text[^>]*>([\s\S]*)<\/office:text>/.exec(strFromU8(parts['content.xml']))?.[1] ?? '';
+  const lines: string[] = [];
+  const blocks = /<text:h\b([^>]*)>([\s\S]*?)<\/text:h>|<text:list\b[^>]*>([\s\S]*?)<\/text:list>|<table:table\b[^>]*>([\s\S]*?)<\/table:table>|<text:p\b[^>]*>([\s\S]*?)<\/text:p>|<text:p\b[^>]*\/>/g;
+  for (const m of xml.matchAll(blocks)) {
+    if (m[2] !== undefined) {
+      const level = Math.min(6, Math.max(1, Number(/text:outline-level="(\d)"/.exec(m[1] ?? '')?.[1] ?? 1)));
+      lines.push('#'.repeat(level) + ' ' + odfText(m[2]).trim());
+    } else if (m[3] !== undefined) {
+      for (const item of m[3].matchAll(/<text:p\b[^>]*>([\s\S]*?)<\/text:p>/g)) lines.push('- ' + odfText(item[1]!).trim());
+    } else if (m[4] !== undefined) {
+      const rows = [...m[4].matchAll(/<table:table-row\b[^>]*>([\s\S]*?)<\/table:table-row>/g)].map((row) =>
+        [...row[1]!.matchAll(/<table:table-cell\b[^>]*>([\s\S]*?)<\/table:table-cell>|<table:table-cell\b[^>]*\/>/g)].map((c) =>
+          odfText(c[1] ?? '').replace(/\|/g, '｜').trim(),
+        ),
+      );
+      if (rows.length) {
+        const width = Math.max(...rows.map((r) => r.length));
+        const pad = (r: string[]) => [...r, ...Array(width - r.length).fill('')];
+        lines.push('', '| ' + pad(rows[0]!).join(' | ') + ' |', '| ' + Array(width).fill('---').join(' | ') + ' |');
+        for (const row of rows.slice(1)) lines.push('| ' + pad(row).join(' | ') + ' |');
+        lines.push('');
+      }
+    } else lines.push(odfText(m[5] ?? ''));
+  }
+  const body = cleanText(lines.join('\n').replace(/\n{3,}/g, '\n\n').trim());
+  return { title: baseName(name), body, notes: lines.join('\n').length > LIMITS.textChars ? ['内容超过 100000 字符，已截断。'] : [] };
+}
+
+export async function odpFromBlob(name: string, blob: Blob): Promise<DocumentDraft> {
+  const parts = await zipParts(blob, (p) => p === 'content.xml');
+  if (!parts['content.xml']) throw new Error('这不是有效的 OpenDocument 演示。');
+  const xml = strFromU8(parts['content.xml']);
+  const slides = [...xml.matchAll(/<draw:page\b[^>]*>([\s\S]*?)<\/draw:page>/g)].map((page) => {
+    const frames = [...page[1]!.matchAll(/<draw:frame\b([^>]*)>([\s\S]*?)<\/draw:frame>/g)].map((f) => ({
+      title: /presentation:class="title"/.test(f[1]!),
+      lines: [...f[2]!.matchAll(/<text:p\b[^>]*>([\s\S]*?)<\/text:p>/g)].map((p) => odfText(p[1]!).trim()).filter(Boolean),
+    }));
+    const titleFrame = frames.find((f) => f.title) ?? frames.find((f) => f.lines.length);
+    return { title: titleFrame?.lines.join(' ') ?? '', lines: frames.filter((f) => f !== titleFrame).flatMap((f) => f.lines) };
+  });
+  if (!slides.length) throw new Error('没有在演示文稿中找到幻灯片。');
+  return deckDraft(name, slides, ['已导入每页标题与文字；图片和动画需在编辑器中重新添加。']);
+}
+
+// ---------- RTF ----------
+
+/** Plain text from RTF: paragraphs, tabs, \uN and \'hh escapes (code page aware). */
+export function rtfText(source: string): string {
+  const codePage = Number(/\\ansicpg(\d+)/.exec(source)?.[1] ?? 1252);
+  const encoding = codePage === 936 ? 'gb18030' : codePage === 950 ? 'big5' : codePage === 932 ? 'shift_jis' : codePage === 65001 ? 'utf-8' : 'windows-1252';
+  let decoder: TextDecoder;
+  try {
+    decoder = new TextDecoder(encoding);
+  } catch {
+    decoder = new TextDecoder('windows-1252');
+  }
+  const skipDestinations = /^(fonttbl|colortbl|stylesheet|info|pict|object|header|footer|footnote|themedata|datastore|latentstyles|listtable|listoverridetable|rsidtbl|generator|xmlnstbl|mmathPr)$/;
+  let out = '';
+  let bytes: number[] = [];
+  const flush = () => {
+    if (bytes.length) out += decoder.decode(new Uint8Array(bytes));
+    bytes = [];
+  };
+  const stack: { skip: boolean; uc: number }[] = [{ skip: false, uc: 1 }];
+  let pendingSkip = 0;
+  for (let i = 0; i < source.length; i++) {
+    const top = stack[stack.length - 1]!;
+    const ch = source[i]!;
+    if (ch === '{') {
+      flush();
+      stack.push({ ...top });
+      continue;
+    }
+    if (ch === '}') {
+      flush();
+      if (stack.length > 1) stack.pop();
+      continue;
+    }
+    if (ch === '\\') {
+      const next = source[i + 1];
+      if (next === '\\' || next === '{' || next === '}') {
+        flush();
+        if (!top.skip) out += next;
+        i++;
+        continue;
+      }
+      if (next === "'") {
+        const hex = parseInt(source.slice(i + 2, i + 4), 16);
+        i += 3;
+        if (pendingSkip) {
+          pendingSkip--;
+          continue;
+        }
+        if (!top.skip && !Number.isNaN(hex)) bytes.push(hex);
+        continue;
+      }
+      if (next === '*') {
+        top.skip = true;
+        i++;
+        continue;
+      }
+      const m = /^([a-zA-Z]{1,32})(-?\d{1,10})? ?/.exec(source.slice(i + 1, i + 46));
+      if (!m) {
+        i++;
+        continue;
+      }
+      i += m[0].length;
+      const word = m[1]!;
+      const arg = m[2] === undefined ? undefined : Number(m[2]);
+      flush();
+      if (skipDestinations.test(word)) top.skip = true;
+      else if (word === 'uc') top.uc = arg ?? 1;
+      else if (top.skip) continue;
+      else if (word === 'par' || word === 'line' || word === 'sect' || word === 'page') out += '\n';
+      else if (word === 'tab') out += '\t';
+      else if (word === 'u' && arg !== undefined) {
+        out += String.fromCharCode(arg < 0 ? arg + 65536 : arg);
+        pendingSkip = top.uc;
+      } else if (word === 'emdash') out += '—';
+      else if (word === 'endash') out += '–';
+      else if (word === 'bullet') out += '•';
+      else if (word === 'lquote' || word === 'rquote') out += word === 'lquote' ? '‘' : '’';
+      else if (word === 'ldblquote' || word === 'rdblquote') out += word === 'ldblquote' ? '“' : '”';
+      continue;
+    }
+    if (ch === '\r' || ch === '\n') continue;
+    if (pendingSkip) {
+      pendingSkip--;
+      continue;
+    }
+    flush();
+    if (!top.skip) out += ch;
+  }
+  flush();
+  return out.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// ---------- EPUB ----------
+
+export interface EpubChapter {
+  href: string;
+  title: string;
+}
+export interface EpubBook {
+  title: string;
+  author: string;
+  chapters: EpubChapter[];
+  /** Chapter XHTML with images inlined as data: URLs (bounded). */
+  chapter(href: string): Promise<string>;
+}
+
+const resolvePath = (base: string, href: string) => {
+  const parts = (base.includes('/') ? base.slice(0, base.lastIndexOf('/') + 1) : '').concat(decodeURIComponent(href.split('#')[0]!)).split('/');
+  const out: string[] = [];
+  for (const p of parts) {
+    if (p === '..') out.pop();
+    else if (p && p !== '.') out.push(p);
+  }
+  return out.join('/');
+};
+
+export async function readEpub(blob: Blob): Promise<EpubBook> {
+  const { items } = await readZip(blob, '');
+  const byPath = new Map(items.map((i) => [i.path.replace(/^\//, ''), i]));
+  const text = async (path: string) => {
+    const item = byPath.get(path);
+    if (!item || item.size > 16 * 1024 * 1024) throw new Error('电子书缺少必要的文件：' + path);
+    return decodeText(new Uint8Array(await (await item.blob()).arrayBuffer()));
+  };
+  const container = await text('META-INF/container.xml');
+  const opfPath = /full-path="([^"]+)"/.exec(container)?.[1];
+  if (!opfPath) throw new Error('这不是有效的 EPUB 电子书。');
+  const opf = await text(opfPath);
+  const manifest = new Map<string, { href: string; type: string; props: string }>();
+  for (const m of opf.matchAll(/<item\b([^>]*)\/?>/g)) {
+    const attr = (n: string) => new RegExp(`${n}="([^"]*)"`).exec(m[1]!)?.[1] ?? '';
+    manifest.set(attr('id'), { href: resolvePath(opfPath, attr('href')), type: attr('media-type'), props: attr('properties') });
+  }
+  const spine = [...opf.matchAll(/<itemref\b[^>]*idref="([^"]+)"/g)].map((m) => manifest.get(m[1]!)).filter((x): x is NonNullable<typeof x> => !!x && /html/.test(x.type));
+  // Table of contents: EPUB 3 nav document, else EPUB 2 NCX.
+  const titles = new Map<string, string>();
+  const nav = [...manifest.values()].find((m) => m.props.split(' ').includes('nav'));
+  const ncx = [...manifest.values()].find((m) => m.type === 'application/x-dtbncx+xml');
+  try {
+    if (nav) {
+      const doc = await text(nav.href);
+      for (const a of doc.matchAll(/<a\b[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)) {
+        const path = resolvePath(nav.href, a[1]!);
+        if (!titles.has(path)) titles.set(path, xmlText(a[2]!.replace(/<[^>]+>/g, '')).trim());
+      }
+    } else if (ncx) {
+      const doc = await text(ncx.href);
+      for (const p of doc.matchAll(/<navPoint\b[\s\S]*?<text>([\s\S]*?)<\/text>[\s\S]*?<content\b[^>]*src="([^"]+)"/g)) {
+        const path = resolvePath(ncx.href, p[2]!);
+        if (!titles.has(path)) titles.set(path, xmlText(p[1]!).trim());
+      }
+    }
+  } catch {
+    /* A broken table of contents still leaves the spine readable. */
+  }
+  const meta = (tag: string) => xmlText(new RegExp(`<dc:${tag}\\b[^>]*>([\\s\\S]*?)</dc:${tag}>`).exec(opf)?.[1] ?? '').trim();
+  const types: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+  return {
+    title: meta('title'),
+    author: meta('creator'),
+    chapters: spine.map((s, i) => ({ href: s.href, title: titles.get(s.href) || `第 ${i + 1} 部分` })),
+    async chapter(href) {
+      let html = await text(href);
+      let budget = 24 * 1024 * 1024;
+      const sources = [...new Set([...html.matchAll(/(?:src|xlink:href)="([^"]+)"/g)].map((m) => m[1]!))];
+      for (const src of sources) {
+        if (/^(?:data:|https?:)/.test(src)) continue;
+        const item = byPath.get(resolvePath(href, src));
+        const type = types[extensionOf(src)];
+        if (!item || !type || item.size > budget) continue;
+        budget -= item.size;
+        const bytes = new Uint8Array(await (await item.blob()).arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        html = html.split(`"${src}"`).join(`"data:${type};base64,${btoa(binary)}"`);
+      }
+      return html;
+    },
+  };
+}
+
+// ---------- Thumbnails embedded in office packages ----------
+
+/** The preview image Office/LibreOffice store inside the package, if any. */
+export async function packageThumbnail(blob: Blob): Promise<Blob | null> {
+  const { items } = await readZip(blob, '');
+  const thumb = items.find((i) => /^\/?(docProps\/thumbnail\.(jpeg|jpg|png)|Thumbnails\/thumbnail\.png)$/i.test(i.path));
+  if (!thumb || thumb.size > 4 * 1024 * 1024) return null;
+  const data = await thumb.blob();
+  return new Blob([data], { type: /png$/i.test(thumb.path) ? 'image/png' : 'image/jpeg' });
 }

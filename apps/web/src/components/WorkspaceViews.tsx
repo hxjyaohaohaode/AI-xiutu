@@ -1119,6 +1119,7 @@ export function DocumentsView({
   onDirtyChange,
   onUseDocument,
   captureCover,
+  onEditImage,
 }: {
   actorId: string | null;
   project: Project;
@@ -1126,6 +1127,8 @@ export function DocumentsView({
   onDirtyChange: (dirty: boolean) => void;
   onUseDocument?: (doc: ProjectDocument) => void;
   captureCover?: CaptureProjectCover;
+  /** Opens a photo from the file center in the image editor (the app's own import flow). */
+  onEditImage?: (file: File) => Promise<boolean>;
 }) {
   const canEdit = !!actorId && workspacePermissions(project.role).edit;
   const ownerKey = JSON.stringify([actorId, project.id]);
@@ -1796,6 +1799,7 @@ export function DocumentsView({
             <Suspense fallback={null}>
               <FileCenter
                 onClose={() => setFileCenter(false)}
+                onEditImage={canEdit ? onEditImage : undefined}
                 onImport={canEdit ? async (draft) => {
                   const ok = await choose(null, { title: draft.title, body: draft.body, ...(draft.formatting ? { formatting: draft.formatting } : {}) });
                   if (ok) setFileCenter(false);

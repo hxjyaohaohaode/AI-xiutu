@@ -3609,6 +3609,7 @@ export function App({
                             refreshToken={refreshToken}
                             onDirtyChange={setDocumentDirty}
                             captureCover={coverForProject(project.id)}
+                            onEditImage={(file) => importFile(file)}
                             onUseDocument={async (doc) => {
                               const actor = sessionFence.snapshot();
                               const projectScope = projectRequest.current;

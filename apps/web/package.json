@@ -18,10 +18,12 @@
     "@mediapipe/tasks-vision": "1.2.2",
     "@noble/hashes": "2.4.0",
     "@phosphor-icons/react": "2.1.10",
+    "ag-psd": "34.1.0",
     "docx": "9.5.1",
     "fflate": "0.8.3",
     "gsap": "3.13.0",
     "motion": "12.23.12",
+    "node-unrar-js": "2.0.2",
     "ogl": "1.0.11",
     "onnxruntime-web": "1.23.2",
     "pptxgenjs": "4.0.1",
@@ -35,6 +37,7 @@
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "three": "0.180.0",
+    "utif2": "4.1.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
