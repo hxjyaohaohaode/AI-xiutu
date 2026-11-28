@@ -12,7 +12,22 @@ const box = z.object({
   height: z.number().int().min(30).max(slideSize.height),
   rotation: z.number().int().min(-180).max(180),
 });
-export const chartThemes = ['studio', 'ocean', 'sunset', 'forest', 'mono', 'midnight'] as const;
+export const chartThemes = [
+  'studio',
+  'ocean',
+  'sunset',
+  'forest',
+  'mono',
+  'midnight',
+  // Appended: older snapshots keep their names.
+  'aurora',
+  'candy',
+  'earth',
+  'corporate',
+] as const;
+export const chartNumberFormats = ['auto', 'thousands', 'compact', 'plain'] as const;
+const hexColor = z.string().regex(/^#[0-9A-Fa-f]{6}$/);
+const shortText = (max: number) => z.string().max(max).regex(/^[^<>\u0000-\u001f]*$/);
 export const chartLegendPositions = ['top', 'bottom', 'right', 'none'] as const;
 export const chartLayouts = ['grouped', 'stacked', 'percent'] as const;
 /**
@@ -35,8 +50,30 @@ export const officeChartOptionsSchema = z
     yTitle: z.string().max(60).optional(),
     hole: z.number().min(0).max(0.85).optional(),
     hidden: z.array(z.number().int().min(0).max(255)).max(64).optional(),
+    // v3: finer control. All optional; absent values keep the v2 rendering.
+    colors: z.array(hexColor).max(16).optional(),
+    titleAlign: z.enum(['left', 'center']).optional(),
+    background: z.enum(['theme', 'white', 'transparent']).optional(),
+    numberFormat: z.enum(chartNumberFormats).optional(),
+    prefix: shortText(8).optional(),
+    suffix: shortText(8).optional(),
+    axisMin: z.number().finite().optional(),
+    axisMax: z.number().finite().optional(),
+    referenceLine: z.number().finite().optional(),
+    referenceLabel: shortText(40).optional(),
+    average: z.boolean().optional(),
+    barRadius: z.number().int().min(0).max(16).optional(),
+    barWidth: z.number().min(0.2).max(1).optional(),
+    lineWidth: z.number().min(1).max(8).optional(),
+    markers: z.boolean().optional(),
+    gradient: z.boolean().optional(),
+    gaugeMax: z.number().positive().finite().optional(),
+    bins: z.number().int().min(3).max(40).optional(),
   })
-  .strict();
+  .strict()
+  .refine((o) => o.axisMin === undefined || o.axisMax === undefined || o.axisMin < o.axisMax, {
+    message: 'axisMin must be below axisMax',
+  });
 export type OfficeChartOptions = z.infer<typeof officeChartOptionsSchema>;
 export const officeChartSnapshotSchema = z
   .object({

@@ -3,6 +3,17 @@ import type { OfficeChartOptions } from '../office-content.js';
 import { advancedChartBody, type AdvancedChart } from './advanced-chart.js';
 import { barChart, comboChart, lineChart } from './chart-basic.js';
 import { chartThemeStyles, short, withChartState } from './chart-common.js';
+import {
+  boxplotChart,
+  dumbbellChart,
+  gaugeChart,
+  histogramChart,
+  lollipopChart,
+  pyramidChart,
+  radialBarChart,
+  roseChart,
+  scatterChart,
+} from './chart-more.js';
 import { numericCell, xml, type DataTable } from './table.js';
 
 export type ChartKind = DocumentLayout['chart'];
@@ -13,15 +24,33 @@ const NATIVE_TOP = 80,
 const FONT = "'Inter','PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',system-ui,sans-serif";
 
 /** Kinds whose value columns are series (legend toggles columns). */
-const seriesKinds = new Set<ChartKind>(['bar', 'line', 'area', 'stream', 'radar', 'bar3d', 'combo']);
+const seriesKinds = new Set<ChartKind>(['bar', 'line', 'area', 'stream', 'radar', 'bar3d', 'combo', 'boxplot']);
 /** Kinds whose rows are the parts (legend toggles rows). Donut handles its own list. */
-const rowKinds = new Set<ChartKind>(['treemap', 'funnel']);
-const sortableKinds = new Set<ChartKind>(['bar', 'donut', 'treemap', 'combo']);
+const rowKinds = new Set<ChartKind>(['treemap', 'funnel', 'rose', 'radialbar', 'gauge', 'lollipop']);
+const sortableKinds = new Set<ChartKind>(['bar', 'donut', 'pie', 'treemap', 'combo', 'rose', 'radialbar', 'lollipop', 'dumbbell', 'pyramid']);
 
 /** Which options each kind honours, so the designer only shows meaningful controls. */
 export const chartCapabilities: Record<
   ChartKind,
-  { layout?: boolean; orientation?: boolean; smooth?: boolean; labels?: boolean; axes?: boolean; hole?: boolean; sort?: boolean }
+  {
+    layout?: boolean;
+    orientation?: boolean;
+    smooth?: boolean;
+    labels?: boolean;
+    axes?: boolean;
+    hole?: boolean;
+    sort?: boolean;
+    /** Column corner radius and width. */
+    bars?: boolean;
+    /** Line width and markers. */
+    lines?: boolean;
+    /** Value-axis minimum/maximum. */
+    range?: boolean;
+    /** Reference and average lines. */
+    reference?: boolean;
+    gauge?: boolean;
+    bins?: boolean;
+  }
 > = {
   bar: { layout: true, orientation: true, labels: true, axes: true, sort: true },
   line: { smooth: true, labels: true, axes: true },
@@ -37,7 +66,21 @@ export const chartCapabilities: Record<
   funnel: {},
   waterfall: {},
   bar3d: {},
+  pie: { sort: true, hole: true },
+  rose: { sort: true },
+  scatter: { labels: true, axes: true },
+  gauge: { gauge: true },
+  boxplot: {},
+  histogram: { labels: true, axes: true, bins: true, bars: true },
+  lollipop: { labels: true, sort: true },
+  radialbar: { sort: true },
+  dumbbell: { sort: true },
+  pyramid: { labels: true, sort: true, bars: true },
 };
+for (const kind of ['bar', 'combo', 'bar3d', 'waterfall'] as const) chartCapabilities[kind].bars = true;
+for (const kind of ['bar', 'line', 'combo', 'area'] as const) chartCapabilities[kind].reference = true;
+for (const kind of ['line', 'combo'] as const) chartCapabilities[kind].lines = true;
+for (const kind of ['bar', 'line', 'combo', 'area'] as const) chartCapabilities[kind].range = true;
 
 /** Data shape each kind needs, shown before the user chooses data or when it fails. */
 export const chartDataHints: Record<ChartKind, string> = {
@@ -55,6 +98,16 @@ export const chartDataHints: Record<ChartKind, string> = {
   funnel: '两列：阶段、正数，按顺序最多 10 步。',
   waterfall: '两列：项目、带正负号的变化值。',
   bar3d: '首列为分类（≤12），其后 1–6 列非负数值。',
+  pie: '两列：名称、正数，2–12 行。',
+  rose: '两列：名称、非负数，3–24 行。',
+  scatter: '名称、X、Y 三列；第四列可作为气泡大小。',
+  gauge: '两列：指标名称、当前值，1–4 行；可设置最大值。',
+  boxplot: '每个数值列是一组观测值，每组至少 5 个。',
+  histogram: '一列数值（至少 5 个），自动或手动分组。',
+  lollipop: '两列：名称、数值，2–30 行。',
+  radialbar: '两列：名称、非负数，2–10 行。',
+  dumbbell: '三列：分类与两列可比较的数值（如计划与实际）。',
+  pyramid: '三列：分组与左右两列非负数值（如男 / 女）。',
 };
 
 function retable(table: DataTable, rows: number[], columns: number[]): DataTable {
@@ -74,6 +127,18 @@ function retable(table: DataTable, rows: number[], columns: number[]): DataTable
   };
 }
 
+const extraRenderers = {
+  rose: roseChart,
+  scatter: scatterChart,
+  gauge: gaugeChart,
+  boxplot: boxplotChart,
+  histogram: histogramChart,
+  lollipop: lollipopChart,
+  radialbar: radialBarChart,
+  dumbbell: dumbbellChart,
+  pyramid: pyramidChart,
+};
+
 export interface ChartSpec {
   title: string;
   kind: ChartKind;
@@ -82,7 +147,11 @@ export interface ChartSpec {
 }
 
 export function renderChart({ title, kind, table, options = {} }: ChartSpec) {
-  const theme = chartThemeStyles[options.theme ?? 'studio'];
+  const base = chartThemeStyles[options.theme ?? 'studio'];
+  // Custom series colours replace the theme palette from the first series on.
+  const theme = options.colors?.length
+    ? { ...base, colors: [...options.colors, ...base.colors.slice(options.colors.length)] }
+    : base;
   const hidden = new Set(options.hidden ?? []);
   let rows = table.rows.map((_, i) => i);
   let columns = table.headers.map((_, i) => i);
@@ -109,23 +178,25 @@ export function renderChart({ title, kind, table, options = {} }: ChartSpec) {
     else if (rowKinds.has(kind)) seriesMap = rows;
   }
   const prepared = retable(table, rows, columns);
-  const palette = (seriesMap ?? (kind === 'donut' ? rows : columns.slice(1).map((c) => c - 1))).map(
+  const pieLike = kind === 'donut' || kind === 'pie';
+  // Part-based charts colour each row; series-based charts colour each value column.
+  const rowPalette = pieLike || rowKinds.has(kind) || kind === 'scatter';
+  const palette = (seriesMap ?? (rowPalette ? rows : columns.slice(1).map((c) => c - 1))).map(
     (i) => theme.colors[i % theme.colors.length]!,
   );
   // The donut renderer sees rows in display order; translate hidden rows to that order.
-  const drawOptions =
-    kind === 'donut' && hidden.size
-      ? { ...options, hidden: rows.flatMap((r, i) => (hidden.has(r) ? [i] : [])) }
-      : options;
+  let drawOptions =
+    pieLike && hidden.size ? { ...options, hidden: rows.flatMap((r, i) => (hidden.has(r) ? [i] : [])) } : options;
+  if (kind === 'pie') drawOptions = { ...drawOptions, hole: options.hole ?? 0 };
   // Category charts narrow their plot for a right legend; the others are scaled into place.
   const flexible = kind === 'bar' || kind === 'line' || kind === 'combo' || kind === 'area';
   const rightLegend = options.legend === 'right';
-  const { value: body, legend } = withChartState(
+  const { value: body, legend, defs } = withChartState(
     {
       theme,
       palette,
       options: drawOptions,
-      seriesMap: kind === 'donut' ? rows : seriesMap,
+      seriesMap: pieLike ? rows : seriesMap,
       plotRight: flexible && rightLegend ? 700 : 890,
     },
     () =>
@@ -135,7 +206,9 @@ export function renderChart({ title, kind, table, options = {} }: ChartSpec) {
           ? lineChart(prepared)
           : kind === 'combo'
             ? comboChart(prepared)
-            : advancedChartBody(prepared, kind as AdvancedChart),
+            : kind in extraRenderers
+              ? extraRenderers[kind as keyof typeof extraRenderers](prepared)
+              : advancedChartBody(prepared, (kind === 'pie' ? 'donut' : kind) as AdvancedChart),
   );
   // Legend lists every series (hidden ones dimmed) so a hidden series can be restored.
   let entries = legend;
@@ -158,9 +231,12 @@ export function renderChart({ title, kind, table, options = {} }: ChartSpec) {
 
   // Header
   const subtitle = options.subtitle?.trim();
+  const centred = options.titleAlign === 'center';
+  const hx = centred ? CHART_WIDTH / 2 : 36,
+    anchor = centred ? ' text-anchor="middle"' : '';
   const header =
-    `<text x="36" y="46" font-size="26" font-weight="700" letter-spacing="-0.2"><title>${xml(title)}</title>${xml(short(title, 40))}</text>` +
-    (subtitle ? `<text x="36" y="72" font-size="15" class="muted">${xml(short(subtitle, 90))}</text>` : '');
+    `<text x="${hx}" y="46"${anchor} font-size="26" font-weight="700" letter-spacing="-0.2"><title>${xml(title)}</title>${xml(short(title, 40))}</text>` +
+    (subtitle ? `<text x="${hx}" y="72"${anchor} font-size="15" class="muted">${xml(short(subtitle, 90))}</text>` : '');
   const headerBottom = subtitle ? 90 : 66;
 
   // Legend layout
@@ -214,7 +290,14 @@ export function renderChart({ title, kind, table, options = {} }: ChartSpec) {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${CHART_WIDTH}" height="${CHART_HEIGHT}" viewBox="0 0 ${CHART_WIDTH} ${CHART_HEIGHT}" role="img" data-chart-kind="${kind}">` +
     `<title>${xml(title)}</title>${style}` +
-    (theme.background ? `<rect width="${CHART_WIDTH}" height="${CHART_HEIGHT}" fill="${theme.background}"/>` : '') +
+    (defs ? `<defs>${defs}</defs>` : '') +
+    (options.background === 'transparent'
+      ? ''
+      : options.background === 'white'
+        ? `<rect width="${CHART_WIDTH}" height="${CHART_HEIGHT}" fill="#FFFFFF"/>`
+        : theme.background
+          ? `<rect width="${CHART_WIDTH}" height="${CHART_HEIGHT}" fill="${theme.background}"/>`
+          : '') +
     `<g fill="${theme.ink}" font-size="14" font-family="${FONT.replaceAll("'", '')}">${header}${legendSvg}` +
     `<g class="plot" transform="translate(${dx.toFixed(2)} ${dy.toFixed(2)}) scale(${scale.toFixed(4)})">${body}</g></g></svg>`
   );

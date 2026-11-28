@@ -25,8 +25,10 @@ import {
   numberText,
   numeric,
   paint,
+  paintFill,
   plotRight,
   point,
+  referenceLines,
   seriesAttr,
   short,
   unitText,
@@ -291,7 +293,7 @@ function areaChart(table: DataTable) {
   const marks = layers
     .map(
       (layer) =>
-        `<path${seriesAttr(layer.key)} fill="${paint(layer.key)}" fill-opacity="${opacity}" class="sep" stroke-width="1" d="${shape(layer as [number, number][]) ?? ''}"><title>${xml(table.headers[layer.key + 1]!)}</title></path>`,
+        `<path${seriesAttr(layer.key)} fill="${paintFill(layer.key)}" fill-opacity="${opacity}" class="sep" stroke-width="1" d="${shape(layer as [number, number][]) ?? ''}"><title>${xml(table.headers[layer.key + 1]!)}</title></path>`,
     )
     .join('');
   const tips = table.rows
@@ -316,7 +318,8 @@ function areaChart(table: DataTable) {
           )
           .join('')
       : '';
-  return grid + marks + labels + ticks + tips + legend(table.headers.slice(1));
+  const totals = layers.length ? layers[layers.length - 1]!.map((p) => p[1]) : [];
+  return grid + marks + labels + referenceLines(y, totals, layout === 'percent' || percent, 70, right) + ticks + tips + legend(table.headers.slice(1));
 }
 
 function donut(table: DataTable) {
@@ -491,7 +494,7 @@ function waterfall(table: DataTable) {
       const top = y(Math.max(b.start, b.end)), height = Math.max(1, Math.abs(y(b.start) - y(b.end)));
       const fill = b.value >= 0 ? paint(0) : paint(2);
       const connector = `<line x1="${x(i) + w}" x2="${x(i + 1)}" y1="${y(b.end)}" y2="${y(b.end)}" class="axis" stroke-dasharray="3 3"/>`;
-      return `<rect x="${x(i)}" y="${top}" width="${w}" height="${height}" rx="2" fill="${fill}"><title>${xml(b.name + ' · ' + (b.value >= 0 ? '+' : '') + unitText(b.value, percent))}</title></rect>${connector}` +
+      return `<rect x="${x(i)}" y="${top}" width="${w}" height="${height}" rx="${chartOptions().barRadius ?? 2}" fill="${fill}"><title>${xml(b.name + ' · ' + (b.value >= 0 ? '+' : '') + unitText(b.value, percent))}</title></rect>${connector}` +
         `<text x="${x(i) + w / 2}" y="${top - 6}" text-anchor="middle" font-size="12">${xml((b.value >= 0 ? '+' : '') + unitText(b.value, percent))}</text>` +
         label(x(i) + w / 2, 440, short(b.name, 8), 'middle');
     })
@@ -553,7 +556,10 @@ function bar3d(table: DataTable) {
   return floor + wall + bars.join('') + labels + legend(table.headers.slice(1));
 }
 
-export type AdvancedChart = Exclude<DocumentLayout['chart'], 'bar' | 'line' | 'combo'>;
+export type AdvancedChart = Extract<
+  DocumentLayout['chart'],
+  'stream' | 'sankey' | 'radar' | 'scatter3d' | 'area' | 'donut' | 'heatmap' | 'treemap' | 'funnel' | 'waterfall' | 'bar3d'
+>;
 /** Renderers draw only marks in native coordinates; the frame adds title, legend and theme. */
 export function advancedChartBody(table: DataTable, chart: AdvancedChart) {
   if (

@@ -189,3 +189,56 @@ test('chart options: themes, hidden series, sorting, combo dual axis and legend 
   assert.equal(officeChartSnapshotSchema.safeParse({ ...base, options: { subtitle: 'ok', hidden: [0] } }).success, true);
   assert.equal(officeChartSnapshotSchema.safeParse({ ...base, options: { onclick: 'x' } }).success, false);
 });
+
+test('chart v3: ten new kinds render escaped data and enforce their data shapes', async () => {
+  const { renderChart } = await import('@ai-xiutu/contracts/office-data');
+  const table = (headers: string[], rows: string[][]) => ({ kind: 'table' as const, line: 0, headers, rows });
+  const parts = table(['Name', 'Value'], [['<a>', '40'], ['B', '30'], ['C', '20'], ['D', '10']]);
+  const render = (kind: string, data: ReturnType<typeof table>, options = {}) =>
+    renderChart({ title: 'T', kind: kind as never, table: data, options });
+  for (const kind of ['pie', 'rose', 'lollipop', 'radialbar']) {
+    const svg = render(kind, parts);
+    assert.match(svg, new RegExp(`data-chart-kind="${kind}"`));
+    assert.doesNotMatch(svg, /<a>/);
+  }
+  // Part-based kinds colour each row differently.
+  assert.match(render('rose', parts), /fill="#447BC2"/);
+  assert.match(render('gauge', table(['K', 'V'], [['Done', '78%']])), /78%/);
+  assert.match(render('gauge', table(['K', 'V'], [['Units', '30']]), { gaugeMax: 40 }), /Units · 30 \/ 40/);
+  const samples = table(['#', 'A', 'B'], Array.from({ length: 12 }, (_, i) => [String(i), String(10 + i), String(i % 2 ? 50 : 5)]));
+  assert.match(render('boxplot', samples), /中位数/);
+  const histogram = render('histogram', samples, { bins: 4 });
+  assert.match(histogram, /10 – 12|10 – 15/);
+  assert.match(render('scatter', table(['N', 'X', 'Y', 'S'], [['p', '1', '2', '3'], ['q', '4', '5', '6']])), /p · X 1 · Y 2 · S 3/);
+  assert.match(render('dumbbell', table(['D', 'Old', 'New'], [['x', '1', '3'], ['y', '2', '2']])), /差值 2/);
+  assert.match(render('pyramid', table(['Age', 'M', 'F'], [['0-9', '5', '4'], ['10-19', '6', '7']])), /0-9 · F 4/);
+  assert.throws(() => render('pyramid', table(['Age', 'M', 'F'], [['0-9', '-5', '4'], ['1', '1', '1']])), /非负/);
+  assert.throws(() => render('boxplot', table(['#', 'A'], [['1', '1'], ['2', '2']])), /至少 5/);
+});
+
+test('chart v3 options: number formats, prefixes, custom colours, reference lines and backgrounds', async () => {
+  const { renderChart } = await import('@ai-xiutu/contracts/office-data');
+  const { officeChartOptionsSchema } = await import('@ai-xiutu/contracts');
+  const sales = { kind: 'table' as const, line: 0, headers: ['M', 'Revenue'], rows: [['Jan', '25000'], ['Feb', '36000'], ['Mar', '125000000']] };
+  const svg = renderChart({
+    title: 'S',
+    kind: 'bar',
+    table: sales,
+    options: { numberFormat: 'compact', prefix: '¥', colors: ['#AA0000'], referenceLine: 30000, referenceLabel: '目标', average: true, gradient: true, titleAlign: 'center', background: 'transparent' },
+  });
+  assert.match(svg, /Jan · Revenue · ¥2\.5万/);
+  assert.match(svg, /¥1\.25亿/);
+  assert.match(svg, /<linearGradient id="gAA0000"/);
+  assert.match(svg, /fill="url\(#gAA0000\)"/);
+  assert.match(svg, />目标 ¥3万</);
+  assert.match(svg, />平均 /);
+  assert.match(svg, /x="480" y="46" text-anchor="middle"/);
+  assert.doesNotMatch(svg, /<rect width="960" height="540"/); // transparent background
+  const thousands = renderChart({ title: 'S', kind: 'line', table: sales, options: { numberFormat: 'thousands', suffix: ' 元', axisMax: 200000000 } });
+  assert.match(thousands, /25,000 元/);
+  // Strict validation: markup in prefixes, invalid colours and inverted ranges are rejected.
+  assert.equal(officeChartOptionsSchema.safeParse({ prefix: '<b>' }).success, false);
+  assert.equal(officeChartOptionsSchema.safeParse({ colors: ['red'] }).success, false);
+  assert.equal(officeChartOptionsSchema.safeParse({ axisMin: 5, axisMax: 1 }).success, false);
+  assert.equal(officeChartOptionsSchema.safeParse({ theme: 'aurora', barRadius: 8, lineWidth: 3 }).success, true);
+});

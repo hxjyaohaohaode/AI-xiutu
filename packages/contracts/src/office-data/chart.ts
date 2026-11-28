@@ -19,6 +19,16 @@ export const chartNames: Record<DocumentLayout['chart'], string> = {
   waterfall: '瀑布图',
   bar3d: '三维柱状图',
   combo: '组合图（柱＋线）',
+  pie: '饼图',
+  rose: '南丁格尔玫瑰图',
+  scatter: '散点 / 气泡图',
+  gauge: '仪表盘',
+  boxplot: '箱线图',
+  histogram: '直方图',
+  lollipop: '棒棒糖图',
+  radialbar: '径向柱图',
+  dumbbell: '哑铃图',
+  pyramid: '金字塔图',
 };
 
 export function snapshotTable(chart: OfficeChartSnapshot): DataTable {

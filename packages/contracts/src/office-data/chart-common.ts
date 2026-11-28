@@ -73,6 +73,42 @@ export const chartThemeStyles: Record<NonNullable<OfficeChartOptions['theme']>, 
     background: '#111827',
     onMark: '#0B1220',
   },
+  aurora: {
+    colors: ['#7C3AED', '#2563EB', '#0891B2', '#10B981', '#DB2777', '#F59E0B', '#4F46E5', '#14B8A6'],
+    ink: '#1E1B4B',
+    muted: '#5B5F86',
+    grid: '#E4E4F4',
+    axis: '#A5A8C8',
+    background: '#FCFCFF',
+    onMark: '#FFFFFF',
+  },
+  candy: {
+    colors: ['#F472B6', '#60A5FA', '#FBBF24', '#34D399', '#A78BFA', '#FB7185', '#38BDF8', '#F97316'],
+    ink: '#3F2A3D',
+    muted: '#7B6478',
+    grid: '#F5E6EF',
+    axis: '#D5B8C9',
+    background: '#FFFBFD',
+    onMark: '#FFFFFF',
+  },
+  earth: {
+    colors: ['#8C5A3C', '#B08D57', '#5F7F55', '#C46A4A', '#6B705C', '#A5A58D', '#7F5539', '#3F6E6A'],
+    ink: '#2E2A24',
+    muted: '#6B6358',
+    grid: '#EAE3D8',
+    axis: '#B9AE9C',
+    background: '#FBF8F3',
+    onMark: '#FFFFFF',
+  },
+  corporate: {
+    colors: ['#0F4C81', '#E4572E', '#76B041', '#FFC914', '#2E86AB', '#A23B72', '#3B3B58', '#17BEBB'],
+    ink: '#13233A',
+    muted: '#53627A',
+    grid: '#E3E8EF',
+    axis: '#9AA7B8',
+    background: '#FFFFFF',
+    onMark: '#FFFFFF',
+  },
 };
 
 interface State {
@@ -83,6 +119,8 @@ interface State {
   seriesMap: readonly number[] | null;
   /** Right edge of the plot in native space (narrower when the legend sits on the right). */
   plotRight?: number;
+  /** Gradient definitions collected while drawing; the frame emits them in <defs>. */
+  defs?: Map<string, string>;
   legend: { name: string; color: string; series: number; hidden: boolean; shape: 'dot' | 'bar' | 'line' }[];
 }
 let state: State = {
@@ -93,12 +131,15 @@ let state: State = {
   legend: [],
 };
 
-export function withChartState<T>(next: Omit<State, 'legend'>, draw: () => T): { value: T; legend: State['legend'] } {
+export function withChartState<T>(
+  next: Omit<State, 'legend' | 'defs'>,
+  draw: () => T,
+): { value: T; legend: State['legend']; defs: string } {
   const previous = state;
   state = { ...next, legend: [] };
   try {
     const value = draw();
-    return { value, legend: state.legend };
+    return { value, legend: state.legend, defs: [...(state.defs?.values() ?? [])].join('') };
   } finally {
     state = previous;
   }
@@ -108,6 +149,20 @@ export const chartTheme = () => state.theme;
 export const plotRight = () => state.plotRight ?? 890;
 export const chartOptions = () => state.options;
 export const paint = (i: number) => state.palette[i % state.palette.length]!;
+/** Area/column fill: the series colour, or a vertical gradient of it when enabled. */
+export function paintFill(i: number) {
+  const color = paint(i);
+  if (!state.options.gradient) return color;
+  const id = 'g' + color.slice(1);
+  state.defs ??= new Map();
+  if (!state.defs.has(id))
+    state.defs.set(
+      id,
+      `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}"/><stop offset="1" stop-color="${color}" stop-opacity=".35"/></linearGradient>`,
+    );
+  return `url(#${id})`;
+}
+
 /** data-series attribute for interactive focus/toggle, using the original index. */
 export const seriesAttr = (i: number) => ` data-series="${state.seriesMap?.[i] ?? i}"`;
 /** Marks a renderer-owned legend row (e.g. the donut list) as a toggle for series i. */
@@ -124,20 +179,31 @@ export const point = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`
 export const label = (x: number, y: number, s: string, anchor = 'start', extra = '') =>
   `<text x="${x}" y="${y}" text-anchor="${anchor}"${extra}><title>${xml(s)}</title>${xml(short(s))}</text>`;
 
-/** Display formatting with the user's decimals and digit grouping; percent keeps its unit. */
+/**
+ * Display formatting: decimals, digit grouping (auto / thousands / plain), compact
+ * Chinese units (万 / 亿), and an optional prefix/suffix such as ¥ or 件.
+ */
 export function unitText(value: number, percent: boolean) {
-  const decimals = state.options.decimals;
-  const shown = value * (percent ? 100 : 1);
+  const { decimals, numberFormat = 'auto', prefix = '', suffix = '' } = state.options;
+  let shown = value * (percent ? 100 : 1);
+  let unit = percent ? '%' : '';
+  if (numberFormat === 'compact' && !percent) {
+    const abs = Math.abs(shown);
+    if (abs >= 1e8) [shown, unit] = [shown / 1e8, '亿'];
+    else if (abs >= 1e4) [shown, unit] = [shown / 1e4, '万'];
+  }
+  const grouping = numberFormat === 'thousands' || (numberFormat === 'auto' && Math.abs(shown) >= 10000);
   const text =
     decimals === undefined
-      ? Math.abs(shown) >= 10000
-        ? new Intl.NumberFormat('en-US', { maximumFractionDigits: 2 }).format(shown)
-        : numberText(shown)
+      ? numberFormat === 'plain' || (!grouping && numberFormat !== 'compact')
+        ? numberText(shown)
+        : new Intl.NumberFormat('en-US', { maximumFractionDigits: 2, useGrouping: grouping }).format(shown)
       : new Intl.NumberFormat('en-US', {
           minimumFractionDigits: decimals,
           maximumFractionDigits: decimals,
+          useGrouping: grouping,
         }).format(shown);
-  return text + (percent ? '%' : '');
+  return prefix + text + unit + suffix;
 }
 
 export function niceTicks(min: number, max: number, count = 5) {
@@ -187,10 +253,16 @@ export function yAxis(
 ) {
   const left = options.left ?? 70,
     right = options.right ?? plotRight();
-  const ticks = niceTicks(min, max);
-  const lo = Math.min(min, ticks[0]!),
-    hi = Math.max(max, ticks.at(-1)!);
-  const y = (v: number) => bottom - ((bottom - top) * (v - lo)) / (hi - lo || 1);
+  // A user range replaces the automatic one; values outside it are clamped to the plot.
+  const fixedMin = options.side === 'right' ? undefined : state.options.axisMin;
+  const fixedMax = options.side === 'right' ? undefined : state.options.axisMax;
+  const ticks = niceTicks(fixedMin ?? min, fixedMax ?? max).filter(
+    (t) => (fixedMin === undefined || t >= fixedMin - 1e-9) && (fixedMax === undefined || t <= fixedMax + 1e-9),
+  );
+  const lo = fixedMin ?? Math.min(min, ticks[0] ?? min),
+    hi = fixedMax ?? Math.max(max, ticks.at(-1) ?? max);
+  const y = (v: number) =>
+    bottom - ((bottom - top) * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo || 1);
   const showGrid = state.options.grid !== false && options.lines !== false;
   const grid = ticks
     .map(
@@ -207,3 +279,30 @@ export function yAxis(
 }
 
 export const svgAttr = (value: string) => xml(value);
+
+/** Target/reference and average lines across a vertical value axis. */
+export function referenceLines(
+  y: (v: number) => number,
+  values: number[],
+  percent: boolean,
+  left = 70,
+  right = plotRight(),
+) {
+  const { referenceLine, referenceLabel, average } = state.options;
+  const lines: string[] = [];
+  // Target labels sit at the right end, the average at the left, so they never collide.
+  const draw = (value: number, text: string, dash: string, end: boolean) => {
+    const at = y(value);
+    lines.push(
+      `<line x1="${left}" x2="${right}" y1="${at}" y2="${at}" stroke="${state.theme.ink}" stroke-opacity=".55" stroke-width="1.4" stroke-dasharray="${dash}"/>` +
+        `<text x="${end ? right - 4 : left + 6}" y="${at - 6}" text-anchor="${end ? 'end' : 'start'}" font-size="12" font-weight="600">${xml(text)}</text>`,
+    );
+  };
+  if (referenceLine !== undefined)
+    draw(referenceLine, (referenceLabel ? referenceLabel + ' ' : '') + unitText(referenceLine, percent), '6 4', true);
+  if (average && values.length) {
+    const mean = values.reduce((a, b) => a + b, 0) / values.length;
+    draw(mean, '平均 ' + unitText(mean, percent), '2 4', false);
+  }
+  return lines.join('');
+}

@@ -13,12 +13,23 @@ import {
   Waves,
   FlowArrow,
   Cube,
+  CubeFocus,
   Stack,
   X,
+  ChartPie,
+  Flower,
+  Gauge,
+  Rows,
+  PushPin,
+  Sun,
+  ArrowsLeftRight,
+  Triangle,
+  CaretRight,
 } from '@phosphor-icons/react';
 import {
   chartLayouts,
   chartLegendPositions,
+  chartNumberFormats,
   chartThemes,
   officeCharts,
   type OfficeChartOptions,
@@ -45,7 +56,17 @@ const icons: Record<ChartKind, ReactNode> = {
   stream: <Waves size={22} />,
   sankey: <FlowArrow size={22} />,
   radar: <ChartPolar size={22} />,
-  scatter3d: <ChartScatter size={22} />,
+  scatter3d: <CubeFocus size={22} />,
+  pie: <ChartPie size={22} />,
+  rose: <Flower size={22} />,
+  scatter: <ChartScatter size={22} />,
+  gauge: <Gauge size={22} />,
+  boxplot: <Rows size={22} style={{ transform: 'rotate(90deg)' }} />,
+  histogram: <ChartBar size={22} weight="fill" />,
+  lollipop: <PushPin size={22} style={{ transform: 'rotate(45deg)' }} />,
+  radialbar: <Sun size={22} />,
+  dumbbell: <ArrowsLeftRight size={22} />,
+  pyramid: <Triangle size={22} />,
   donut: <ChartDonut size={22} />,
   heatmap: <GridFour size={22} />,
   treemap: <SquaresFour size={22} />,
@@ -54,10 +75,10 @@ const icons: Record<ChartKind, ReactNode> = {
   bar3d: <Cube size={22} />,
 };
 const groups: [string, ChartKind[]][] = [
-  ['比较', ['bar', 'combo', 'bar3d', 'waterfall']],
+  ['比较', ['bar', 'combo', 'lollipop', 'dumbbell', 'pyramid', 'waterfall', 'bar3d']],
   ['趋势', ['line', 'area', 'stream']],
-  ['构成', ['donut', 'treemap', 'funnel']],
-  ['分布与关系', ['heatmap', 'radar', 'sankey', 'scatter3d']],
+  ['构成', ['pie', 'donut', 'rose', 'treemap', 'funnel', 'radialbar', 'gauge']],
+  ['分布与关系', ['scatter', 'histogram', 'boxplot', 'heatmap', 'radar', 'sankey', 'scatter3d']],
 ];
 const themeNames: Record<(typeof chartThemes)[number], string> = {
   studio: '工作室',
@@ -66,6 +87,16 @@ const themeNames: Record<(typeof chartThemes)[number], string> = {
   forest: '森林',
   mono: '单色',
   midnight: '深夜',
+  aurora: '极光',
+  candy: '糖果',
+  earth: '大地',
+  corporate: '商务',
+};
+const formatNames: Record<(typeof chartNumberFormats)[number], string> = {
+  auto: '自动',
+  thousands: '千分位',
+  compact: '万 / 亿',
+  plain: '不分组',
 };
 const legendNames: Record<(typeof chartLegendPositions)[number], string> = {
   top: '顶部',
@@ -148,6 +179,17 @@ export function ChartDesigner({ table, initial, source, confirmLabel, onCancel, 
         yTitle: capability.axes,
         hole: capability.hole,
         sort: capability.sort,
+        barRadius: capability.bars,
+        barWidth: capability.bars,
+        lineWidth: capability.lines,
+        markers: capability.lines,
+        axisMin: capability.range,
+        axisMax: capability.range,
+        referenceLine: capability.reference,
+        referenceLabel: capability.reference,
+        average: capability.reference,
+        gaugeMax: capability.gauge,
+        bins: capability.bins,
       };
       if (key in scoped && !scoped[key]) continue;
       keep[key] = value;
@@ -188,6 +230,40 @@ export function ChartDesigner({ table, initial, source, confirmLabel, onCancel, 
       <span>{t(label)}</span>
     </label>
   );
+  const numberField = (label: string, key: 'axisMin' | 'axisMax' | 'referenceLine' | 'gaugeMax') => (
+    <label className="designer-field">
+      <span>{t(label)}</span>
+      <input
+        type="number"
+        inputMode="decimal"
+        value={options[key] ?? ''}
+        placeholder={t('自动')}
+        onChange={(e) => set(key, e.target.value === '' || !Number.isFinite(e.target.valueAsNumber) ? undefined : e.target.valueAsNumber)}
+      />
+    </label>
+  );
+  const rangeField = (
+    label: string,
+    key: 'barRadius' | 'barWidth' | 'lineWidth' | 'bins',
+    min: number,
+    max: number,
+    step: number,
+    fallback: number,
+    percent = false,
+  ) => {
+    const value = options[key] ?? fallback;
+    return (
+      <label className="designer-field">
+        <span>
+          {t(label)} {percent ? Math.round(value * 100) + '%' : value}
+        </span>
+        <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => set(key, Number(e.target.value))} />
+      </label>
+    );
+  };
+  const themeColors = chartThemeStyles[options.theme ?? 'studio'].colors;
+  const partKinds: ChartKind[] = ['pie', 'donut', 'rose', 'treemap', 'funnel', 'radialbar', 'gauge', 'scatter'];
+  const seriesNames = partKinds.includes(kind) ? table.rows.map((row) => row[0] ?? '') : table.headers.slice(1);
   return (
     <div className="chart-designer-scrim" onPointerDown={(e) => e.target === e.currentTarget && onCancel()}>
       <div
@@ -316,7 +392,7 @@ export function ChartDesigner({ table, initial, source, confirmLabel, onCancel, 
                 </select>
               </label>
               {capability.axes && (
-                <div className="designer-pair">
+                <div className="designer-pair" data-axes>
                   <label className="designer-field">
                     <span>{t('横轴标题')}</span>
                     <input value={options.xTitle ?? ''} maxLength={60} onChange={(e) => set('xTitle', e.target.value || undefined)} />
@@ -327,6 +403,93 @@ export function ChartDesigner({ table, initial, source, confirmLabel, onCancel, 
                   </label>
                 </div>
               )}
+              <details className="designer-advanced">
+                <summary>
+                  <CaretRight size={14} aria-hidden />
+                  {t('高级样式')}
+                </summary>
+                <div className="designer-section">
+                  <div className="designer-field">
+                    <span>{t('系列颜色')}</span>
+                    <div className="designer-colors">
+                      {seriesNames.slice(0, 12).map((name, i) => (
+                        <label key={i} title={name}>
+                          <input
+                            type="color"
+                            aria-label={t('{v0} 的颜色', { v0: name })}
+                            value={(options.colors?.[i] ?? themeColors[i % themeColors.length]!).toLowerCase()}
+                            onChange={(e) => {
+                              const colors = seriesNames
+                                .slice(0, 12)
+                                .map((_, j) => (options.colors?.[j] ?? themeColors[j % themeColors.length]!).toUpperCase());
+                              colors[i] = e.target.value.toUpperCase();
+                              set('colors', colors);
+                            }}
+                          />
+                          <span>{name}</span>
+                        </label>
+                      ))}
+                    </div>
+                    {options.colors && (
+                      <button type="button" className="text-button" onClick={() => set('colors', undefined)}>
+                        {t('恢复主题配色')}
+                      </button>
+                    )}
+                  </div>
+                  {segmented('标题对齐', ['left', 'center'] as const, { left: '左对齐', center: '居中' }, options.titleAlign ?? 'left', (value) =>
+                    set('titleAlign', value === 'left' ? undefined : value),
+                  )}
+                  {segmented('背景', ['theme', 'white', 'transparent'] as const, { theme: '主题', white: '白色', transparent: '透明' }, options.background ?? 'theme', (value) =>
+                    set('background', value === 'theme' ? undefined : value),
+                  )}
+                  {segmented('数字格式', chartNumberFormats, formatNames, options.numberFormat ?? 'auto', (value) =>
+                    set('numberFormat', value === 'auto' ? undefined : value),
+                  )}
+                  <div className="designer-pair">
+                    <label className="designer-field">
+                      <span>{t('前缀')}</span>
+                      <input value={options.prefix ?? ''} maxLength={8} placeholder="¥" onChange={(e) => set('prefix', e.target.value.replace(/[<>]/g, '') || undefined)} />
+                    </label>
+                    <label className="designer-field">
+                      <span>{t('后缀')}</span>
+                      <input value={options.suffix ?? ''} maxLength={8} placeholder={t('件')} onChange={(e) => set('suffix', e.target.value.replace(/[<>]/g, '') || undefined)} />
+                    </label>
+                  </div>
+                  {capability.range && (
+                    <div className="designer-pair">
+                      {numberField('坐标最小值', 'axisMin')}
+                      {numberField('坐标最大值', 'axisMax')}
+                    </div>
+                  )}
+                  {capability.reference && (
+                    <>
+                      <div className="designer-pair">
+                        {numberField('参考线数值', 'referenceLine')}
+                        <label className="designer-field">
+                          <span>{t('参考线名称')}</span>
+                          <input value={options.referenceLabel ?? ''} maxLength={40} placeholder={t('目标')} onChange={(e) => set('referenceLabel', e.target.value.replace(/[<>]/g, '') || undefined)} />
+                        </label>
+                      </div>
+                      {toggle('显示平均线', !!options.average, (value) => set('average', value || undefined))}
+                    </>
+                  )}
+                  {capability.bars && (
+                    <div className="designer-pair">
+                      {rangeField('柱子圆角', 'barRadius', 0, 16, 1, 4)}
+                      {rangeField('柱子宽度', 'barWidth', 0.2, 1, 0.05, 0.68, true)}
+                    </div>
+                  )}
+                  {capability.lines && (
+                    <>
+                      {rangeField('线条粗细', 'lineWidth', 1, 8, 0.5, 2.6)}
+                      {toggle('显示数据点', options.markers !== false, (value) => set('markers', value ? undefined : false))}
+                    </>
+                  )}
+                  {capability.gauge && numberField('仪表最大值', 'gaugeMax')}
+                  {capability.bins && rangeField('分组数量', 'bins', 3, 40, 1, 8)}
+                  {toggle('渐变填充', !!options.gradient, (value) => set('gradient', value || undefined))}
+                </div>
+              </details>
             </section>
           </aside>
           <main className="designer-preview">

@@ -57,6 +57,16 @@ export const officeCharts = [
   'waterfall',
   'bar3d',
   'combo',
+  'pie',
+  'rose',
+  'scatter',
+  'gauge',
+  'boxplot',
+  'histogram',
+  'lollipop',
+  'radialbar',
+  'dumbbell',
+  'pyramid',
 ] as const;
 const pageLayout = z
   .object({

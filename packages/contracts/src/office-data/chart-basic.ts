@@ -6,7 +6,9 @@ import {
   niceTicks,
   numeric,
   paint,
+  paintFill,
   plotRight,
+  referenceLines,
   seriesAttr,
   short,
   unitText,
@@ -104,7 +106,7 @@ export function barChart(table: DataTable) {
     const { y, grid } = yAxis(min, max, 92, 410, percentAxis, { left: options.yTitle ? 84 : 70 });
     const left = options.yTitle ? 84 : 70,
       band = (R - left) / n;
-    const groupWidth = band * (n > 20 ? 0.82 : 0.68);
+    const groupWidth = band * (options.barWidth ?? (n > 20 ? 0.82 : 0.68));
     const barWidth = layout === 'grouped' ? groupWidth / series.length : groupWidth;
     marks.push(grid);
     names.forEach((name, i) => {
@@ -124,7 +126,7 @@ export function barChart(table: DataTable) {
           height = Math.max(1, Math.abs(y(from) - y(to)));
         const gap = layout === 'grouped' && series.length > 1 ? Math.min(3, barWidth * 0.12) : 0;
         marks.push(
-          `<rect${seriesAttr(j)} class="mark" x="${x + gap / 2}" y="${top}" width="${Math.max(1, barWidth - gap)}" height="${height}" rx="${Math.min(4, barWidth / 4)}" fill="${paint(j)}"><title>${xml(name + ' · ' + s.name + ' · ' + unitText(s.values[i]!, s.percent) + (layout === 'percent' ? ' · ' + unitText(v, true) : ''))}</title></rect>`,
+          `<rect${seriesAttr(j)} class="mark" x="${x + gap / 2}" y="${top}" width="${Math.max(1, barWidth - gap)}" height="${height}" rx="${Math.min(options.barRadius ?? 4, barWidth / 2)}" fill="${paintFill(j)}"><title>${xml(name + ' · ' + s.name + ' · ' + unitText(s.values[i]!, s.percent) + (layout === 'percent' ? ' · ' + unitText(v, true) : ''))}</title></rect>`,
         );
         if (labels && (layout === 'grouped' || height > 16))
           marks.push(
@@ -135,6 +137,7 @@ export function barChart(table: DataTable) {
       });
     });
     marks.push(categoryLabels(names, (i) => left + band * i + band / 2, 432));
+    marks.push(referenceLines(y, series.flatMap((s) => names.map((_, i) => value(s, i))), percentAxis, left, R));
   } else {
     const left = Math.min(220, 40 + Math.max(...names.map((s) => Math.min(14, Array.from(s).length))) * 13);
     const ticks = niceTicks(min, max);
@@ -142,7 +145,7 @@ export function barChart(table: DataTable) {
       hi = Math.max(max, ticks.at(-1)!);
     const x = (v: number) => left + ((R - 10 - left) * (v - lo)) / (hi - lo || 1);
     const band = 318 / n,
-      groupHeight = band * 0.7,
+      groupHeight = band * (options.barWidth ?? 0.7),
       barHeight = layout === 'grouped' ? groupHeight / series.length : groupHeight;
     if (options.grid !== false)
       marks.push(
@@ -171,7 +174,7 @@ export function barChart(table: DataTable) {
         const start = x(Math.min(from, to)),
           width = Math.max(1, Math.abs(x(to) - x(from)));
         marks.push(
-          `<rect${seriesAttr(j)} class="mark" x="${start}" y="${y}" width="${width}" height="${Math.max(1, barHeight - 1)}" rx="${Math.min(4, barHeight / 4)}" fill="${paint(j)}"><title>${xml(name + ' · ' + s.name + ' · ' + unitText(s.values[i]!, s.percent))}</title></rect>`,
+          `<rect${seriesAttr(j)} class="mark" x="${start}" y="${y}" width="${width}" height="${Math.max(1, barHeight - 1)}" rx="${Math.min(options.barRadius ?? 4, barHeight / 2)}" fill="${paintFill(j)}"><title>${xml(name + ' · ' + s.name + ' · ' + unitText(s.values[i]!, s.percent))}</title></rect>`,
         );
         if (labels && layout === 'grouped')
           marks.push(
@@ -203,18 +206,21 @@ export function lineChart(table: DataTable) {
     .x((_, i) => x(i))
     .y0(y(Math.max(0, lo)))
     .y1((v) => y(v));
+  const width = options.lineWidth ?? 2.6;
   const marks = series
     .map((s, j) => {
-      const markers = n <= 40;
+      const markers = options.markers !== false && n <= 40;
       return (
         `<g${seriesAttr(j)} class="mark">` +
-        (series.length === 1 ? `<path d="${fill(s.values) ?? ''}" fill="${paint(j)}" fill-opacity=".08"/>` : '') +
-        `<path d="${path(s.values) ?? ''}" fill="none" stroke="${paint(j)}" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>` +
+        (series.length === 1 || options.gradient
+          ? `<path d="${fill(s.values) ?? ''}" fill="${paintFill(j)}" fill-opacity="${options.gradient ? 0.35 : 0.08}"/>`
+          : '') +
+        `<path d="${path(s.values) ?? ''}" fill="none" stroke="${paint(j)}" stroke-width="${width}" stroke-linejoin="round" stroke-linecap="round"/>` +
         s.values
           .map(
             (v, i) =>
               (markers
-                ? `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="${paint(j)}" class="sep" stroke-width="1.6"><title>${xml(table.rows[i]![0]! + ' · ' + s.name + ' · ' + unitText(v, s.percent))}</title></circle>`
+                ? `<circle cx="${x(i)}" cy="${y(v)}" r="${Math.max(3, width + 1.4)}" fill="${paint(j)}" class="sep" stroke-width="1.6"><title>${xml(table.rows[i]![0]! + ' · ' + s.name + ' · ' + unitText(v, s.percent))}</title></circle>`
                 : '') +
               (options.labels && n <= 24
                 ? `<text x="${x(i)}" y="${y(v) - 9}" text-anchor="middle" font-size="11" class="muted">${xml(unitText(v, s.percent))}</text>`
@@ -237,6 +243,7 @@ export function lineChart(table: DataTable) {
   return (
     grid +
     marks +
+    referenceLines(y, all, series[0]!.percent, left, R) +
     categoryLabels(table.rows.map((row) => row[0]!), x, 432) +
     tips +
     axisTitles() +
@@ -270,14 +277,14 @@ export function comboChart(table: DataTable) {
     ? yAxis(Math.min(0, ...lineValues), Math.max(...lineValues), 92, 410, lines[0]!.percent, { left, right, side: 'right', lines: false })
     : leftAxis;
   const band = (right - left) / n,
-    barWidth = band * 0.56;
+    barWidth = band * (options.barWidth ?? 0.56);
   const cx = (i: number) => left + band * i + band / 2;
   const marks: string[] = [leftAxis.grid, dual ? rightAxis.grid : ''];
   bars.values.forEach((v, i) => {
     const top = leftAxis.y(Math.max(0, v)),
       height = Math.max(1, Math.abs(leftAxis.y(0) - leftAxis.y(v)));
     marks.push(
-      `<rect${seriesAttr(0)} class="mark" x="${cx(i) - barWidth / 2}" y="${top}" width="${barWidth}" height="${height}" rx="${Math.min(4, barWidth / 4)}" fill="${paint(0)}" fill-opacity=".88"><title>${xml(table.rows[i]![0]! + ' · ' + bars.name + ' · ' + unitText(v, bars.percent))}</title></rect>`,
+      `<rect${seriesAttr(0)} class="mark" x="${cx(i) - barWidth / 2}" y="${top}" width="${barWidth}" height="${height}" rx="${Math.min(options.barRadius ?? 4, barWidth / 2)}" fill="${paintFill(0)}" fill-opacity=".88"><title>${xml(table.rows[i]![0]! + ' · ' + bars.name + ' · ' + unitText(v, bars.percent))}</title></rect>`,
     );
     // Inside the column top so the line series never collides with the labels.
     if (options.labels && n <= 24 && height > 22)
@@ -293,17 +300,20 @@ export function comboChart(table: DataTable) {
       .x((_, i) => cx(i))
       .y((v) => rightAxis.y(v));
     marks.push(
-      `<g${seriesAttr(j)} class="mark"><path d="${path(s.values) ?? ''}" fill="none" stroke="${paint(j)}" stroke-width="2.6" stroke-linejoin="round"/>` +
+      `<g${seriesAttr(j)} class="mark"><path d="${path(s.values) ?? ''}" fill="none" stroke="${paint(j)}" stroke-width="${options.lineWidth ?? 2.6}" stroke-linejoin="round"/>` +
         s.values
           .map(
             (v, i) =>
-              `<circle cx="${cx(i)}" cy="${rightAxis.y(v)}" r="4" fill="${paint(j)}" class="sep" stroke-width="1.6"><title>${xml(table.rows[i]![0]! + ' · ' + s.name + ' · ' + unitText(v, s.percent))}</title></circle>`,
+              options.markers === false
+                ? ''
+                : `<circle cx="${cx(i)}" cy="${rightAxis.y(v)}" r="${Math.max(3, (options.lineWidth ?? 2.6) + 1.4)}" fill="${paint(j)}" class="sep" stroke-width="1.6"><title>${xml(table.rows[i]![0]! + ' · ' + s.name + ' · ' + unitText(v, s.percent))}</title></circle>`,
           )
           .join('') +
         '</g>',
     );
   });
   marks.push(categoryLabels(table.rows.map((row) => row[0]!), cx, 432));
+  marks.push(referenceLines(leftAxis.y, bars.values, bars.percent, left, right));
   return (
     marks.join('') +
     axisTitles() +
