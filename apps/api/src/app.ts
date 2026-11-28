@@ -46,6 +46,7 @@ import { registerUsageJobs } from './usage-jobs.js';
 import { registerMediaImport } from './media-import.js';
 import { registerAssistant, type AssistantDependencies } from './assistant/index.js';
 import { registerSharing } from './sharing.js';
+import { registerDocumentSharing } from './document-sharing.js';
 import { registerOperations, publicSettings, modelDto } from './operations.js';
 import { LocalPrivateStorage, StorageError } from './storage.js';
 import { loadSupportQr, registerSupport } from './support.js';
@@ -515,6 +516,7 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
   const mediaRuntime = registerMediaImport(app, db, config);
   const assistantRuntime = registerAssistant(app, db, config, options.assistant);
   registerSharing(app, db);
+  registerDocumentSharing(app, db, storage);
   registerOperations(
     app,
     db,

@@ -503,6 +503,7 @@ type SharingPolicy = {
   allowCopy: boolean;
   maxActiveGrants: number;
   maxCopyAssets: number;
+  allowDocumentLinks?: boolean;
 };
 export function TeamDialog({
   space,
@@ -957,6 +958,11 @@ disabled={!canManage || busy}
 disabled={!canManage || busy}
                 checked={policy.allowCopy}
                 onCheckedChange={(checked) => setPolicy({ ...policy, allowCopy: checked })}
+              />
+            <SquishSwitch className="setting-switch" label={t('允许文档只读链接')}
+disabled={!canManage || busy}
+                checked={policy.allowDocumentLinks === true}
+                onCheckedChange={(checked) => setPolicy({ ...policy, allowDocumentLinks: checked })}
               />
             <p className="form-hint">
               {t('参考共享可以撤销后续访问。接收者已经明确复制的独立副本，无法远程收回。')}

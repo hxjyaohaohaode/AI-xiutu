@@ -1,0 +1,252 @@
+/* Share dialog: people with access and read-only links. */
+.share-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: var(--color-scrim, rgb(19 25 16 / 38%));
+  animation: share-fade 160ms ease;
+}
+.share-dialog {
+  display: grid;
+  gap: 1rem;
+  width: min(560px, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  padding: 1.1rem 1.2rem 1.3rem;
+  color: var(--color-ink, #22241f);
+  background: var(--color-raised, #fff);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 1.1rem;
+  box-shadow: 0 24px 64px rgb(var(--color-shadow, 35 45 27) / 28%);
+  animation: share-rise 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.share-dialog header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.share-dialog h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 1.08rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.share-dialog h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 650;
+  color: var(--color-muted, #5d6057);
+}
+.share-close,
+.share-revoke {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.share-close:hover,
+.share-revoke:hover {
+  background: var(--color-surface-hover, #e8e9e4);
+}
+.share-people,
+.share-links {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.share-people li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.4rem 0.3rem;
+  border-radius: 0.6rem;
+}
+.share-people li:hover {
+  background: var(--color-surface-secondary, #f0f0ed);
+}
+.share-avatar {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  font-size: 0.85rem;
+  font-weight: 650;
+  color: var(--color-accent-ink, #795713);
+  background: var(--color-accent-soft, #f7edcf);
+  border-radius: 50%;
+}
+.share-name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.1rem 0.5rem;
+  align-items: baseline;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+.share-name small,
+.share-muted,
+.share-links small,
+.share-fresh small {
+  font-size: 0.76rem;
+  color: var(--color-muted, #5d6057);
+}
+.share-access {
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+}
+.share-edit {
+  color: var(--color-success, #366b4c);
+  background: var(--color-success-soft, #eaf3eb);
+}
+.share-comment {
+  color: var(--color-info, #356a82);
+  background: var(--color-info-soft, #e8f1f5);
+}
+.share-view {
+  color: var(--color-muted, #5d6057);
+  background: var(--color-surface-secondary, #f0f0ed);
+}
+.share-muted {
+  margin: 0.4rem 0 0;
+}
+.share-note {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0;
+  padding: 0.7rem 0.8rem;
+  font-size: 0.84rem;
+  background: var(--color-surface-secondary, #f0f0ed);
+  border-radius: 0.7rem;
+}
+.share-create {
+  display: flex;
+  gap: 0.7rem;
+  align-items: flex-start;
+  padding: 0.7rem 0.8rem;
+  background: var(--color-info-soft, #e8f1f5);
+  border-radius: 0.7rem;
+}
+.share-create > div {
+  display: grid;
+  gap: 0.15rem;
+  font-size: 0.86rem;
+}
+.share-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: center;
+  margin-top: 0.7rem;
+}
+.share-options select {
+  min-height: 38px;
+  padding: 0.3rem 0.5rem;
+  font: inherit;
+  font-size: 0.86rem;
+  color: inherit;
+  background: var(--color-surface, #fcfcfb);
+  border: 1px solid var(--color-line-strong, #a9afa0);
+  border-radius: 0.55rem;
+}
+.share-check {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.86rem;
+}
+.share-options .button {
+  margin-left: auto;
+}
+.share-fresh {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.4rem 0.5rem;
+  margin-top: 0.7rem;
+  padding: 0.6rem;
+  background: var(--color-success-soft, #eaf3eb);
+  border-radius: 0.7rem;
+}
+.share-fresh input {
+  min-height: 38px;
+  padding: 0.3rem 0.55rem;
+  font: inherit;
+  font-size: 0.82rem;
+  color: inherit;
+  background: var(--color-raised, #fff);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 0.5rem;
+}
+.share-fresh small {
+  grid-column: 1 / -1;
+}
+.share-links {
+  margin-top: 0.7rem;
+}
+.share-links li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.1rem 0.5rem;
+  align-items: center;
+  padding: 0.5rem 0.4rem;
+  font-size: 0.84rem;
+  border-top: 1px solid var(--color-line, #dddfd7);
+}
+.share-links li small {
+  grid-column: 1;
+}
+.share-links li .share-revoke {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+.share-error {
+  margin: 0;
+  color: var(--color-danger, #a33c35);
+}
+@media (max-width: 560px) {
+  .share-scrim {
+    place-items: end stretch;
+    padding: 0;
+  }
+  .share-dialog {
+    width: 100%;
+    border-radius: 1.1rem 1.1rem 0 0;
+  }
+  .share-options .button {
+    margin-left: 0;
+    width: 100%;
+    justify-content: center;
+  }
+}
+@keyframes share-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes share-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .share-scrim,
+  .share-dialog {
+    animation: none;
+  }
+}

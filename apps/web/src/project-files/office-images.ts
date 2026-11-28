@@ -1,6 +1,15 @@
+/** Signed-in exports read private originals; the public share viewer swaps in its link route. */
+let pictureSource: { url: (assetId: string) => string; credentials: RequestCredentials } = {
+  url: (assetId) => '/v1/assets/' + encodeURIComponent(assetId) + '/file',
+  credentials: 'same-origin',
+};
+export function setOfficePictureSource(url: (assetId: string) => string) {
+  pictureSource = { url, credentials: 'omit' };
+}
+
 export async function loadOfficePicture(assetId: string): Promise<Blob> {
-  const response = await fetch('/v1/assets/' + encodeURIComponent(assetId) + '/file', {
-    credentials: 'same-origin',
+  const response = await fetch(pictureSource.url(assetId), {
+    credentials: pictureSource.credentials,
     cache: 'no-store',
     signal: AbortSignal.timeout(15000),
   });

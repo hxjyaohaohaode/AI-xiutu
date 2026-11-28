@@ -80,6 +80,7 @@ import {
 } from '../account/document-drafts';
 import '../ai/decisions.css';
 
+const ShareDialog = lazy(() => import('../project-files/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 const RichDocumentEditor = lazy(() => import('../project-files/RichDocumentEditor')
   .then(module => ({ default: module.RichDocumentEditor })));
 const LiveDocumentEditor = lazy(() => import('../project-files/LiveDocumentEditor')
@@ -1153,6 +1154,7 @@ export function DocumentsView({
   const [body, setBody] = useState('');
   const [formatting, setFormatting] = useState<DocumentFormat | null>(null);
   const [showFormatting, setShowFormatting] = useState(false);
+  const [sharingDocument, setSharingDocument] = useState<{ id: string; title: string } | null>(null);
   const [editorSession, setEditorSession] = useState(0);
   const [sheetSource, setSheetSource] = useState(false);
   const projectSheet = useMemo(() => formatting?.paragraphs.length ? null : readProjectSheet(body), [body, formatting]);
@@ -1961,6 +1963,12 @@ export function DocumentsView({
                   <button type="button" className="text-button" disabled={busy || pendingSave}
                     onClick={() => onUseDocument(selected)}>{t('用此文档与 AI 创作')}</button>
                 )}
+                {selected && (
+                  <button type="button" className="button button-secondary" onClick={() => setSharingDocument({ id: selected.id, title: selected.title })}>
+                    <ShareNetwork size={16} aria-hidden />
+                    {t('分享')}
+                  </button>
+                )}
                 <ExportContent key={selected?.id ?? ownerKey} title={title} body={body} formatting={formatting}
                   formats={presentation ? ['pptx'] : projectSheet ? ['docx', 'pptx', 'xlsx', 'svg', 'png'] : undefined}
                   captureCover={presentation ? undefined : captureCover} />
@@ -1994,6 +2002,11 @@ export function DocumentsView({
                 )}
               </div>
             </footer>}
+            {sharingDocument && (
+              <Suspense fallback={null}>
+                <ShareDialog documentId={sharingDocument.id} title={sharingDocument.title} onClose={() => setSharingDocument(null)} />
+              </Suspense>
+            )}
           </form>
         ) : (
           <div className="surface document-placeholder">

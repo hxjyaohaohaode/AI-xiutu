@@ -1,6 +1,7 @@
 import {
   lazy,
   Suspense,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -38,6 +39,7 @@ import {
   type DataTable,
 } from '@ai-xiutu/contracts/office-data';
 import { blankSlide, fitBox, newBox, snapBox } from './presentation-model';
+import { OfficeAssetUrl } from './office-asset-url';
 
 const ChartDesigner = lazy(() => import('./ChartDesigner').then((m) => ({ default: m.ChartDesigner })));
 import './presentation-editor.css';
@@ -58,6 +60,7 @@ function elementName(element: SlideElement) {
 }
 
 function SlideContent({ element }: { element: SlideElement }) {
+  const resolveAsset = useContext(OfficeAssetUrl);
   const image = useMemo(() => {
     if (element.kind !== 'chart') return null;
     try {
@@ -77,7 +80,7 @@ function SlideContent({ element }: { element: SlideElement }) {
     return (
       <img
         draggable={false}
-        src={'/v1/assets/' + element.assetId + '/file'}
+        src={resolveAsset ? resolveAsset(element.assetId) : '/v1/assets/' + element.assetId + '/file'}
         alt={element.alt}
         style={rotation}
       />

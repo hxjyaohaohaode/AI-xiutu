@@ -82,6 +82,8 @@ export type RichDocumentContent = { body: string; formatting?: DocumentFormat | 
 type Content = RichDocumentContent;
 type Props = Content & { readOnly: boolean; onChange: (next: Content) => boolean;
   onReference?: (id: string, version: number) => void;
+  /** Overrides embedded image URLs (the public share viewer). */
+  assetUrl?: (assetId: string) => string;
   live?: {
   version: number; clientId: string;
   onAttach: (view: EditorView | null) => void;
@@ -210,6 +212,10 @@ export function RichDocumentEditor(props: Props) {
         office_block(node, _view, getPos) {
           const dom = DOMSerializer.fromSchema(documentSchema).serializeNode(node) as HTMLElement;
           const block = readOfficeBlock(node.attrs.data);
+          if (block?.kind === 'image' && latest.current.assetUrl) {
+            const image = dom.querySelector('img');
+            if (image) image.src = latest.current.assetUrl(block.assetId);
+          }
           if (block?.kind !== 'chart') return { dom };
           // Interactive chart: hover values and legend toggles stay local to this view;
           // persistent changes go through the designer as one validated document step.

@@ -1,0 +1,107 @@
+/* Public read-only document viewer */
+.shared-page {
+  min-height: 100dvh;
+  padding: clamp(1rem, 3vw, 2.5rem) clamp(1rem, 4vw, 3rem) 3rem;
+  color: var(--color-ink, #22241f);
+  background: var(--color-canvas, #eeefec);
+}
+.shared-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem 1.2rem;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 52rem;
+  margin: 0 auto 1.2rem;
+}
+.shared-header h1 {
+  margin: 0;
+  font-size: clamp(1.3rem, 3vw, 1.9rem);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.shared-header p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  color: var(--color-muted, #5d6057);
+}
+.shared-badge {
+  display: inline-flex;
+  gap: 0.25rem;
+  align-items: center;
+  padding: 0.12rem 0.55rem;
+  font-weight: 600;
+  color: var(--color-info, #356a82);
+  background: var(--color-info-soft, #e8f1f5);
+  border-radius: 999px;
+}
+.shared-body {
+  max-width: 52rem;
+  margin: 0 auto;
+}
+.shared-empty {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.6rem;
+  text-align: center;
+}
+.shared-empty h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+.shared-empty p {
+  margin: 0;
+  color: var(--color-muted, #5d6057);
+}
+.shared-error {
+  max-width: 52rem;
+  margin: 0 auto 1rem;
+  padding: 0.6rem 0.8rem;
+  color: var(--color-danger, #a33c35);
+  background: var(--color-danger-soft, #faeae6);
+  border-radius: 0.6rem;
+}
+
+.shared-download {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  min-height: 40px;
+  padding: 0.45rem 1rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 650;
+  color: var(--color-on-accent, #29261b);
+  background: var(--color-accent, #edbc41);
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgb(var(--color-shadow, 35 45 27) / 14%);
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+.shared-download:hover:not(:disabled) {
+  background: var(--color-accent-hover, #e0aa27);
+}
+.shared-download:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.shared-download:disabled {
+  opacity: 0.6;
+}
+/* Readers see formatted text, not the stored Markdown markers. */
+.shared-body .ProseMirror .doc-syntax {
+  display: none;
+}
+.shared-body .doc-status {
+  border-top: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shared-download {
+    transition: none;
+  }
+}

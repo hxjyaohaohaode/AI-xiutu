@@ -27,6 +27,8 @@ export const sharingPolicy = z
     allowCopy: z.boolean(),
     maxActiveGrants: z.number().int().min(0).max(100),
     maxCopyAssets: z.number().int().min(0).max(100),
+    /** Read-only document links for people outside the space. Absent means off. */
+    allowDocumentLinks: z.boolean().optional(),
   })
   .strict();
 export function registerSharing(app: FastifyInstance, db: Database): void {

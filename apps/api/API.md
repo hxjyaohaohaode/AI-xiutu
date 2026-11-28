@@ -165,7 +165,7 @@ Audit metadata contains identifiers and the edited flag, not private body text.
 
 ## Sharing
 
-- `GET /v1/spaces/:id/sharing-policy` -> `{policy:{allowReference,allowCopy,maxActiveGrants,maxCopyAssets}}`.
+- `GET /v1/spaces/:id/sharing-policy` -> `{policy:{allowReference,allowCopy,maxActiveGrants,maxCopyAssets,allowDocumentLinks?}}`. `allowDocumentLinks` (absent = false, schema v33) enables read-only document links for the space.
 - `PUT /v1/spaces/:id/sharing-policy` same policy -> `{policy}`; owner/admin.
 - `GET /v1/projects/:id/grants` -> `{grants}`; owner/admin.
 - `POST /v1/projects/:id/grants` `{targetPhone,mode:'reference'|'copy',expiresInDays?:1..30}` -> 201 `{grant}`; target must already be a registered user. Reference gives read/comment access; copy also permits a one-time explicit copy. Each mode checks its own policy flag independently; disabling reference does not disable an explicitly permitted copy grant.
@@ -176,6 +176,15 @@ Full-project copying also records each asset's immediate `copiedFrom` provenance
 and remaps every current image-layer source. Its source-grant mode cannot be mixed
 with a previously started single-asset-copy grant. A target storage capacity
 failure rolls back the complete project, all asset rows and capacity increments.
+
+### Read-only document links (schema v33)
+
+- `GET /v1/documents/:id/sharing` -> `{canManage,linksAllowed,role,access:[{userId,name,role,access:'edit'|'comment'|'view',you}],links}`; any project reader. Access lists space members by display name only (no phone numbers). `links` is empty unless the caller can edit.
+- `POST /v1/documents/:id/share-links` `{expiresInDays:1|7|30|90|null,allowDownload:boolean}` -> 201 `{link,token}`; owner/admin/editor, only while the space policy allows document links; at most 10 active links per document. The token (43 base64url chars) is returned once and stored only as a SHA-256 hash.
+- `DELETE /v1/documents/:id/share-links/:linkId` -> `{link}`; owner/admin/editor; immediate revocation.
+- `GET /v1/shared/documents/:token` (no session) -> `{document:{title,body,formatting?,version,updatedAt},allowDownload,expiresAt}`. Revocation, expiry, document/project deletion and the current space policy are checked on every read; any failure is a uniform 404. Responses carry `Cache-Control: private, no-store`, `X-Robots-Tag: noindex, nofollow` and `Referrer-Policy: no-referrer`; 120 reads per IP per minute.
+- `GET /v1/shared/documents/:token/assets/:assetId` (no session) -> image thumbnail, only for images embedded in the current document body and owned by the link's project; the link is re-checked after derivative generation. Audio, members, history, comments and other project data are never exposed through a link.
+- Creation and revocation are audited (`document.share_link.create|revoke`).
 
 ## Retained storage capacity
 

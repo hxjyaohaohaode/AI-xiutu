@@ -30,6 +30,7 @@ import { schemaV29Sql } from './schema-v29.js';
 import { schemaV30Sql } from './schema-v30.js';
 import { schemaV31Sql } from './schema-v31.js';
 import { schemaV32Sql } from './schema-v32.js';
+import { schemaV33Sql } from './schema-v33.js';
 
 export type { PoolClient, QueryResultRow } from 'pg';
 export type Database = pg.Pool;
@@ -70,6 +71,7 @@ const migrations = [
   { version: 30, sql: schemaV30Sql },
   { version: 31, sql: schemaV31Sql },
   { version: 32, sql: schemaV32Sql },
+  { version: 33, sql: schemaV33Sql },
 ] as const;
 export const REQUIRED_SCHEMA_VERSIONS: readonly number[] = Object.freeze(
   migrations.map(({ version }) => version),

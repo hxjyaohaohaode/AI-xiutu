@@ -11,10 +11,23 @@ import './components/check-control.css';
 import './about/about.css';
 import './about/stories.css';
 
+// Public read-only document links live outside the signed-in workspace shell.
+const sharedToken = /^#\/shared\/([A-Za-z0-9_-]{43})$/.exec(location.hash)?.[1];
+const SharedDocumentPage = React.lazy(() =>
+  import('./project-files/SharedDocumentPage').then((m) => ({ default: m.SharedDocumentPage })),
+);
+if (sharedToken) window.addEventListener('hashchange', () => location.reload());
+
 void initializeLocale().then(() =>
   ReactDOM.createRoot(document.getElementById('root')!).render(
     <React.StrictMode>
-      <SiteShell />
+      {sharedToken ? (
+        <React.Suspense fallback={null}>
+          <SharedDocumentPage token={sharedToken} />
+        </React.Suspense>
+      ) : (
+        <SiteShell />
+      )}
     </React.StrictMode>,
   ),
 );

@@ -67,6 +67,9 @@ jobs:
       - name: Edit, collaboratively save and export studio files
         if: matrix.round == 1
         run: node --import tsx scripts/qa/office-studio.browser.mjs
+      - name: Share a document read-only, view it anonymously and revoke the link
+        if: matrix.round == 1
+        run: node --import tsx scripts/qa/document-sharing.browser.mjs
       - name: Assistant permissions, memory, streaming, conversations and generated workspace
         if: matrix.round == 1
         env:
@@ -170,6 +173,7 @@ jobs:
             artifacts/browser-agent-image
             artifacts/browser-project-files
             artifacts/browser-office-studio
+            artifacts/browser-document-sharing
           retention-days: 14
   baseline:
     runs-on: ubuntu-latest
