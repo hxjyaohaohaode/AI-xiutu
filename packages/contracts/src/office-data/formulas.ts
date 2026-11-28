@@ -49,7 +49,34 @@ const functions = new Set([
   'INDEX',
   'MATCH',
   'VLOOKUP',
+  // Statistics, rounding, text and information functions (Excel-compatible names).
+  'MEDIAN',
+  'STDEV',
+  'VAR',
+  'LARGE',
+  'SMALL',
+  'COUNTBLANK',
+  'AVERAGEIF',
+  'SUMPRODUCT',
+  'INT',
+  'TRUNC',
+  'SIGN',
+  'EXP',
+  'LN',
+  'LOG10',
+  'PI',
+  'UPPER',
+  'LOWER',
+  'TRIM',
+  'MID',
+  'ISNUMBER',
+  'ISBLANK',
+  'ISTEXT',
+  'CHOOSE',
+  'TEXTJOIN',
 ]);
+/** Supported spreadsheet functions, for formula help and autocomplete. */
+export const spreadsheetFunctions: readonly string[] = [...functions].sort();
 const levels = [['=', '<>', '<', '<=', '>', '>='], ['&'], ['+', '-'], ['*', '/'], ['^']];
 const tokenPattern =
   /\s*("(?:[^"]|"")*"|\d+(?:\.\d*)?(?:E[+-]?\d+)?|\.\d+(?:E[+-]?\d+)?|\$?[A-Z_][A-Z_0-9.]*\$?\d*|<=|>=|<>|[+\-*/^&%:(),=<>])/iy;
@@ -318,6 +345,24 @@ export function calculateSheet(table: DataTable): ReadonlyMap<string, Calculated
       if (faulty(a)) return a;
       return truth(a) ? evaluate(args[1]!) : args[2] ? evaluate(args[2]) : false;
     }
+    if (name === 'CHOOSE') {
+      if (args.length < 2) return issue('#VALUE!');
+      const pick = asNumber(scalar(evaluate(args[0]!)));
+      if (faulty(pick)) return pick;
+      const index = Math.trunc(pick);
+      return index >= 1 && index < args.length ? evaluate(args[index]!) : issue('#VALUE!');
+    }
+    if (name === 'ISNUMBER' || name === 'ISBLANK' || name === 'ISTEXT') {
+      if (args.length !== 1) return issue('#VALUE!');
+      const v = scalar(evaluate(args[0]!));
+      return name === 'ISNUMBER' ? typeof v === 'number' : name === 'ISBLANK' ? v === null : typeof v === 'string';
+    }
+    if (name === 'PI') return args.length ? issue('#VALUE!') : Math.PI;
+    if (name === 'COUNTBLANK') {
+      if (args.length !== 1) return issue('#VALUE!');
+      const v = evaluate(args[0]!);
+      return (Array.isArray(v) ? v : [v]).filter((item) => item === null || item === '').length;
+    }
     const values = args.map(evaluate);
     const all = values.flat();
     const error = all.find(faulty);
@@ -370,6 +415,76 @@ export function calculateSheet(table: DataTable): ReadonlyMap<string, Calculated
         });
         return finalNumber(total);
       }
+      case 'MEDIAN': {
+        if (!nums.length) return issue('#NUM!');
+        const sorted = [...nums].sort((a, b) => a - b),
+          mid = sorted.length >> 1;
+        return finalNumber(sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2);
+      }
+      case 'STDEV':
+      case 'VAR': {
+        // Sample statistics, as Excel's STDEV/VAR.
+        if (nums.length < 2) return issue('#DIV/0!');
+        const mean = sum(nums) / nums.length;
+        const variance = sum(nums.map((n) => (n - mean) ** 2)) / (nums.length - 1);
+        return finalNumber(name === 'VAR' ? variance : Math.sqrt(variance));
+      }
+      case 'LARGE':
+      case 'SMALL': {
+        if (values.length !== 2 || typeof two !== 'number') return issue('#VALUE!');
+        const data = list(values[0]).filter((v): v is number => typeof v === 'number');
+        const k = Math.trunc(two);
+        if (k < 1 || k > data.length) return issue('#NUM!');
+        const sorted = data.sort((a, b) => (name === 'LARGE' ? b - a : a - b));
+        return sorted[k - 1]!;
+      }
+      case 'AVERAGEIF': {
+        if (values.length < 2 || values.length > 3) return issue('#VALUE!');
+        const data = list(values[0]),
+          amounts = list(values[2] ?? values[0]);
+        if (data.length !== amounts.length || faulty(two)) return issue('#VALUE!');
+        const terms = typeof two === 'string' ? /^(<=|>=|<>|[<>=])(.*)$/.exec(two) : null;
+        const needle = terms ? (numericCell(terms[2]!)?.value ?? terms[2]!) : two;
+        let total = 0,
+          count = 0;
+        data.forEach((v, i) => {
+          const amount = amounts[i];
+          if (compare(v, needle, terms?.[1] ?? '=') && typeof amount === 'number') {
+            total += amount;
+            count++;
+          }
+        });
+        return count ? finalNumber(total / count) : issue('#DIV/0!');
+      }
+      case 'SUMPRODUCT': {
+        const arrays = values.map(list);
+        if (!arrays.length || arrays.some((a) => a.length !== arrays[0]!.length)) return issue('#VALUE!');
+        let total = 0;
+        for (let i = 0; i < arrays[0]!.length; i++)
+          total += arrays.reduce((p, a) => p * (typeof a[i] === 'number' ? (a[i] as number) : 0), 1);
+        return finalNumber(total);
+      }
+      case 'UPPER':
+      case 'LOWER':
+      case 'TRIM':
+        if (values.length !== 1) return issue('#VALUE!');
+        return name === 'UPPER'
+          ? display(one).toUpperCase()
+          : name === 'LOWER'
+            ? display(one).toLowerCase()
+            : display(one).trim().replace(/ {2,}/g, ' ');
+      case 'MID': {
+        const start = asNumber(two),
+          length = asNumber(scalar(values[2] ?? null));
+        if (values.length !== 3 || faulty(start) || faulty(length) || start < 1 || length < 0) return issue('#VALUE!');
+        return Array.from(display(one)).slice(Math.trunc(start) - 1, Math.trunc(start) - 1 + Math.trunc(length)).join('');
+      }
+      case 'TEXTJOIN': {
+        if (values.length < 3) return issue('#VALUE!');
+        const skip = truth(two);
+        const parts = values.slice(2).flatMap(list).filter((v) => !(skip && (v === null || v === '')));
+        return boundedText(parts.map(display).join(display(one)));
+      }
       case 'MATCH': {
         if (values.length !== 3 || values[2] !== 0) return issue('#VALUE!');
         const i = list(values[1]).findIndex((v) => same(one, v));
@@ -417,6 +532,19 @@ export function calculateSheet(table: DataTable): ReadonlyMap<string, Calculated
       return values.length === 1
         ? finalNumber(name === 'ABS' ? Math.abs(x) : Math.sqrt(x))
         : issue('#VALUE!');
+    if (name === 'INT' || name === 'SIGN' || name === 'EXP' || name === 'LN' || name === 'LOG10') {
+      if (values.length !== 1) return issue('#VALUE!');
+      if ((name === 'LN' || name === 'LOG10') && x <= 0) return issue('#NUM!');
+      return finalNumber(
+        name === 'INT' ? Math.floor(x) : name === 'SIGN' ? Math.sign(x) : name === 'EXP' ? Math.exp(x) : name === 'LN' ? Math.log(x) : Math.log10(x),
+      );
+    }
+    if (name === 'TRUNC') {
+      if (values.length < 1 || values.length > 2) return issue('#VALUE!');
+      const digits = values.length === 2 ? Math.trunc(y) : 0;
+      const scale = 10 ** digits;
+      return finalNumber(Math.trunc(x * scale) / scale);
+    }
     if (values.length !== 2) return issue('#VALUE!');
     if (name === 'POWER') return finalNumber(x ** y);
     if (name === 'MOD') return y === 0 ? issue('#DIV/0!') : finalNumber(x - y * Math.floor(x / y));

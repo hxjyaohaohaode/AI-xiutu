@@ -193,3 +193,50 @@
     margin-inline-start: 0;
   }
 }
+
+/* Arrange toolbar: align to slide or selection, distribute, match size */
+.slide-arrange {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.2rem;
+  flex-basis: 100%;
+  padding: 0.3rem 0.4rem;
+  background: var(--color-surface-secondary, #f0f0ed);
+  border-radius: 0.7rem;
+}
+.slide-arrange > span {
+  margin-inline-end: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-muted, #5d6057);
+}
+.slide-arrange > button:not(.text-button) {
+  display: grid;
+  place-items: center;
+  min-width: 34px;
+  min-height: 34px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem;
+  cursor: pointer;
+}
+.slide-arrange > button:not(.text-button):hover:not(:disabled) {
+  background: var(--color-surface-hover, #e8e9e4);
+}
+.slide-arrange > button:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+.slide-arrange > small {
+  margin-inline-start: auto;
+  font-size: 0.72rem;
+  color: var(--color-muted, #5d6057);
+}
+@media (pointer: coarse) {
+  .slide-arrange > button:not(.text-button) {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

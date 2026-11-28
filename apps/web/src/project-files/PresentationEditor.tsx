@@ -15,6 +15,14 @@ import {
   ArrowCounterClockwise,
   ChartLine,
   Image,
+  AlignLeft,
+  AlignCenterHorizontal,
+  AlignRight,
+  AlignTop,
+  AlignCenterVertical,
+  AlignBottom,
+  ArrowsOutLineHorizontal,
+  ArrowsOutLineVertical,
   Plus,
   SquaresFour,
   TextT,
@@ -40,6 +48,7 @@ import {
 } from '@ai-xiutu/contracts/office-data';
 import { blankSlide, fitBox, newBox, snapBox } from './presentation-model';
 import { OfficeAssetUrl } from './office-asset-url';
+import { alignElements, distributeElements, matchSize, type AlignMode } from './presentation-arrange';
 
 const ChartDesigner = lazy(() => import('./ChartDesigner').then((m) => ({ default: m.ChartDesigner })));
 import './presentation-editor.css';
@@ -166,7 +175,20 @@ export function PresentationEditor({
 }) {
   useLocale();
   const [pageId, setPageId] = useState(document.slides[0]!.id);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedIdState] = useState<string | null>(null);
+  // Multi-selection for align/distribute: Shift, ⌘ or Ctrl adds or removes objects.
+  const [group, setGroup] = useState<string[]>([]);
+  const setSelectedId = (id: string | null) => {
+    setSelectedIdState(id);
+    setGroup(id ? [id] : []);
+  };
+  const toggleGroup = (id: string) => {
+    setGroup((current) => {
+      const next = current.includes(id) ? current.filter((item) => item !== id) : [...current, id];
+      setSelectedIdState(next.at(-1) ?? null);
+      return next;
+    });
+  };
   const [preview, setPreview] = useState<Preview | null>(null);
   const [insert, setInsert] = useState<'image' | 'chart' | null>(null);
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -245,6 +267,10 @@ export function PresentationEditor({
       elements: slide.elements.map((item) => (item.id === element.id ? fitBox(element) : item)),
     });
   }
+  const arrangeIds = group.length ? group : selectedId ? [selectedId] : [];
+  function arrange(next: SlideElement[]) {
+    updateSlide({ ...slide, elements: next.map((item) => fitBox(item)) });
+  }
   function addElement(element: SlideElement) {
     if (updateSlide({ ...slide, elements: [...slide.elements, element] })) {
       setSelectedId(element.id);
@@ -299,7 +325,13 @@ export function PresentationEditor({
     type: Gesture['type'],
   ) {
     if (event.button !== 0 || binding.current) return;
-    setSelectedId(item.id);
+    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      event.preventDefault();
+      toggleGroup(item.id);
+      return;
+    }
+    if (!group.includes(item.id) || group.length < 2) setSelectedId(item.id);
+    else setSelectedIdState(item.id);
     if (readOnly || !stage.current) return;
     const width = stage.current.getBoundingClientRect().width;
     if (!width) return;
@@ -556,7 +588,7 @@ export function PresentationEditor({
         >
           {slide.elements.map((original) => {
             const element = preview?.element.id === original.id ? preview.element : original;
-            const active = selectedId === element.id;
+            const active = selectedId === element.id || group.includes(element.id);
             const name = elementName(element);
             return (
               <div
@@ -570,13 +602,15 @@ export function PresentationEditor({
                   className="slide-select-object"
                   aria-label={name}
                   aria-pressed={active}
-                  onClick={() => setSelectedId(element.id)}
+                  onClick={(event) => {
+                    if (!(event.shiftKey || event.metaKey || event.ctrlKey)) setSelectedId(element.id);
+                  }}
                   onKeyDown={(event) => press(event, element)}
                   onPointerDown={(event) => startGesture(event, original, 'move')}
                 >
                   <SlideContent element={element} />
                 </button>
-                {active && !readOnly && (
+                {selectedId === element.id && group.length < 2 && !readOnly && (
                   <button
                     type="button"
                     className="slide-resize"
@@ -604,6 +638,36 @@ export function PresentationEditor({
       {!readOnly &&
         (selected ? (
           <div className="slide-inspector">
+            <div className="slide-arrange" role="toolbar" aria-label={t('排列')}>
+              <span>{t(arrangeIds.length > 1 ? '对齐所选 {v0} 个对象' : '对齐到幻灯片', { v0: arrangeIds.length })}</span>
+              {(
+                [
+                  ['left', '左对齐', AlignLeft],
+                  ['center', '水平居中', AlignCenterHorizontal],
+                  ['right', '右对齐', AlignRight],
+                  ['top', '顶端对齐', AlignTop],
+                  ['middle', '垂直居中', AlignCenterVertical],
+                  ['bottom', '底端对齐', AlignBottom],
+                ] as [AlignMode, string, typeof AlignLeft][]
+              ).map(([mode, label, Icon]) => (
+                <button key={mode} type="button" aria-label={t(label)} title={t(label)} onClick={() => arrange(alignElements(slide.elements, arrangeIds, mode))}>
+                  <Icon size={17} />
+                </button>
+              ))}
+              <button type="button" aria-label={t('横向等距分布')} title={t('横向等距分布')} disabled={arrangeIds.length < 3}
+                onClick={() => arrange(distributeElements(slide.elements, arrangeIds, 'horizontal'))}>
+                <ArrowsOutLineHorizontal size={17} />
+              </button>
+              <button type="button" aria-label={t('纵向等距分布')} title={t('纵向等距分布')} disabled={arrangeIds.length < 3}
+                onClick={() => arrange(distributeElements(slide.elements, arrangeIds, 'vertical'))}>
+                <ArrowsOutLineVertical size={17} />
+              </button>
+              <button type="button" className="text-button" disabled={arrangeIds.length < 2}
+                onClick={() => arrange(matchSize(slide.elements, arrangeIds, 'width'))}>{t('统一宽度')}</button>
+              <button type="button" className="text-button" disabled={arrangeIds.length < 2}
+                onClick={() => arrange(matchSize(slide.elements, arrangeIds, 'height'))}>{t('统一高度')}</button>
+              <small>{t('按住 Shift 点选多个对象')}</small>
+            </div>
             {selected.kind === 'text' && (
               <>
                 <label className="slide-object-text">

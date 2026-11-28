@@ -242,3 +242,45 @@ test('chart v3 options: number formats, prefixes, custom colours, reference line
   assert.equal(officeChartOptionsSchema.safeParse({ axisMin: 5, axisMax: 1 }).success, false);
   assert.equal(officeChartOptionsSchema.safeParse({ theme: 'aurora', barRadius: 8, lineWidth: 3 }).success, true);
 });
+
+test('spreadsheet: statistics, rounding, text, information and lookup functions', () => {
+  let body = emptyProjectSheet(['Name', 'Score', 'R1', 'R2', 'R3']);
+  const set = (row: number, column: number, text: string) => {
+    const next = editProjectCell(readProjectSheet(body)!, row, column, text);
+    assert.ok(next, text);
+    body = next;
+  };
+  ['Ann', 'Bob', 'Cy', 'Dee'].forEach((name, i) => set(i + 1, 0, name));
+  ['3', '9', '4', '8'].forEach((score, i) => set(i + 1, 1, score));
+  const formulas = [
+    '=MEDIAN(B2:B5)',
+    '=ROUND(STDEV(B2:B5),3)',
+    '=ROUND(VAR(B2:B5),3)',
+    '=LARGE(B2:B5,2)',
+    '=SMALL(B2:B5,1)',
+    '=AVERAGEIF(B2:B5,">=4")',
+    '=SUMPRODUCT(B2:B3,B4:B5)',
+    '=INT(-2.5)',
+    '=TRUNC(3.789,1)',
+    '=SIGN(-4)',
+    '=UPPER(A2)&LOWER("X")',
+    '=TRIM("  a   b ")',
+    '=MID("映间文档",2,2)',
+    '=ISNUMBER(B2)',
+    '=ISTEXT(A2)',
+    '=CHOOSE(2,"x","y","z")',
+    '=TEXTJOIN("-",TRUE,A2:A4)',
+    '=COUNTBLANK(B2:B8)',
+    '=ROUND(PI(),4)',
+    '=LN(0)',
+  ];
+  // Seven formulas per column in C, D and E (rows 2–8).
+  const address = (i: number) => 'CDE'[Math.floor(i / 7)]! + ((i % 7) + 2);
+  formulas.forEach((formula, i) => set((i % 7) + 1, 2 + Math.floor(i / 7), formula));
+  const results = calculateSheet(readProjectSheet(body)!.table);
+  const values = formulas.map((_, i) => results.get(address(i))!.value);
+  assert.deepEqual(values, [
+    6, 2.944, 8.667, 8, 3, 7, 84, -3, 3.7, -1, 'ANNx', 'a b', '间文', true, true, 'y', 'Ann-Bob-Cy', 3, 3.1416,
+    { error: '#NUM!' },
+  ]);
+});
