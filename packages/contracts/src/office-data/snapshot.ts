@@ -31,6 +31,7 @@ export function createChartSnapshot(
   title: string,
   kind: DocumentLayout['chart'],
   source?: OfficeChartSnapshot['source'],
+  options?: OfficeChartSnapshot['options'],
 ): OfficeChartSnapshot {
   const used = usedChartTable(table);
   const snapshot = officeChartSnapshotSchema.safeParse({
@@ -40,6 +41,7 @@ export function createChartSnapshot(
     rows: used.rows,
     textCells: [...(used.textCells ?? [])].filter((index) => index >= used.headers.length),
     source,
+    ...(options && Object.keys(options).length ? { options } : {}),
   });
   if (!snapshot.success) throw new Error('插入图表最多支持 256 行、16 列，请检查数据或缩小范围。');
   snapshotSvg(snapshot.data);

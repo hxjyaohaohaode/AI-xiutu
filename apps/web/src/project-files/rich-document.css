@@ -499,3 +499,44 @@
 :root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#175CD3'] { color: #84adff !important; }
 :root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#6941C6'] { color: #bdb4fe !important; }
 :root[data-theme='dark'] .project-rich-document .ProseMirror :not(mark) > [data-color='#C11574'] { color: #faa7e0 !important; }
+
+/* Interactive chart blocks inside the document */
+.project-rich-document .ProseMirror .office-chart,
+.office-embed.office-chart {
+  position: relative;
+  margin: 0.8em 0;
+}
+.project-rich-document .ProseMirror .office-chart .chart-view svg {
+  border: 1px solid var(--color-line, #dddfd7);
+}
+.project-rich-document .office-chart-edit {
+  position: absolute;
+  font-family: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif !important;
+  top: 0.6rem;
+  right: 0.6rem;
+  min-height: 32px;
+  padding: 0.25rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-ink, #22241f);
+  background: color-mix(in srgb, var(--color-raised, #fff) 88%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid var(--color-line, #dddfd7);
+  border-radius: 999px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.project-rich-document .office-chart:hover .office-chart-edit,
+.project-rich-document .office-chart:focus-within .office-chart-edit,
+.project-rich-document .office-chart-edit:focus-visible {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .project-rich-document .office-chart-edit {
+    opacity: 1;
+    min-height: 40px;
+  }
+}

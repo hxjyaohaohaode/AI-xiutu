@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -18,10 +20,9 @@ import {
 } from '@phosphor-icons/react';
 import {
   documentFonts,
-  officeCharts,
   slideSize,
   writePresentation,
-  type DocumentLayout,
+  type OfficeChartSnapshot,
   type PresentationDoc,
   type PresentationSlide,
   type SlideElement,
@@ -29,8 +30,16 @@ import {
 import type { Asset, ProjectDocument } from '../lib/types';
 import { api, errorMessage } from '../lib/api';
 import { t, useLocale } from '../i18n';
-import { chartDataUrl, chartNames, snapshotSvg } from '@ai-xiutu/contracts/office-data';
-import { blankSlide, chartFromDocument, fitBox, newBox, snapBox } from './presentation-model';
+import {
+  chartDataUrl,
+  officeDataTable,
+  snapshotSvg,
+  snapshotTable,
+  type DataTable,
+} from '@ai-xiutu/contracts/office-data';
+import { blankSlide, fitBox, newBox, snapBox } from './presentation-model';
+
+const ChartDesigner = lazy(() => import('./ChartDesigner').then((m) => ({ default: m.ChartDesigner })));
 import './presentation-editor.css';
 
 const percent = (value: number, extent: number) => String((100 * value) / extent) + '%';
@@ -160,7 +169,12 @@ export function PresentationEditor({
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetId, setAssetId] = useState('');
   const [sourceId, setSourceId] = useState('');
-  const [kind, setKind] = useState<DocumentLayout['chart']>('bar');
+  // Chart designer: insert from a data document, or edit the selected chart element.
+  const [designer, setDesigner] = useState<
+    | { mode: 'insert'; table: DataTable; source: ProjectDocument }
+    | { mode: 'edit'; elementId: string; chart: OfficeChartSnapshot }
+    | null
+  >(null);
   const [error, setError] = useState('');
   const [resourceLoading, setResourceLoading] = useState(false);
   const binding = useRef<Gesture | null>(null),
@@ -365,11 +379,12 @@ export function PresentationEditor({
     } else {
       const source = sources.find((item) => item.id === sourceId);
       if (!source) return;
-      try {
-        addElement({ ...newBox(850, 478), kind: 'chart', chart: chartFromDocument(source, kind) });
-      } catch (cause) {
-        setError(errorMessage(cause));
+      const table = officeDataTable(source.body);
+      if (!table) {
+        setError(t('请选择包含一张数据表的文档或工作表。'));
+        return;
       }
+      setDesigner({ mode: 'insert', table, source });
     }
   }
 
@@ -493,17 +508,6 @@ export function PresentationEditor({
                   </option>
                 ))}
               </select>
-              <select
-                aria-label={t('图表类型')}
-                value={kind}
-                onChange={(e) => setKind(officeCharts[e.target.selectedIndex]!)}
-              >
-                {officeCharts.map((item) => (
-                  <option key={item} value={item}>
-                    {t(chartNames[item])}
-                  </option>
-                ))}
-              </select>
             </>
           )}
           <button
@@ -512,7 +516,7 @@ export function PresentationEditor({
             disabled={insert === 'image' ? !assetId : !sourceId}
             onClick={insertSelected}
           >
-            {t('插入')}
+            {t(insert === 'chart' ? '设计图表' : '插入')}
           </button>
         </div>
       )}
@@ -678,6 +682,15 @@ export function PresentationEditor({
                 </select>
               </label>
             )}
+            {selected.kind === 'chart' && (
+              <button
+                type="button"
+                className="button button-secondary"
+                onClick={() => setDesigner({ mode: 'edit', elementId: selected.id, chart: selected.chart })}
+              >
+                {t('编辑图表')}
+              </button>
+            )}
             {(selected.kind === 'text' || selected.kind === 'shape') && (
               <label>
                 {t('颜色')}
@@ -788,6 +801,33 @@ export function PresentationEditor({
           </div>
         ))}
       {error && <p role="alert">{error}</p>}
+      {designer && (
+        <Suspense fallback={null}>
+          <ChartDesigner
+            table={designer.mode === 'insert' ? designer.table : snapshotTable(designer.chart)}
+            initial={
+              designer.mode === 'insert'
+                ? { title: designer.source.title.slice(0, 120) || t('图表'), kind: 'bar' }
+                : designer.chart
+            }
+            source={
+              designer.mode === 'insert'
+                ? { documentId: designer.source.id, version: designer.source.version }
+                : designer.chart.source
+            }
+            confirmLabel={designer.mode === 'insert' ? '插入到幻灯片' : '保存图表'}
+            onCancel={() => setDesigner(null)}
+            onConfirm={(chart) => {
+              if (designer.mode === 'insert') addElement({ ...newBox(850, 478), kind: 'chart', chart });
+              else {
+                const element = slide.elements.find((item) => item.id === designer.elementId);
+                if (element?.kind === 'chart') setElement({ ...element, chart });
+              }
+              setDesigner(null);
+            }}
+          />
+        </Suspense>
+      )}
     </section>
   );
 }

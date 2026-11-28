@@ -56,6 +56,7 @@ export const officeCharts = [
   'funnel',
   'waterfall',
   'bar3d',
+  'combo',
 ] as const;
 const pageLayout = z
   .object({

@@ -2,6 +2,7 @@ import type { DocumentLayout } from '../document-format.js';
 import {
   arc,
   area,
+  curveLinear,
   curveMonotoneX,
   pie,
   stack,
@@ -12,40 +13,25 @@ import {
   type SeriesPoint,
 } from 'd3-shape';
 import { sankey, sankeyLinkHorizontal } from 'd3-sankey';
-import { numericCell, xml, type DataTable } from './table.js';
+import { xml, type DataTable } from './table.js';
 
-type Chart = Exclude<DocumentLayout['chart'], 'bar' | 'line'>;
-const colors = [
-  '#237973',
-  '#447BC2',
-  '#BA684A',
-  '#6C63A8',
-  '#9E7584',
-  '#607747',
-  '#A37721',
-  '#437E95',
-];
-const paint = (i: number) => colors[i % colors.length]!;
-const short = (s: string, max = 18) =>
-  Array.from(s).length <= max
-    ? s
-    : Array.from(s)
-        .slice(0, max - 1)
-        .join('') + '…';
-const numberText = (n: number) => String(Number(n.toPrecision(8)));
-const point = (x: number, y: number) => `${x.toFixed(3)},${y.toFixed(3)}`;
-const label = (x: number, y: number, s: string, anchor = 'start') =>
-  `<text x="${x}" y="${y}" text-anchor="${anchor}"><title>${xml(s)}</title>${xml(short(s))}</text>`;
-
-function numeric(table: DataTable, row: number, col: number) {
-  const cell = table.rows[row]?.[col];
-  const value =
-    !table.textCells?.has((row + 1) * table.headers.length + col) && cell != null
-      ? numericCell(cell)
-      : null;
-  if (!value) throw new Error(`第 ${row + 2} 行「${table.headers[col] ?? col + 1}」需要数值。`);
-  return value;
-}
+import {
+  chartOptions,
+  chartTheme,
+  label,
+  legend,
+  legendAttr,
+  niceTicks,
+  numberText,
+  numeric,
+  paint,
+  plotRight,
+  point,
+  seriesAttr,
+  short,
+  unitText,
+  yAxis,
+} from './chart-common.js';
 
 function seriesData(table: DataTable) {
   if (
@@ -68,16 +54,6 @@ function seriesData(table: DataTable) {
   return { values, percent };
 }
 
-function legend(names: string[]) {
-  return names
-    .map((name, i) => {
-      const x = 37 + (i % 4) * 228,
-        y = 477 + Math.floor(i / 4) * 28;
-      return `<circle cx="${x}" cy="${y - 4}" r="5" fill="${paint(i)}"/>${label(x + 12, y, name)}`;
-    })
-    .join('');
-}
-
 function stream(table: DataTable) {
   const { values, percent } = seriesData(table);
   const keys = table.headers.slice(1).map((_, i) => i);
@@ -98,7 +74,7 @@ function stream(table: DataTable) {
     .y1((p) => y(p[1]));
   const marks = layers.map(
     (layer) =>
-      `<path fill="${paint(layer.key)}" fill-opacity=".84" d="${shape(layer) ?? ''}"><title>${xml(table.headers[layer.key + 1]!)}</title></path>`,
+      `<path${seriesAttr(layer.key)} fill="${paint(layer.key)}" fill-opacity=".84" d="${shape(layer) ?? ''}"><title>${xml(table.headers[layer.key + 1]!)}</title></path>`,
   );
   const stride = Math.ceil(values.length / 8);
   table.rows.forEach((row, i) => {
@@ -182,7 +158,7 @@ function radar(table: DataTable) {
   const polygon = (ratio: number) => values.map((_, i) => point(...xy(i, ratio))).join(' ');
   const grid = [0.25, 0.5, 0.75, 1].map(
     (ratio) =>
-      `<polygon points="${polygon(ratio)}" fill="none" stroke="#9aadaa" stroke-opacity=".65"/>${label(
+      `<polygon points="${polygon(ratio)}" fill="none" class="grid"/>${label(
         489,
         xy(0, ratio)[1] - 3,
         numberText(max * ratio * (percent ? 100 : 1)) + (percent ? '%' : ''),
@@ -191,11 +167,11 @@ function radar(table: DataTable) {
   const axes = table.rows.map((row, i) => {
     const [x, y] = xy(i),
       [tx, ty] = xy(i, 1.19);
-    return `<line x1="480" y1="255" x2="${x}" y2="${y}" stroke="#9aadaa" stroke-opacity=".65"/>${label(tx, ty + 5, row[0]!, 'middle')}`;
+    return `<line x1="480" y1="255" x2="${x}" y2="${y}" class="grid"/>${label(tx, ty + 5, row[0]!, 'middle')}`;
   });
   const plots = table.headers.slice(1).map((name, i) => {
     const coords = values.map((row, j) => xy(j, row[i]! / max));
-    return `<polygon points="${coords.map((p) => point(...p)).join(' ')}" fill="${paint(i)}" fill-opacity=".15" stroke="${paint(i)}" stroke-width="2"><title>${xml(name)}</title></polygon>${coords
+    return `<polygon${seriesAttr(i)} points="${coords.map((p) => point(...p)).join(' ')}" fill="${paint(i)}" fill-opacity=".15" stroke="${paint(i)}" stroke-width="2"><title>${xml(name)}</title></polygon>${coords
       .map(
         ([x, y], j) =>
           `<circle cx="${x}" cy="${y}" r="3.6" fill="${paint(i)}"><title>${xml(table.rows[j]![0]! + ' · ' + table.rows[j]![i + 1]!)}</title></circle>`,
@@ -221,7 +197,7 @@ function scatter(table: DataTable) {
   const project = ([x = 0, y = 0, z = 0]: number[]) =>
     [455 + 280 * x - 212 * y, 381 + x * 43 + y * 78 - z * 266] as const;
   const line = (a: readonly number[], b: readonly number[], opacity: number) =>
-    `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#829a96" opacity="${opacity}"/>`;
+    `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="axis" opacity="${opacity}"/>`;
   const grid = [0, 0.25, 0.5, 0.75, 1].flatMap((d) => [
     line(project([d, 0]), project([d, 1]), 0.55),
     line(project([0, d]), project([1, d]), 0.55),
@@ -255,27 +231,11 @@ function scatter(table: DataTable) {
     ...dots.map(
       ({ i, norm, p }) =>
         line(project([norm[0]!, norm[1]!, 0]), p, 0.28) +
-        `<circle cx="${p[0]}" cy="${p[1]}" r="5.5" fill="#267a77" stroke="#fff" stroke-width="1.2"><title>${xml(table.rows[i]!.join(' · '))}</title></circle>`,
+        `<circle cx="${p[0]}" cy="${p[1]}" r="5.5" fill="${paint(0)}" class="sep" stroke-width="1.2"><title>${xml(table.rows[i]!.join(' · '))}</title></circle>`,
     ),
   ].join('');
 }
 
-
-/** Shared value formatting with the unit of the first value. */
-const unitText = (value: number, percent: boolean) =>
-  numberText(value * (percent ? 100 : 1)) + (percent ? '%' : '');
-
-function niceTicks(min: number, max: number, count = 5) {
-  const span = max - min || Math.abs(max) || 1;
-  const raw = span / count;
-  const power = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * power).find((m) => m >= raw)!;
-  const ticks: number[] = [];
-  const last = Math.ceil(max / step - 1e-9) * step;
-  for (let v = Math.floor(min / step + 1e-9) * step; v <= last + step * 1e-9; v += step)
-    ticks.push(Number(v.toPrecision(12)));
-  return ticks;
-}
 
 /** Two-column name/value data (pie-like charts). Values must share one unit. */
 function pairs(table: DataTable, name: string, max: number, signed = false) {
@@ -293,66 +253,104 @@ function pairs(table: DataTable, name: string, max: number, signed = false) {
   };
 }
 
-function yAxis(min: number, max: number, top: number, bottom: number, percent: boolean) {
-  const ticks = niceTicks(min, max);
-  const lo = Math.min(min, ticks[0]!), hi = Math.max(max, ticks.at(-1)!);
-  const y = (v: number) => bottom - ((bottom - top) * (v - lo)) / (hi - lo || 1);
-  const grid = ticks
-    .map((t) => `<line x1="70" x2="890" y1="${y(t)}" y2="${y(t)}" stroke="#d6e2df"/>${label(62, y(t) + 4, unitText(t, percent), 'end')}`)
-    .join('');
-  return { y, grid };
-}
-
 function areaChart(table: DataTable) {
   const { values, percent } = seriesData(table);
+  const options = chartOptions();
+  const layout = options.layout ?? 'stacked';
   const keys = table.headers.slice(1).map((_, i) => i);
-  const layers = stack<number[], number>()
-    .keys(keys)
-    .value((row, key) => row[key]!)
-    .order(stackOrderNone)
-    .offset(stackOffsetNone)(values);
-  const max = Math.max(...layers.flat().map((p) => p[1]));
-  const x = (i: number) => 70 + (820 * i) / (values.length - 1);
-  const { y, grid } = yAxis(0, max, 86, 414, percent);
-  const shape = area<SeriesPoint<number[]>>()
-    .curve(curveMonotoneX)
+  // percent: each category sums to 100%; grouped: overlapping translucent areas from zero.
+  const rows =
+    layout === 'percent'
+      ? values.map((row) => {
+          const sum = row.reduce((a, v) => a + v, 0) || 1;
+          return row.map((v) => v / sum);
+        })
+      : values;
+  const layers =
+    layout === 'grouped'
+      ? keys.map((key) => Object.assign(rows.map((row) => [0, row[key]!] as [number, number]), { key }))
+      : stack<number[], number>()
+          .keys(keys)
+          .value((row, key) => row[key]!)
+          .order(stackOrderNone)
+          .offset(stackOffsetNone)(rows);
+  const max = layout === 'percent' ? 1 : Math.max(...layers.flat().map((p) => p[1]));
+  const right = plotRight();
+  const x = (i: number) => 70 + ((right - 70) * i) / (values.length - 1);
+  const { y, grid } = yAxis(0, max, 86, 414, layout === 'percent' || percent);
+  const shape = area<[number, number]>()
+    .curve(options.smooth === false ? curveLinear : curveMonotoneX)
     .x((_, i) => x(i))
     .y0((p) => y(p[0]))
     .y1((p) => y(p[1]));
   const stride = Math.ceil(values.length / 8);
   const ticks = table.rows
-    .map((row, i) => (i % stride === 0 ? label(x(i), 440, short(row[0]!, 10), 'middle') : ''))
+    .map((row, i) => (i % stride === 0 ? label(x(i), 440, short(row[0]!, 10), 'middle', ' class="muted"') : ''))
     .join('');
+  const opacity = layout === 'grouped' ? '.32' : '.82';
   const marks = layers
-    .map((layer) => `<path fill="${paint(layer.key)}" fill-opacity=".78" stroke="#fff" stroke-width="1" d="${shape(layer) ?? ''}"><title>${xml(table.headers[layer.key + 1]!)}</title></path>`)
+    .map(
+      (layer) =>
+        `<path${seriesAttr(layer.key)} fill="${paint(layer.key)}" fill-opacity="${opacity}" class="sep" stroke-width="1" d="${shape(layer as [number, number][]) ?? ''}"><title>${xml(table.headers[layer.key + 1]!)}</title></path>`,
+    )
     .join('');
-  return grid + marks + ticks + legend(table.headers.slice(1));
+  const tips = table.rows
+    .map(
+      (row, i) =>
+        `<rect x="${Math.max(70, x(i) - (right - 70) / 2 / Math.max(1, values.length - 1))}" y="86" width="${Math.min(right, x(i) + (right - 70) / 2 / Math.max(1, values.length - 1)) - Math.max(70, x(i) - (right - 70) / 2 / Math.max(1, values.length - 1))}" height="328" fill="transparent"><title>${xml(
+          row[0]! + ' · ' + values[i]!.map((v, j) => table.headers[j + 1]! + ' ' + unitText(v, percent)).join(' · '),
+        )}</title></rect>`,
+    )
+    .join('');
+  const labels =
+    options.labels && values.length <= 16
+      ? layers
+          .map((layer) =>
+            layer
+              .map((p, i) =>
+                `<text x="${x(i)}" y="${y(p[1]) - 5}" text-anchor="middle" font-size="11" class="muted">${xml(
+                  unitText(layout === 'percent' ? rows[i]![layer.key]! : values[i]![layer.key]!, layout === 'percent' || percent),
+                )}</text>`,
+              )
+              .join(''),
+          )
+          .join('')
+      : '';
+  return grid + marks + labels + ticks + tips + legend(table.headers.slice(1));
 }
 
 function donut(table: DataTable) {
   const { items, percent } = pairs(table, '环形图', 12);
-  const total = items.reduce((sum, item) => sum + item.value, 0);
-  const slices = pie<{ name: string; value: number }>().value((d) => d.value).sort(null).padAngle(0.012)(items);
-  const shape = arc<(typeof slices)[number]>().innerRadius(98).outerRadius(168).cornerRadius(3);
+  // Hidden slices stay in the list (dimmed) so they can be restored from the chart.
+  const hidden = new Set(chartOptions().hidden ?? []);
+  const visible = items.map((item, i) => ({ ...item, i })).filter(({ i }) => !hidden.has(i));
+  const shown = visible.length ? visible : items.map((item, i) => ({ ...item, i }));
+  const total = shown.reduce((sum, item) => sum + item.value, 0);
+  const slices = pie<{ name: string; value: number; i: number }>().value((d) => d.value).sort(null).padAngle(0.012)(shown);
+  const hole = chartOptions().hole ?? 0.58;
+  const shape = arc<(typeof slices)[number]>().innerRadius(168 * hole).outerRadius(168).cornerRadius(hole ? 3 : 0);
   const marks = slices
-    .map((slice, i) => {
+    .map((slice) => {
+      const i = slice.data.i;
       const share = slice.data.value / total;
       const [cx, cy] = shape.centroid(slice);
       const mid = (slice.startAngle + slice.endAngle) / 2;
       const lx = 330 + Math.sin(mid) * 196, ly = 280 - Math.cos(mid) * 196;
-      return `<path transform="translate(330 280)" d="${shape(slice) ?? ''}" fill="${paint(i)}"><title>${xml(slice.data.name + ' · ' + unitText(slice.data.value, percent) + ' · ' + numberText(share * 100) + '%')}</title></path>` +
+      return `<path${seriesAttr(i)} transform="translate(330 280)" d="${shape(slice) ?? ''}" fill="${paint(i)}"><title>${xml(slice.data.name + ' · ' + unitText(slice.data.value, percent) + ' · ' + numberText(share * 100) + '%')}</title></path>` +
         (share >= 0.04
-          ? `<text x="${330 + cx}" y="${284 + cy}" text-anchor="middle" fill="#fff" font-size="13" font-weight="600">${Math.round(share * 100)}%</text>` +
+          ? `<text x="${330 + cx}" y="${284 + cy}" text-anchor="middle" class="on" font-size="13" font-weight="600">${Math.round(share * 100)}%</text>` +
             label(lx, ly + 4, slice.data.name, Math.sin(mid) >= 0 ? 'start' : 'end')
           : '');
     })
     .join('');
   const list = items
-    .map((item, i) => `<circle cx="640" cy="${118 + i * 30}" r="6" fill="${paint(i)}"/>${label(654, 123 + i * 30, item.name)}<text x="900" y="${123 + i * 30}" text-anchor="end">${xml(unitText(item.value, percent))}</text>`)
+    .map((item, i) => `<g${legendAttr(i)} class="legend-item"${hidden.has(i) && visible.length ? ' data-hidden="true" opacity=".38"' : ''}><circle cx="640" cy="${118 + i * 30}" r="6" fill="${paint(i)}"/>${label(654, 123 + i * 30, item.name)}<text x="900" y="${123 + i * 30}" text-anchor="end">${xml(unitText(item.value, percent))}</text></g>`)
     .join('');
-  return marks +
-    `<text x="330" y="276" text-anchor="middle" font-size="26" font-weight="700">${xml(unitText(total, percent))}</text><text x="330" y="300" text-anchor="middle" fill="#5b6f6c">合计</text>` +
-    list;
+  // A pie (small or no hole) has no room for the centre total.
+  const centre = hole >= 0.4
+    ? `<text x="330" y="276" text-anchor="middle" font-size="26" font-weight="700">${xml(unitText(total, percent))}</text><text x="330" y="300" text-anchor="middle" class="muted">合计</text>`
+    : '';
+  return marks + centre + list;
 }
 
 function heatmap(table: DataTable) {
@@ -371,9 +369,12 @@ function heatmap(table: DataTable) {
   const diverging = lo < 0 && hi > 0;
   const cols = grid[0]!.length, rows = grid.length;
   const left = 150, top = 92, w = (880 - left) / cols, h = Math.min(56, 340 / rows);
-  // Interpolates in sRGB between the palette's teal/neutral/terracotta anchors.
+  // Interpolates in sRGB between a neutral and the theme's first/third colors.
   const mix = (a: number[], b: number[], t: number) => `rgb(${a.map((v, k) => Math.round(v + (b[k]! - v) * t)).join(',')})`;
-  const neutral = [244, 247, 246], teal = [35, 121, 115], warm = [186, 104, 74];
+  const rgb = (hex: string) => [16, 8, 0].map((sh) => (parseInt(hex.slice(1), 16) >> sh) & 255);
+  const theme = chartTheme();
+  const neutral = theme.background && rgb(theme.background)[0]! < 80 ? [38, 46, 58] : [244, 247, 246];
+  const teal = rgb(paint(0)), warm = rgb(paint(2));
   const color = (v: number) => {
     if (diverging) {
       const m = Math.max(-lo, hi);
@@ -388,7 +389,7 @@ function heatmap(table: DataTable) {
         .map((v, j) => {
           const x = left + j * w, y = top + i * h;
           const text = h >= 18 && w >= 40
-            ? `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" font-size="12" fill="${dark(v) ? '#fff' : '#203735'}">${xml(unitText(v, percent))}</text>`
+            ? `<text x="${x + w / 2}" y="${y + h / 2 + 4}" text-anchor="middle" font-size="12" fill="${dark(v) === (neutral[0]! > 128) ? '#FFFFFF' : '#1F2937'}">${xml(unitText(v, percent))}</text>`
             : '';
           return `<rect x="${x}" y="${y}" width="${w - 2}" height="${h - 2}" rx="3" fill="${color(v)}"><title>${xml(table.rows[i]![0]! + ' · ' + table.headers[j + 1]! + ' · ' + unitText(v, percent))}</title></rect>${text}`;
         })
@@ -447,9 +448,9 @@ function treemap(table: DataTable) {
     .map(({ index, x, y, w, h }) => {
       const item = items[index]!;
       const text = w > 70 && h > 38
-        ? `<text x="${x + 10}" y="${y + 22}" fill="#fff" font-weight="600">${xml(short(item.name, Math.max(4, Math.floor(w / 15))))}</text><text x="${x + 10}" y="${y + 40}" fill="#fff" font-size="12" opacity=".9">${xml(unitText(item.value, percent))} · ${Math.round((item.value / total) * 100)}%</text>`
+        ? `<text x="${x + 10}" y="${y + 22}" class="on" font-weight="600">${xml(short(item.name, Math.max(4, Math.floor(w / 15))))}</text><text x="${x + 10}" y="${y + 40}" class="on" font-size="12" opacity=".9">${xml(unitText(item.value, percent))} · ${Math.round((item.value / total) * 100)}%</text>`
         : '';
-      return `<rect x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" height="${Math.max(0, h - 2)}" rx="4" fill="${paint(index)}"><title>${xml(item.name + ' · ' + unitText(item.value, percent))}</title></rect>${text}`;
+      return `<rect${seriesAttr(index)} x="${x + 1}" y="${y + 1}" width="${Math.max(0, w - 2)}" height="${Math.max(0, h - 2)}" rx="4" fill="${paint(index)}"><title>${xml(item.name + ' · ' + unitText(item.value, percent))}</title></rect>${text}`;
     })
     .join('');
 }
@@ -465,10 +466,10 @@ function funnel(table: DataTable) {
       const top = 84 + i * step, wTop = width(item.value), wBottom = width(items[i + 1]?.value ?? item.value * 0.82);
       const points = [[480 - wTop / 2, top], [480 + wTop / 2, top], [480 + wBottom / 2, top + step - 6], [480 - wBottom / 2, top + step - 6]];
       const prev = i ? ' · 较上一步 ' + numberText((item.value / items[i - 1]!.value) * 100) + '%' : '';
-      return `<polygon points="${points.map(([px, py]) => point(px!, py!)).join(' ')}" fill="${paint(i)}"><title>${xml(item.name + ' · ' + unitText(item.value, percent) + prev)}</title></polygon>` +
-        `<text x="480" y="${top + step / 2 + 2}" text-anchor="middle" fill="#fff" font-weight="600">${xml(unitText(item.value, percent))}</text>` +
+      return `<polygon${seriesAttr(i)} points="${points.map(([px, py]) => point(px!, py!)).join(' ')}" fill="${paint(i)}"><title>${xml(item.name + ' · ' + unitText(item.value, percent) + prev)}</title></polygon>` +
+        `<text x="480" y="${top + step / 2 + 2}" text-anchor="middle" class="on" font-weight="600">${xml(unitText(item.value, percent))}</text>` +
         label(480 - wTop / 2 - 14, top + step / 2 + 2, item.name, 'end') +
-        `<text x="${480 + wTop / 2 + 14}" y="${top + step / 2 + 2}" fill="#5b6f6c">${numberText((item.value / first) * 100)}%</text>`;
+        `<text x="${480 + wTop / 2 + 14}" y="${top + step / 2 + 2}" class="muted">${numberText((item.value / first) * 100)}%</text>`;
     })
     .join('');
 }
@@ -488,8 +489,8 @@ function waterfall(table: DataTable) {
   const marks = bars
     .map((b, i) => {
       const top = y(Math.max(b.start, b.end)), height = Math.max(1, Math.abs(y(b.start) - y(b.end)));
-      const fill = b.value >= 0 ? '#237973' : '#BA684A';
-      const connector = `<line x1="${x(i) + w}" x2="${x(i + 1)}" y1="${y(b.end)}" y2="${y(b.end)}" stroke="#829a96" stroke-dasharray="3 3"/>`;
+      const fill = b.value >= 0 ? paint(0) : paint(2);
+      const connector = `<line x1="${x(i) + w}" x2="${x(i + 1)}" y1="${y(b.end)}" y2="${y(b.end)}" class="axis" stroke-dasharray="3 3"/>`;
       return `<rect x="${x(i)}" y="${top}" width="${w}" height="${height}" rx="2" fill="${fill}"><title>${xml(b.name + ' · ' + (b.value >= 0 ? '+' : '') + unitText(b.value, percent))}</title></rect>${connector}` +
         `<text x="${x(i) + w / 2}" y="${top - 6}" text-anchor="middle" font-size="12">${xml((b.value >= 0 ? '+' : '') + unitText(b.value, percent))}</text>` +
         label(x(i) + w / 2, 440, short(b.name, 8), 'middle');
@@ -497,10 +498,10 @@ function waterfall(table: DataTable) {
     .join('');
   const totalTop = y(Math.max(0, running)), totalHeight = Math.max(1, Math.abs(y(0) - y(running)));
   return grid + marks +
-    `<rect x="${x(bars.length)}" y="${totalTop}" width="${w}" height="${totalHeight}" rx="2" fill="#447BC2"><title>合计 · ${xml(unitText(running, percent))}</title></rect>` +
+    `<rect x="${x(bars.length)}" y="${totalTop}" width="${w}" height="${totalHeight}" rx="2" fill="${paint(1)}"><title>合计 · ${xml(unitText(running, percent))}</title></rect>` +
     `<text x="${x(bars.length) + w / 2}" y="${totalTop - 6}" text-anchor="middle" font-size="12" font-weight="700">${xml(unitText(running, percent))}</text>` +
     label(x(bars.length) + w / 2, 440, '合计', 'middle') +
-    `<line x1="70" x2="890" y1="${y(0)}" y2="${y(0)}" stroke="#203735" stroke-opacity=".5"/>`;
+    `<line x1="70" x2="890" y1="${y(0)}" y2="${y(0)}" class="axis"/>`;
 }
 
 /** Oblique 3D column chart: categories on X, value columns recede in depth, value as height. */
@@ -524,10 +525,10 @@ function bar3d(table: DataTable) {
   const wall = ticks
     .map((t) => {
       const a = at(0, ny, t), b = at(nx, ny, t), c = at(0, 0, t);
-      return `<line x1="${c[0]}" y1="${c[1]}" x2="${a[0]}" y2="${a[1]}" stroke="#d6e2df"/><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="#d6e2df"/>${label(c[0] - 8, c[1] + 4, unitText(t, percent), 'end')}`;
+      return `<line x1="${c[0]}" y1="${c[1]}" x2="${a[0]}" y2="${a[1]}" class="grid"/><line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" class="grid"/>${label(c[0] - 8, c[1] + 4, unitText(t, percent), 'end')}`;
     })
     .join('');
-  const floor = poly([at(0, 0, 0), at(nx, 0, 0), at(nx, ny, 0), at(0, ny, 0)], '#f1f5f4');
+  const floor = poly([at(0, 0, 0), at(nx, 0, 0), at(nx, ny, 0), at(0, ny, 0)], chartTheme().grid);
   const bars: string[] = [];
   // Painter's order: farthest series first, then left to right within a series.
   for (let gy = ny - 1; gy >= 0; gy--)
@@ -536,7 +537,7 @@ function bar3d(table: DataTable) {
       const x0 = gx + 0.18, x1 = gx + 0.66, d0 = gy + 0.15, d1 = gy + 0.75;
       const p = (x: number, d: number, h: number) => at(x, d, h);
       bars.push(
-        `<g><title>${xml(table.rows[gx]![0]! + ' · ' + table.headers[gy + 1]! + ' · ' + unitText(v, percent))}</title>` +
+        `<g${seriesAttr(gy)}><title>${xml(table.rows[gx]![0]! + ' · ' + table.headers[gy + 1]! + ' · ' + unitText(v, percent))}</title>` +
           poly([p(x0, d0, 0), p(x1, d0, 0), p(x1, d0, v), p(x0, d0, v)], base) +
           poly([p(x1, d0, 0), p(x1, d1, 0), p(x1, d1, v), p(x1, d0, v)], mixTo(base, 0, 0.28)) +
           poly([p(x0, d0, v), p(x1, d0, v), p(x1, d1, v), p(x0, d1, v)], mixTo(base, 255, 0.32)) +
@@ -552,14 +553,16 @@ function bar3d(table: DataTable) {
   return floor + wall + bars.join('') + labels + legend(table.headers.slice(1));
 }
 
-export function advancedChart(title: string, table: DataTable, chart: Chart) {
+export type AdvancedChart = Exclude<DocumentLayout['chart'], 'bar' | 'line' | 'combo'>;
+/** Renderers draw only marks in native coordinates; the frame adds title, legend and theme. */
+export function advancedChartBody(table: DataTable, chart: AdvancedChart) {
   if (
     !table.rows.length ||
     table.rows.length > 256 ||
     table.rows.some((row) => row.length !== table.headers.length)
   )
     throw new Error('请提供列数一致、最多 256 行的有效数据。');
-  const drawing = {
+  return {
     stream,
     sankey: flow,
     radar,
@@ -572,5 +575,4 @@ export function advancedChart(title: string, table: DataTable, chart: Chart) {
     waterfall,
     bar3d,
   }[chart](table);
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img"><title>${xml(title)}</title><rect width="960" height="540" fill="#fff"/><g font-family="system-ui,sans-serif" fill="#203735" font-size="14"><text x="36" y="47" font-size="27" font-weight="700">${xml(short(title, 40))}</text>${drawing}</g></svg>`;
 }

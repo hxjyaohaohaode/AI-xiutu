@@ -12,10 +12,37 @@ const box = z.object({
   height: z.number().int().min(30).max(slideSize.height),
   rotation: z.number().int().min(-180).max(180),
 });
+export const chartThemes = ['studio', 'ocean', 'sunset', 'forest', 'mono', 'midnight'] as const;
+export const chartLegendPositions = ['top', 'bottom', 'right', 'none'] as const;
+export const chartLayouts = ['grouped', 'stacked', 'percent'] as const;
+/**
+ * Presentation options saved with a chart. Every field is optional so older
+ * snapshots render unchanged; values are bounded and never contain markup.
+ */
+export const officeChartOptionsSchema = z
+  .object({
+    subtitle: z.string().max(160).optional(),
+    theme: z.enum(chartThemes).optional(),
+    legend: z.enum(chartLegendPositions).optional(),
+    labels: z.boolean().optional(),
+    grid: z.boolean().optional(),
+    smooth: z.boolean().optional(),
+    layout: z.enum(chartLayouts).optional(),
+    orientation: z.enum(['vertical', 'horizontal']).optional(),
+    sort: z.enum(['none', 'asc', 'desc']).optional(),
+    decimals: z.number().int().min(0).max(4).optional(),
+    xTitle: z.string().max(60).optional(),
+    yTitle: z.string().max(60).optional(),
+    hole: z.number().min(0).max(0.85).optional(),
+    hidden: z.array(z.number().int().min(0).max(255)).max(64).optional(),
+  })
+  .strict();
+export type OfficeChartOptions = z.infer<typeof officeChartOptionsSchema>;
 export const officeChartSnapshotSchema = z
   .object({
     title: z.string().min(1).max(120),
     kind: z.enum(officeCharts),
+    options: officeChartOptionsSchema.optional(),
     headers: z.array(z.string().max(512)).min(2).max(16),
     rows: z
       .array(z.array(z.string().max(512)).min(2).max(16))

@@ -62,7 +62,7 @@ test('advanced charts render escaped measured data and reject incompatible input
       ['<script>', '10', '14'],
     ],
   };
-  assert.match(chartSvg('Stream', [main], 'stream'), /<path fill=/);
+  assert.match(chartSvg('Stream', [main], 'stream'), /<path data-series="0" fill=/);
   assert.match(chartSvg('Radar', [main], 'radar'), /<polygon/);
   assert.doesNotMatch(chartSvg('Radar', [main], 'radar'), /<script>/);
   const flow = {
@@ -128,7 +128,7 @@ test('extended chart kinds validate their data shape and escape every label', ()
   const series = table(['Month', 'North', 'South'], [['Jan', '12', '7'], ['Feb', '15', '9'], ['<b>Mar</b>', '11', '13']]);
   const share = table(['Channel', 'Users'], [['Search', '420'], ['Social', '260'], ['<img>', '120']]);
   const area = chartSvg('Area', [series], 'area');
-  assert.match(area, /<path fill=/);
+  assert.match(area, /<path data-series="0" fill=/);
   assert.doesNotMatch(area, /<b>Mar/);
   const donut = chartSvg('Share', [share], 'donut');
   assert.match(donut, /Search · 420 · 52\.5%/);
@@ -138,7 +138,7 @@ test('extended chart kinds validate their data shape and escape every label', ()
   const heat = chartSvg('Heat', [table(['Day', 'AM', 'PM'], [['Mon', '-3', '4'], ['Tue', '2', '-1']])], 'heatmap');
   assert.match(heat, /Mon · AM · -3/);
   const tree = chartSvg('Tree', [share], 'treemap');
-  assert.equal(tree.match(/<rect x=/g)!.length, 3); // one tile per item
+  assert.equal(tree.match(/<rect data-series=/g)!.length, 3); // one tile per item
   const funnel = chartSvg('Funnel', [table(['Stage', 'Count'], [['Visit', '1000'], ['Signup', '250'], ['Pay', '50']])], 'funnel');
   assert.match(funnel, /Pay · 50 · 较上一步 20%/);
   const fall = chartSvg('Delta', [table(['Item', 'Change'], [['Start', '100'], ['Cost', '-30'], ['Bonus', '5']])], 'waterfall');
@@ -147,4 +147,45 @@ test('extended chart kinds validate their data shape and escape every label', ()
   const bars = chartSvg('3D', [series], 'bar3d');
   assert.match(bars, /Feb · South · 9/);
   assert.throws(() => chartSvg('Wide', [table(['A', ...'BCDEFGH'.split('')], [['x', ...Array(7).fill('1')], ['y', ...Array(7).fill('1')], ['z', ...Array(7).fill('1')]])], 'bar3d'), /最多/);
+});
+
+test('chart options: themes, hidden series, sorting, combo dual axis and legend placement', async () => {
+  const { renderChart } = await import('@ai-xiutu/contracts/office-data');
+  const { officeChartSnapshotSchema } = await import('@ai-xiutu/contracts');
+  const table = (headers: string[], rows: string[][]) => ({ kind: 'table' as const, line: 0, headers, rows });
+  const sales = table(['Month', 'North', 'South', 'West'], [['Jan', '12', '7', '3'], ['Feb', '15', '9', '4'], ['Mar', '11', '13', '6']]);
+  // Hidden series disappear from marks but stay in the legend (dimmed) so they can be restored.
+  const hidden = renderChart({ title: 'Sales', kind: 'bar', table: sales, options: { hidden: [1] } });
+  assert.doesNotMatch(hidden, /data-series="1"/);
+  assert.match(hidden, /data-legend="1" class="legend-item" data-hidden="true"/);
+  assert.match(hidden, /data-series="2"[^>]*fill="#BA684A"/); // keeps its original colour
+  // Themes change background and palette; stacked bars carry every series.
+  const midnight = renderChart({ title: 'Sales', kind: 'bar', table: sales, options: { theme: 'midnight', layout: 'stacked' } });
+  assert.match(midnight, /<rect width="960" height="540" fill="#111827"\/>/);
+  assert.match(midnight, /fill="#5EEAD4"/);
+  // Sorting reorders categories by the first value column.
+  const sorted = renderChart({ title: 'S', kind: 'bar', table: sales, options: { sort: 'desc', orientation: 'horizontal' } });
+  assert.ok(sorted.indexOf('<title>Feb</title>') < sorted.indexOf('<title>Jan</title>'));
+  // Combo: first column as columns, percentage lines on a right axis.
+  const combo = renderChart({
+    title: 'Revenue',
+    kind: 'combo',
+    table: table(['Month', 'Revenue', 'Margin'], [['Jan', '120', '30%'], ['Feb', '160', '34%'], ['Mar', '150', '31%']]),
+    options: { labels: true },
+  });
+  assert.match(combo, /Feb · Margin · 34%/);
+  assert.match(combo, /text-anchor="start" class="muted" font-size="12.5"><title>\d+%<\/title>/); // right axis ticks
+  // Right legend narrows category plots instead of shrinking text.
+  const right = renderChart({ title: 'S', kind: 'line', table: sales, options: { legend: 'right' } });
+  assert.match(right, /scale\(1\.0000\)/);
+  assert.match(right, /<g data-legend="0" class="legend-item"><line x1="772"/);
+  // Subtitle, labels and decimals are escaped and formatted.
+  const labelled = renderChart({ title: 'T', kind: 'line', table: sales, options: { subtitle: '<b>units</b>', labels: true, decimals: 1 } });
+  assert.match(labelled, /&lt;b&gt;units&lt;\/b&gt;/);
+  assert.match(labelled, />12\.0</);
+  // Options are validated with the snapshot.
+  const base = { title: 'X', kind: 'bar', headers: ['A', 'B'], rows: [['a', '1']] };
+  assert.equal(officeChartSnapshotSchema.safeParse({ ...base, options: { theme: 'neon' } }).success, false);
+  assert.equal(officeChartSnapshotSchema.safeParse({ ...base, options: { subtitle: 'ok', hidden: [0] } }).success, true);
+  assert.equal(officeChartSnapshotSchema.safeParse({ ...base, options: { onclick: 'x' } }).success, false);
 });

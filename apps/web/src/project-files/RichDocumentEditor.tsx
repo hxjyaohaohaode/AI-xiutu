@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   TextB,
   TextItalic,
@@ -48,11 +48,14 @@ import {
   isDocumentLink,
   sameDocumentFormat,
   readOfficeBlock,
+  writeOfficeBlock,
   type DocumentFormat,
+  type OfficeChartSnapshot,
 } from '@ai-xiutu/contracts';
 import { documentSchema, readRichDocument, validatedRichContent } from '@ai-xiutu/contracts/rich-document';
 import { t, useLocale } from '../i18n';
-import { chartDataUrl, snapshotSvg } from '@ai-xiutu/contracts/office-data';
+import { snapshotTable } from '@ai-xiutu/contracts/office-data';
+import { mountChart } from './chart-view';
 import {
   blockStyleOf,
   blockStyles,
@@ -84,6 +87,7 @@ type Props = Content & { readOnly: boolean; onChange: (next: Content) => boolean
   onTransaction: (view: EditorView, content: Content) => void;
 } };
 export const receivedDocumentStep = 'xiutu-received-document-step';
+const ChartDesigner = lazy(() => import('./ChartDesigner').then((m) => ({ default: m.ChartDesigner })));
 const alignOptions = [
   ['left', '左对齐', TextAlignLeft],
   ['center', '居中', TextAlignCenter],
@@ -154,6 +158,9 @@ export function RichDocumentEditor(props: Props) {
   const [outline, setOutline] = useState(false);
   const openFind = useRef<() => void>(() => {});
   openFind.current = () => setFinding(true);
+  const [designing, setDesigning] = useState<{ pos: number; chart: OfficeChartSnapshot } | null>(null);
+  const openDesigner = useRef<(target: { pos: number; chart: OfficeChartSnapshot }) => void>(() => {});
+  openDesigner.current = setDesigning;
   useLayoutEffect(() => {
     if (!target.current) return;
     const mark = (name: string, attrs?: Record<string, unknown>) =>
@@ -199,18 +206,37 @@ export function RichDocumentEditor(props: Props) {
       editable: () => !latest.current.readOnly,
       attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': t('文档内容') },
       nodeViews: {
-        office_block(node) {
+        office_block(node, _view, getPos) {
           const dom = DOMSerializer.fromSchema(documentSchema).serializeNode(node) as HTMLElement;
           const block = readOfficeBlock(node.attrs.data);
-          if (block?.kind === 'chart') {
-            try {
-              const image = document.createElement('img');
-              image.src = chartDataUrl(snapshotSvg(block.chart));
-              image.alt = block.chart.title;
-              dom.prepend(image);
-            } catch { dom.textContent = t('图表数据不可用'); }
+          if (block?.kind !== 'chart') return { dom };
+          // Interactive chart: hover values and legend toggles stay local to this view;
+          // persistent changes go through the designer as one validated document step.
+          dom.replaceChildren();
+          dom.classList.add('office-chart');
+          const host = document.createElement('div');
+          const mount = mountChart(host, block.chart, {
+            label: (action, name) => t(action === 'hide' ? '隐藏 {v0}' : '显示 {v0}', { v0: name }),
+          });
+          dom.append(host);
+          if (!latest.current.readOnly) {
+            const edit = document.createElement('button');
+            edit.type = 'button';
+            edit.className = 'office-chart-edit';
+            edit.textContent = t('编辑图表');
+            edit.addEventListener('click', (event) => {
+              event.preventDefault();
+              const pos = getPos();
+              if (pos !== undefined) openDesigner.current({ pos, chart: block.chart });
+            });
+            dom.append(edit);
           }
-          return { dom };
+          return {
+            dom,
+            stopEvent: (event) => event.target instanceof Node && dom.contains(event.target) && event.type !== 'dragstart',
+            ignoreMutation: () => true,
+            destroy: () => mount.destroy(),
+          };
         },
       },
       // Intercept before the default HTML clipboard parser touches external markup.
@@ -739,6 +765,28 @@ export function RichDocumentEditor(props: Props) {
         </div>
       )}
       {pasteError && <p role="alert">{pasteError}</p>}
+      {designing && (
+        <Suspense fallback={null}>
+          <ChartDesigner
+            table={snapshotTable(designing.chart)}
+            initial={designing.chart}
+            source={designing.chart.source}
+            confirmLabel="保存图表"
+            onCancel={() => setDesigning(null)}
+            onConfirm={(chart) => {
+              const editor = view.current;
+              const node = editor?.state.doc.nodeAt(designing.pos);
+              if (editor && node?.type.name === 'office_block' && !props.readOnly)
+                editor.dispatch(
+                  editor.state.tr.setNodeMarkup(designing.pos, undefined, {
+                    data: writeOfficeBlock({ kind: 'chart', chart }),
+                  }),
+                );
+              setDesigning(null);
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

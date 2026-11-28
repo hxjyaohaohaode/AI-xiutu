@@ -1,7 +1,8 @@
 import type { DocumentLayout } from '../document-format.js';
 import type { OfficeChartSnapshot } from '../office-content.js';
 import { chartSeries, usedChartTable, xml, type DataTable } from './table.js';
-import { advancedChart } from './advanced-chart.js';
+import { renderChart } from './chart-engine.js';
+import type { OfficeChartOptions } from '../office-content.js';
 
 export const chartNames: Record<DocumentLayout['chart'], string> = {
   bar: '条形图',
@@ -17,6 +18,7 @@ export const chartNames: Record<DocumentLayout['chart'], string> = {
   funnel: '漏斗图',
   waterfall: '瀑布图',
   bar3d: '三维柱状图',
+  combo: '组合图（柱＋线）',
 };
 
 export function snapshotTable(chart: OfficeChartSnapshot): DataTable {
@@ -30,7 +32,7 @@ export function snapshotTable(chart: OfficeChartSnapshot): DataTable {
 }
 
 export function snapshotSvg(chart: OfficeChartSnapshot) {
-  return chartSvg(chart.title, [snapshotTable(chart)], chart.kind);
+  return chartSvg(chart.title, [snapshotTable(chart)], chart.kind, chart.options);
 }
 
 export const chartDataUrl = (svg: string) =>
@@ -40,11 +42,12 @@ export function chartSvg(
   title: string,
   source: DataTable[],
   chart: DocumentLayout['chart'] = 'bar',
+  options?: OfficeChartOptions,
 ) {
   const tables = source.map(usedChartTable);
   if (chart !== 'bar' && chart !== 'line') {
     if (tables.length !== 1) throw new Error('该图表需要一张结构完整的数据表。');
-    return advancedChart(title, tables[0]!, chart);
+    return renderChart({ title, kind: chart, table: tables[0]!, options });
   }
   const plots = tables.flatMap((table) => chartSeries(table).map((series) => ({ table, series })));
   if (!plots.length) throw new Error('图表需要首列为类别、其后至少一列为完整数值的数据。');
@@ -58,6 +61,24 @@ export function chartSvg(
     0,
   );
   if (labelLength > 1_000_000) throw new Error('图表标签过长，请缩短分类或列标题后导出。');
+  // One table with up to 8 numeric columns: the themed engine, using only complete
+  // numeric columns (text columns such as notes are skipped, as before).
+  if (
+    tables.length === 1 &&
+    plots.length <= 8 &&
+    tables[0]!.rows.length <= 60 &&
+    plots.every(({ series }) => series.percent === plots[0]!.series.percent)
+  ) {
+    const table = tables[0]!;
+    const columns = [0, ...plots.map(({ series }) => series.column)];
+    const numericOnly: DataTable = {
+      ...table,
+      headers: columns.map((c) => table.headers[c]!),
+      rows: table.rows.map((row) => columns.map((c) => row[c] ?? '')),
+      textCells: new Set(),
+    };
+    return renderChart({ title, kind: chart, table: numericOnly, options });
+  }
   const compact = (label: string, limit: number) => {
     const points = Array.from(label);
     return points.length > limit ? points.slice(0, limit - 1).join('') + '…' : label;

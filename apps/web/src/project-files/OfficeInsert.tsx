@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { Plus } from '@phosphor-icons/react';
-import { officeCharts, type OfficeBlock, type DocumentLayout } from '@ai-xiutu/contracts';
+import type { OfficeBlock } from '@ai-xiutu/contracts';
 import { t, useLocale } from '../i18n';
 import { api, errorMessage } from '../lib/api';
 import type { Asset, ProjectDocument } from '../lib/types';
-import { chartDataUrl, chartNames, snapshotSvg } from '@ai-xiutu/contracts/office-data';
-import { chartFromDocument } from './presentation-model';
+import { officeDataTable, type DataTable } from '@ai-xiutu/contracts/office-data';
+
+// The designer and interactive view load only when a chart is shown or designed.
+const ChartDesigner = lazy(() => import('./ChartDesigner').then((m) => ({ default: m.ChartDesigner })));
+const ChartView = lazy(() => import('./ChartDesigner').then((m) => ({ default: m.ChartView })));
 
 type Kind = OfficeBlock['kind'];
 const labels: Record<Kind, string> = {
@@ -62,15 +65,13 @@ export function OfficeBlockView({
         <small>{t('版本 {v0}', { v0: block.version })}</small>
       </div>
     );
-  try {
-    return (
-      <figure className="office-embed">
-        <img src={chartDataUrl(snapshotSvg(block.chart))} alt={block.chart.title} />
-      </figure>
-    );
-  } catch {
-    return <p role="status">{t('图表数据不可用')}</p>;
-  }
+  return (
+    <figure className="office-embed office-chart">
+      <Suspense fallback={<p role="status">{t('读取中')}</p>}>
+        <ChartView chart={block.chart} />
+      </Suspense>
+    </figure>
+  );
 }
 
 export function OfficeInsert({
@@ -88,7 +89,7 @@ export function OfficeInsert({
   const [assets, setAssets] = useState<Asset[]>([]);
   const [audio, setAudio] = useState<Audio[]>([]);
   const [selected, setSelected] = useState('');
-  const [chart, setChart] = useState<DocumentLayout['chart']>('bar');
+  const [designing, setDesigning] = useState<{ table: DataTable; doc: ProjectDocument } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const uploadController = useRef<AbortController | null>(null);
@@ -157,15 +158,17 @@ export function OfficeInsert({
     if (kind === 'reference' || kind === 'chart') {
       const doc = documents.find((item) => item.id === selected);
       if (!doc) return;
-      try {
-        block =
-          kind === 'reference'
-            ? { kind, documentId: doc.id, title: doc.title, version: doc.version }
-            : { kind, chart: chartFromDocument(doc, chart) };
-      } catch (error) {
-        setError(errorMessage(error));
+      if (kind === 'chart') {
+        // Charts open the designer first; the inserted snapshot is pinned to this version.
+        const table = officeDataTable(doc.body);
+        if (!table) {
+          setError('请选择包含一张数据表的文档或工作表。');
+          return;
+        }
+        setDesigning({ table, doc });
         return;
       }
+      block = { kind, documentId: doc.id, title: doc.title, version: doc.version };
     }
     if (block && onInsert(block)) {
       choose('');
@@ -235,30 +238,34 @@ export function OfficeInsert({
               />
             </label>
           )}
-          {kind === 'chart' && (
-            <select
-              aria-label={t('图表类型')}
-              value={chart}
-              onChange={(e) => setChart(officeCharts[e.target.selectedIndex]!)}
-            >
-              {officeCharts.map((value) => (
-                <option key={value} value={value}>
-                  {t(chartNames[value])}
-                </option>
-              ))}
-            </select>
-          )}
           <button
             type="button"
             className="text-button"
             disabled={busy || (kind === 'note' ? !note.trim() : !selected)}
             onClick={insert}
           >
-            {t('插入到文档')}
+            {t(kind === 'chart' ? '设计图表' : '插入到文档')}
           </button>
         </>
       )}
       {error && <p role="alert">{t(error)}</p>}
+      {designing && (
+        <Suspense fallback={null}>
+          <ChartDesigner
+            table={designing.table}
+            initial={{ title: designing.doc.title.slice(0, 120) || t('图表'), kind: 'bar' }}
+            source={{ documentId: designing.doc.id, version: designing.doc.version }}
+            confirmLabel="插入到文档"
+            onCancel={() => setDesigning(null)}
+            onConfirm={(chart) => {
+              if (onInsert({ kind: 'chart', chart })) {
+                setDesigning(null);
+                choose('');
+              }
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
