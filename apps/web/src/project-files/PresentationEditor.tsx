@@ -54,7 +54,7 @@ const ChartDesigner = lazy(() => import('./ChartDesigner').then((m) => ({ defaul
 import './presentation-editor.css';
 
 const percent = (value: number, extent: number) => String((100 * value) / extent) + '%';
-const position = (item: SlideElement): CSSProperties => ({
+export const slidePosition = (item: SlideElement): CSSProperties => ({
   left: percent(item.x, slideSize.width),
   top: percent(item.y, slideSize.height),
   width: percent(item.width, slideSize.width),
@@ -68,7 +68,7 @@ function elementName(element: SlideElement) {
   return t(element.shape === 'ellipse' ? '椭圆' : '矩形');
 }
 
-function SlideContent({ element }: { element: SlideElement }) {
+export function SlideContent({ element }: { element: SlideElement }) {
   const resolveAsset = useContext(OfficeAssetUrl);
   const image = useMemo(() => {
     if (element.kind !== 'chart') return null;
@@ -129,7 +129,7 @@ export function PresentationPreview({ document }: { document: PresentationDoc })
     <section className="presentation-preview" aria-label={t('演示预览')}>
       <div className="slide-canvas" style={{ backgroundColor: slide.background }}>
         {slide.elements.map((element) => (
-          <div className="slide-object" key={element.id} style={position(element)}>
+          <div className="slide-object" key={element.id} style={slidePosition(element)}>
             <SlideContent element={element} />
           </div>
         ))}
@@ -594,7 +594,7 @@ export function PresentationEditor({
               <div
                 key={element.id}
                 className="slide-object"
-                style={position(element)}
+                style={slidePosition(element)}
                 data-selected={active}
               >
                 <button

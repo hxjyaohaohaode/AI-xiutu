@@ -80,6 +80,7 @@ import {
 } from '../account/document-drafts';
 import '../ai/decisions.css';
 
+const FileCenter = lazy(() => import('../file-center/FileCenter').then((m) => ({ default: m.FileCenter })));
 const ShareDialog = lazy(() => import('../project-files/ShareDialog').then((m) => ({ default: m.ShareDialog })));
 const RichDocumentEditor = lazy(() => import('../project-files/RichDocumentEditor')
   .then(module => ({ default: module.RichDocumentEditor })));
@@ -1155,6 +1156,7 @@ export function DocumentsView({
   const [formatting, setFormatting] = useState<DocumentFormat | null>(null);
   const [showFormatting, setShowFormatting] = useState(false);
   const [sharingDocument, setSharingDocument] = useState<{ id: string; title: string } | null>(null);
+  const [fileCenter, setFileCenter] = useState(false);
   const [editorSession, setEditorSession] = useState(0);
   const [sheetSource, setSheetSource] = useState(false);
   const projectSheet = useMemo(() => formatting?.paragraphs.length ? null : readProjectSheet(body), [body, formatting]);
@@ -1403,7 +1405,7 @@ export function DocumentsView({
     setError(null);
   }
 
-  async function choose(doc: ProjectDocument | null, imported?: { title: string; body: string }) {
+  async function choose(doc: ProjectDocument | null, imported?: { title: string; body: string; formatting?: DocumentFormat | null }) {
     if (saveLock.current || pendingSave || (!doc && !canEdit)) return false;
     if (livePending) {
       setError('共编的本机修改还在同步。请先退出共编并保留草稿，再切换文档。');
@@ -1766,6 +1768,22 @@ export function DocumentsView({
           )}
           {canEdit && <SpreadsheetImport key={ownerKey} disabled={busy || !!pendingSave || !!recoveryDraft}
             onImport={(draft) => choose(null, draft)} />}
+          <button type="button" className="text-button document-file-center" onClick={() => setFileCenter(true)}>
+            <FolderOpen size={16} aria-hidden />
+            {t('打开文件')}
+          </button>
+          {fileCenter && (
+            <Suspense fallback={null}>
+              <FileCenter
+                onClose={() => setFileCenter(false)}
+                onImport={canEdit ? async (draft) => {
+                  const ok = await choose(null, { title: draft.title, body: draft.body, ...(draft.formatting ? { formatting: draft.formatting } : {}) });
+                  if (ok) setFileCenter(false);
+                  return ok;
+                } : undefined}
+              />
+            </Suspense>
+          )}
           {docs.length > 0 && (
             <label className="document-search">
               <MagnifyingGlass size={16} />
